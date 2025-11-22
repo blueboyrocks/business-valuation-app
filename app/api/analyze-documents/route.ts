@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getOpenAIClient, getAssistantId } from '@/lib/openai/client';
 import { Database } from '@/lib/supabase/types';
+import FormData from 'form-data';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -185,14 +186,37 @@ async function processAnalysisAsync(
       }
 
       const fileBlob = fileData;
-      const file = new File([fileBlob], doc.file_name, { type: doc.mime_type });
-
-      const uploadedFile = await openai.files.create({
-        file: file,
-        purpose: 'assistants',
+      console.log(`  Uploading ${doc.file_name} via fetch...`);
+      
+      // Convert Blob to Buffer
+      const buffer = Buffer.from(await fileBlob.arrayBuffer());
+      
+      // Use raw fetch API (same as curl which works)
+      const formData = new FormData();
+      formData.append('file', buffer, {
+        filename: doc.file_name,
+        contentType: doc.mime_type || 'application/pdf'
       });
-
-      console.log(`Uploaded file to OpenAI: ${doc.file_name} (ID: ${uploadedFile.id})`);
+      formData.append('purpose', 'assistants');
+      
+      const response = await fetch('https://api.openai.com/v1/files', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+          'OpenAI-Beta': 'assistants=v2',
+          ...formData.getHeaders()
+        },
+        body: formData
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`File upload failed: ${response.status} - ${errorText}`);
+        throw new Error(`File upload failed: ${response.status} - ${errorText}`);
+      }
+      
+      const uploadedFile = await response.json();
+      console.log(`✅ Uploaded file to OpenAI: ${doc.file_name} (ID: ${uploadedFile.id})`);
       fileIds.push(uploadedFile.id);
     }
 
@@ -232,9 +256,7 @@ async function processAnalysisAsync(
 
     console.log(`Started run: ${run.id}, initial status: ${run.status}`);
 
-    let runStatus = await openai.beta.threads.runs.retrieve(run.id, {
-      thread_id: thread.id
-    });
+    let runStatus = await openai.beta.threads.runs.retrieve(run.id, { thread_id: thread.id });
     let attempts = 0;
     const maxAttempts = 120;
 
@@ -275,9 +297,7 @@ async function processAnalysisAsync(
       }
 
       await new Promise(resolve => setTimeout(resolve, 10000));
-      runStatus = await openai.beta.threads.runs.retrieve(run.id, {
-        thread_id: thread.id
-      });
+      runStatus = await openai.beta.threads.runs.retrieve(run.id, { thread_id: thread.id });
       attempts++;
 
       if (attempts % 6 === 0) {

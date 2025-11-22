@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 import { Database } from '@/lib/supabase/types';
 import { 
   generateRevenueChart,
@@ -149,17 +150,20 @@ export async function GET(
 
     console.log('🌐 [PDF EXPORT] Launching browser...');
     
+    // Use different configurations for local development vs serverless
+    const isLocal = process.env.NODE_ENV === 'development' || !process.env.VERCEL;
+    
     browser = await puppeteer.launch({
-      headless: true,
-      args: [
+      args: isLocal ? [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
-        '--disable-accelerated-2d-canvas',
-        '--no-first-run',
-        '--no-zygote',
-        '--disable-gpu'
-      ],
+      ] : chromium.args,
+      defaultViewport: chromium.defaultViewport,
+      executablePath: isLocal 
+        ? process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser'
+        : await chromium.executablePath(),
+      headless: chromium.headless,
     });
 
     const page = await browser.newPage();

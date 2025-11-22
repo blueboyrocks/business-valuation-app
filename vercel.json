@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "app/api/reports/[id]/export/route.ts": {
+      "memory": 3008,
+      "maxDuration": 60
+    },
+    "app/api/analyze-documents/route.ts": {
+      "memory": 1024,
+      "maxDuration": 300
+    }
+  },
+  "regions": ["iad1"]
+}

@@ -12,8 +12,12 @@ export function getOpenAIClient(): OpenAI {
 
     openaiClient = new OpenAI({
       apiKey,
+      baseURL: 'https://api.openai.com/v1', // Explicitly use real OpenAI API, not Manus proxy
       timeout: 600000,
       maxRetries: 3,
+      defaultHeaders: {
+        'OpenAI-Beta': 'assistants=v2'
+      }
     });
   }
 
