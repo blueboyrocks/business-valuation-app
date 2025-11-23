@@ -234,12 +234,11 @@ async function startOpenAIProcessing(
   // Import necessary modules
   const { getOpenAIClient } = require('@/lib/openai/client');
   const { getAssistantId } = require('@/lib/openai/client');
-  const FormData = require('form-data');
   
   const openai = getOpenAIClient();
   const assistantId = getAssistantId();
   
-  // Upload files to OpenAI
+  // Upload files to OpenAI using SDK
   const fileIds: string[] = [];
   for (const doc of documents) {
     const { data: fileData } = await supabase.storage
@@ -251,30 +250,19 @@ async function startOpenAIProcessing(
     }
     
     const buffer = Buffer.from(await fileData.arrayBuffer());
-    const formData = new FormData();
-    formData.append('file', buffer, {
-      filename: doc.file_name,
-      contentType: doc.mime_type || 'application/pdf'
-    });
-    formData.append('purpose', 'assistants');
     
-    const response = await fetch('https://api.openai.com/v1/files', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
-        'OpenAI-Beta': 'assistants=v2',
-        ...formData.getHeaders()
-      },
-      body: formData as any
+    // Create a File object from the buffer
+    const file = new File([buffer], doc.file_name, {
+      type: doc.mime_type || 'application/pdf'
     });
     
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`[START_PROCESSING] File upload failed (${response.status}):`, errorText);
-      throw new Error(`File upload failed: ${response.status} - ${errorText}`);
-    }
+    console.log(`[START_PROCESSING] Uploading ${doc.file_name} (${buffer.length} bytes)...`);
     
-    const uploadedFile = await response.json();
+    const uploadedFile = await openai.files.create({
+      file: file,
+      purpose: 'assistants'
+    });
+    
     console.log(`[START_PROCESSING] Uploaded: ${doc.file_name} -> ${uploadedFile.id}`);
     fileIds.push(uploadedFile.id);
   }
