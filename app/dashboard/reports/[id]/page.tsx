@@ -38,19 +38,44 @@ export default function ReportDetailPage() {
 
       if (!token) return;
 
-      const response = await fetch(`/api/reports/${params.id}/status`, {
+      // Call the process endpoint to advance OpenAI processing
+      const processResponse = await fetch(`/api/reports/${params.id}/process`, {
+        method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
         },
       });
 
-      if (response.ok) {
-        const data = await response.json();
-        setStatusData(data);
+      if (processResponse.ok) {
+        const processData = await processResponse.json();
+        
+        // Update status data with process response
+        setStatusData({
+          status: processData.status,
+          progressPercentage: processData.progress || 0,
+          estimatedTimeRemaining: processData.message,
+        });
 
-        if (data.status === 'completed' || data.status === 'failed') {
+        if (processData.status === 'completed' || processData.status === 'failed') {
           setIsPolling(false);
           fetchReport();
+        }
+      } else {
+        // Fallback to status endpoint if process fails
+        const statusResponse = await fetch(`/api/reports/${params.id}/status`, {
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        if (statusResponse.ok) {
+          const data = await statusResponse.json();
+          setStatusData(data);
+
+          if (data.status === 'completed' || data.status === 'failed') {
+            setIsPolling(false);
+            fetchReport();
+          }
         }
       }
     } catch (error) {
