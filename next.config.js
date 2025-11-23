@@ -6,8 +6,8 @@ const nextConfig = {
   images: { unoptimized: true },
   webpack: (config, { isServer }) => {
     if (isServer) {
-      // Exclude puppeteer-core and chromium from webpack bundling
-      config.externals = [...(config.externals || []), 'puppeteer-core', '@sparticuz/chromium'];
+      // Exclude puppeteer-core, chromium, and canvas from webpack bundling
+      config.externals = [...(config.externals || []), 'puppeteer-core', '@sparticuz/chromium', 'canvas'];
     }
     return config;
   },
