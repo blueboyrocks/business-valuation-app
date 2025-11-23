@@ -217,6 +217,25 @@ export default function UploadPage() {
         throw new Error(errorData.error || 'Analysis failed to start');
       }
 
+      // Trigger OpenAI processing
+      console.log('Triggering OpenAI processing for reportId:', reportId);
+      
+      const processResponse = await fetch(`/api/reports/${reportId}/process`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      console.log('Process response status:', processResponse.status);
+
+      if (!processResponse.ok) {
+        const errorData = await processResponse.json();
+        console.error('Process error:', errorData);
+        // Don't throw - let the polling handle retries
+        console.warn('OpenAI processing failed to start, will retry via polling');
+      }
+
       setUploadProgress('AI analysis initiated! Redirecting to report...');
 
       toast({

@@ -1,7 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 import { Database } from '@/lib/supabase/types';
+import { 
+  generateRevenueChart,
+  generateMarginChart,
+  generateValuationWaterfallChart,
+  generateApproachWeightingPieChart,
+  generateRiskGaugeChart,
+  generateBenchmarkingRadarChart
+} from '@/lib/pdf/chartGenerator';
+import { generateEnhancedReportHTML } from '@/lib/pdf/templateGenerator';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -13,6 +23,8 @@ export async function GET(
   let browser;
 
   try {
+    console.log('📄 [PDF EXPORT] Starting PDF generation for report:', params.id);
+    
     const authHeader = request.headers.get('authorization');
     if (!authHeader) {
       return NextResponse.json(
@@ -64,31 +76,123 @@ export async function GET(
       );
     }
 
+    console.log('📊 [PDF EXPORT] Generating charts...');
+    
+    // Extract report data
+    const reportData = typedReport.report_data || {};
+    const financial = reportData.financial_analysis || {};
+    const historicalData = financial.historical_financial_data || [];
+    const approaches = reportData.valuation_approaches || {};
+    const reconciliation = reportData.valuation_reconciliation || {};
+    const riskAssessment = reportData.risk_assessment || {};
+    const benchmarking = reportData.industry_benchmarking || {};
+
+    // Generate all charts
+    const charts: any = {};
+
+    try {
+      // Revenue and EBITDA trend chart
+      if (historicalData.length > 0) {
+        console.log('  📈 Generating revenue chart...');
+        const revenueBuffer = await generateRevenueChart(historicalData);
+        charts.revenue = revenueBuffer.toString('base64');
+      }
+
+      // Margin analysis chart
+      if (historicalData.length > 0) {
+        console.log('  📈 Generating margin chart...');
+        const marginBuffer = await generateMarginChart(historicalData);
+        charts.margins = marginBuffer.toString('base64');
+      }
+
+      // Valuation waterfall chart
+      if (approaches.asset_approach || approaches.income_approach || approaches.market_approach) {
+        console.log('  📈 Generating waterfall chart...');
+        const waterfallBuffer = await generateValuationWaterfallChart(approaches);
+        charts.waterfall = waterfallBuffer.toString('base64');
+      }
+
+      // Approach weighting pie chart
+      if (reconciliation.approach_weighting && reconciliation.approach_weighting.length > 0) {
+        console.log('  📈 Generating weighting chart...');
+        const weightingBuffer = await generateApproachWeightingPieChart(reconciliation);
+        charts.weighting = weightingBuffer.toString('base64');
+      }
+
+      // Risk gauge chart
+      if (riskAssessment.overall_risk_score !== undefined) {
+        console.log('  📈 Generating risk chart...');
+        const riskBuffer = await generateRiskGaugeChart(riskAssessment.overall_risk_score);
+        charts.risk = riskBuffer.toString('base64');
+      }
+
+      // Benchmarking radar chart
+      if (benchmarking.industry_percentile_rankings) {
+        console.log('  📈 Generating benchmarking chart...');
+        const benchmarkingBuffer = await generateBenchmarkingRadarChart(benchmarking);
+        charts.benchmarking = benchmarkingBuffer.toString('base64');
+      }
+
+      console.log('✅ [PDF EXPORT] Charts generated successfully');
+    } catch (chartError) {
+      console.error('⚠️ [PDF EXPORT] Error generating charts:', chartError);
+      // Continue without charts - they're optional
+    }
+
+    console.log('📝 [PDF EXPORT] Generating HTML template...');
+    
+    // Generate HTML with enhanced template
+    const htmlContent = generateEnhancedReportHTML({
+      report: typedReport,
+      reportData,
+      charts
+    });
+
+    console.log('🌐 [PDF EXPORT] Launching browser...');
+    
+    // Use Vercel-compatible Chromium in production, local Chromium in development
+    const isProduction = process.env.VERCEL === '1';
+    
     browser = await puppeteer.launch({
+      args: isProduction ? chromium.args : [
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage',
+        '--disable-accelerated-2d-canvas',
+        '--no-first-run',
+        '--no-zygote',
+        '--disable-gpu'
+      ],
+      executablePath: isProduction ? await chromium.executablePath() : undefined,
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
 
     const page = await browser.newPage();
 
-    const htmlContent = generateReportHTML(typedReport);
-
+    console.log('📄 [PDF EXPORT] Setting content...');
+    
     await page.setContent(htmlContent, {
       waitUntil: 'networkidle0',
+      timeout: 30000
     });
 
+    console.log('🖨️ [PDF EXPORT] Generating PDF...');
+    
     const pdfBuffer = await page.pdf({
       format: 'A4',
       margin: {
-        top: '20mm',
-        right: '15mm',
-        bottom: '20mm',
-        left: '15mm',
+        top: '0mm',
+        right: '0mm',
+        bottom: '0mm',
+        left: '0mm',
       },
       printBackground: true,
+      preferCSSPageSize: true,
     });
 
     await browser.close();
+
+    console.log('✅ [PDF EXPORT] PDF generated successfully');
 
     const fileName = `${typedReport.company_name.replace(/[^a-z0-9]/gi, '_')}_Valuation_Report.pdf`;
 
@@ -96,365 +200,22 @@ export async function GET(
       headers: {
         'Content-Type': 'application/pdf',
         'Content-Disposition': `attachment; filename="${fileName}"`,
+        'Cache-Control': 'no-cache',
       },
     });
   } catch (error) {
-    console.error('Error generating PDF:', error);
+    console.error('❌ [PDF EXPORT] Error generating PDF:', error);
 
     if (browser) {
       await browser.close();
     }
 
     return NextResponse.json(
-      { error: 'Failed to generate PDF' },
+      { 
+        error: 'Failed to generate PDF',
+        details: error instanceof Error ? error.message : 'Unknown error'
+      },
       { status: 500 }
     );
   }
-}
-
-function generateReportHTML(report: any): string {
-  const formatCurrency = (amount: number | null) => {
-    if (!amount) return 'N/A';
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    }).format(amount);
-  };
-
-  const formatPercentage = (value: number | null | undefined) => {
-    if (value === null || value === undefined) return 'N/A';
-    return `${value.toFixed(2)}%`;
-  };
-
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: 'long',
-      day: 'numeric',
-      year: 'numeric',
-    });
-  };
-
-  const reportData = report.report_data || {};
-
-  return `
-    <!DOCTYPE html>
-    <html>
-      <head>
-        <meta charset="utf-8">
-        <style>
-          * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-          }
-          body {
-            font-family: 'Helvetica', 'Arial', sans-serif;
-            line-height: 1.6;
-            color: #1e293b;
-            font-size: 11pt;
-          }
-          .header {
-            background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
-            color: white;
-            padding: 40px 30px;
-            margin-bottom: 30px;
-          }
-          .company-name {
-            font-size: 32pt;
-            font-weight: bold;
-            margin-bottom: 10px;
-          }
-          .report-title {
-            font-size: 18pt;
-            opacity: 0.95;
-            margin-bottom: 20px;
-          }
-          .report-meta {
-            font-size: 10pt;
-            opacity: 0.9;
-          }
-          .section {
-            margin-bottom: 30px;
-            page-break-inside: avoid;
-          }
-          .section-title {
-            font-size: 16pt;
-            font-weight: bold;
-            color: #1e40af;
-            margin-bottom: 15px;
-            padding-bottom: 8px;
-            border-bottom: 2px solid #e2e8f0;
-          }
-          .summary-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-            margin-bottom: 30px;
-          }
-          .summary-card {
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 8px;
-            padding: 20px;
-          }
-          .summary-card-label {
-            font-size: 10pt;
-            color: #64748b;
-            margin-bottom: 8px;
-          }
-          .summary-card-value {
-            font-size: 20pt;
-            font-weight: bold;
-            color: #1e293b;
-          }
-          .metrics-grid {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 15px;
-            margin-bottom: 20px;
-          }
-          .metric-item {
-            background: white;
-            border: 1px solid #e2e8f0;
-            border-radius: 6px;
-            padding: 15px;
-          }
-          .metric-label {
-            font-size: 9pt;
-            color: #64748b;
-            margin-bottom: 5px;
-          }
-          .metric-value {
-            font-size: 14pt;
-            font-weight: bold;
-            color: #1e293b;
-          }
-          table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-bottom: 20px;
-          }
-          th {
-            background: #f1f5f9;
-            padding: 12px;
-            text-align: left;
-            font-weight: 600;
-            border-bottom: 2px solid #cbd5e1;
-            font-size: 10pt;
-          }
-          td {
-            padding: 10px 12px;
-            border-bottom: 1px solid #e2e8f0;
-            font-size: 10pt;
-          }
-          .executive-summary {
-            background: #f8fafc;
-            border-left: 4px solid #3b82f6;
-            padding: 20px;
-            margin-bottom: 30px;
-            line-height: 1.8;
-          }
-          .risk-item {
-            background: #fef2f2;
-            border-left: 4px solid #ef4444;
-            padding: 15px;
-            margin-bottom: 10px;
-            border-radius: 4px;
-          }
-          .risk-high {
-            background: #fef2f2;
-            border-left-color: #ef4444;
-          }
-          .risk-medium {
-            background: #fffbeb;
-            border-left-color: #f59e0b;
-          }
-          .risk-low {
-            background: #f0f9ff;
-            border-left-color: #3b82f6;
-          }
-          .risk-title {
-            font-weight: bold;
-            margin-bottom: 5px;
-          }
-          .finding-item {
-            margin-bottom: 12px;
-            padding-left: 20px;
-            position: relative;
-          }
-          .finding-item:before {
-            content: '•';
-            position: absolute;
-            left: 5px;
-            color: #3b82f6;
-            font-weight: bold;
-          }
-          .footer {
-            margin-top: 50px;
-            padding-top: 20px;
-            border-top: 1px solid #e2e8f0;
-            font-size: 9pt;
-            color: #64748b;
-            text-align: center;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div class="company-name">${report.company_name}</div>
-          <div class="report-title">Business Valuation Report</div>
-          <div class="report-meta">
-            Generated: ${formatDate(report.created_at)} |
-            Method: ${report.valuation_method || 'Comprehensive Analysis'}
-          </div>
-        </div>
-
-        <div class="summary-grid">
-          <div class="summary-card">
-            <div class="summary-card-label">Estimated Value</div>
-            <div class="summary-card-value">${formatCurrency(report.valuation_amount)}</div>
-          </div>
-          <div class="summary-card">
-            <div class="summary-card-label">Valuation Method</div>
-            <div class="summary-card-value" style="font-size: 14pt;">${report.valuation_method || 'N/A'}</div>
-          </div>
-          <div class="summary-card">
-            <div class="summary-card-label">Report Status</div>
-            <div class="summary-card-value" style="font-size: 14pt;">Completed</div>
-          </div>
-        </div>
-
-        ${report.executive_summary ? `
-        <div class="section">
-          <div class="section-title">Executive Summary</div>
-          <div class="executive-summary">
-            ${report.executive_summary.replace(/\n/g, '<br>')}
-          </div>
-        </div>
-        ` : ''}
-
-        ${reportData.financial_metrics ? `
-        <div class="section">
-          <div class="section-title">Financial Metrics</div>
-          <div class="metrics-grid">
-            ${reportData.financial_metrics.revenue ? `
-            <div class="metric-item">
-              <div class="metric-label">Annual Revenue</div>
-              <div class="metric-value">${formatCurrency(reportData.financial_metrics.revenue)}</div>
-            </div>
-            ` : ''}
-            ${reportData.financial_metrics.ebitda ? `
-            <div class="metric-item">
-              <div class="metric-label">EBITDA</div>
-              <div class="metric-value">${formatCurrency(reportData.financial_metrics.ebitda)}</div>
-            </div>
-            ` : ''}
-            ${reportData.financial_metrics.net_income ? `
-            <div class="metric-item">
-              <div class="metric-label">Net Income</div>
-              <div class="metric-value">${formatCurrency(reportData.financial_metrics.net_income)}</div>
-            </div>
-            ` : ''}
-            ${reportData.financial_metrics.profit_margin ? `
-            <div class="metric-item">
-              <div class="metric-label">Profit Margin</div>
-              <div class="metric-value">${formatPercentage(reportData.financial_metrics.profit_margin)}</div>
-            </div>
-            ` : ''}
-            ${reportData.financial_metrics.revenue_growth ? `
-            <div class="metric-item">
-              <div class="metric-label">Revenue Growth</div>
-              <div class="metric-value">${formatPercentage(reportData.financial_metrics.revenue_growth)}</div>
-            </div>
-            ` : ''}
-            ${reportData.financial_metrics.assets ? `
-            <div class="metric-item">
-              <div class="metric-label">Total Assets</div>
-              <div class="metric-value">${formatCurrency(reportData.financial_metrics.assets)}</div>
-            </div>
-            ` : ''}
-          </div>
-        </div>
-        ` : ''}
-
-        ${reportData.valuation_methods && reportData.valuation_methods.length > 0 ? `
-        <div class="section">
-          <div class="section-title">Valuation Methods</div>
-          ${reportData.valuation_methods.map((method: any) => `
-            <div class="metric-item" style="margin-bottom: 15px;">
-              <div style="display: flex; justify-content: space-between; margin-bottom: 10px;">
-                <strong>${method.method_name}</strong>
-                <strong>${formatCurrency(method.estimated_value)}</strong>
-              </div>
-              ${method.description ? `<p style="margin-bottom: 8px; color: #64748b;">${method.description}</p>` : ''}
-            </div>
-          `).join('')}
-        </div>
-        ` : ''}
-
-        ${reportData.comparable_companies && reportData.comparable_companies.length > 0 ? `
-        <div class="section">
-          <div class="section-title">Comparable Companies</div>
-          <table>
-            <thead>
-              <tr>
-                <th>Company</th>
-                <th style="text-align: right;">Revenue</th>
-                <th style="text-align: right;">Multiple</th>
-                <th style="text-align: right;">Industry</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${reportData.comparable_companies.map((company: any) => `
-                <tr>
-                  <td>${company.name}</td>
-                  <td style="text-align: right;">${formatCurrency(company.revenue)}</td>
-                  <td style="text-align: right;">${company.multiple ? company.multiple.toFixed(2) + 'x' : 'N/A'}</td>
-                  <td style="text-align: right;">${company.industry}</td>
-                </tr>
-              `).join('')}
-            </tbody>
-          </table>
-        </div>
-        ` : ''}
-
-        ${reportData.risk_factors && reportData.risk_factors.length > 0 ? `
-        <div class="section">
-          <div class="section-title">Risk Assessment</div>
-          ${reportData.risk_factors.map((risk: any) => `
-            <div class="risk-item risk-${risk.severity || 'medium'}">
-              <div class="risk-title">${risk.category} - ${risk.severity ? risk.severity.toUpperCase() : 'MEDIUM'}</div>
-              <div>${risk.description}</div>
-            </div>
-          `).join('')}
-        </div>
-        ` : ''}
-
-        ${reportData.key_findings && reportData.key_findings.length > 0 ? `
-        <div class="section">
-          <div class="section-title">Key Findings</div>
-          ${reportData.key_findings.map((finding: string) => `
-            <div class="finding-item">${finding}</div>
-          `).join('')}
-        </div>
-        ` : ''}
-
-        ${reportData.recommendations && reportData.recommendations.length > 0 ? `
-        <div class="section">
-          <div class="section-title">Recommendations</div>
-          ${reportData.recommendations.map((rec: string) => `
-            <div class="finding-item">${rec}</div>
-          `).join('')}
-        </div>
-        ` : ''}
-
-        <div class="footer">
-          <p>This report was generated using AI-powered business valuation analysis.</p>
-          <p>For questions or additional analysis, please contact your valuation specialist.</p>
-        </div>
-      </body>
-    </html>
-  `;
 }
