@@ -155,6 +155,7 @@ async function startOpenAIProcessing(
     const assistantId = getAssistantId();
 
     // Upload files to OpenAI
+    await supabase.from('reports').update({ report_data: { debug: 'Starting file uploads', documentCount: documents.length, timestamp: new Date().toISOString() } as any } as any).eq('id', reportId);
     const fileIds: string[] = [];
     for (const doc of documents) {
       const { data: fileData } = await supabase.storage
@@ -195,6 +196,7 @@ async function startOpenAIProcessing(
     }
 
     // Create thread with files
+    await supabase.from('reports').update({ report_data: { debug: 'Files uploaded successfully', fileCount: fileIds.length, timestamp: new Date().toISOString() } as any } as any).eq('id', reportId);
     const maxAttachmentsPerMessage = 10;
     const thread = await openai.beta.threads.create({
       messages: [
@@ -205,9 +207,10 @@ async function startOpenAIProcessing(
             file_id: id,
             tools: [{ type: 'file_search' }],
           })),
-        },
-      ],
+        },      }),
     });
+
+    await supabase.from('reports').update({ report_data: { debug: 'Thread created', threadId: thread.id, timestamp: new Date().toISOString() } as any } as any).eq('id', reportId);
 
     if (fileIds.length > maxAttachmentsPerMessage) {
       await openai.beta.threads.messages.create(thread.id, {
