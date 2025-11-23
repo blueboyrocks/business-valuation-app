@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 import { Database } from '@/lib/supabase/types';
 import { 
   generateRevenueChart,
@@ -149,9 +150,11 @@ export async function GET(
 
     console.log('🌐 [PDF EXPORT] Launching browser...');
     
+    // Use Vercel-compatible Chromium in production, local Chromium in development
+    const isProduction = process.env.VERCEL === '1';
+    
     browser = await puppeteer.launch({
-      headless: true,
-      args: [
+      args: isProduction ? chromium.args : [
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
@@ -160,6 +163,8 @@ export async function GET(
         '--no-zygote',
         '--disable-gpu'
       ],
+      executablePath: isProduction ? await chromium.executablePath() : undefined,
+      headless: true,
     });
 
     const page = await browser.newPage();

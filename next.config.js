@@ -6,8 +6,8 @@ const nextConfig = {
   images: { unoptimized: true },
   webpack: (config, { isServer }) => {
     if (isServer) {
-      // Mark canvas as external to prevent webpack from bundling it
-      config.externals.push('canvas');
+      // Mark native modules and Puppeteer as external to prevent webpack from bundling them
+      config.externals.push('canvas', 'puppeteer-core', '@sparticuz/chromium');
     }
     return config;
   },
