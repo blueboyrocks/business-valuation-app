@@ -159,11 +159,10 @@ export async function GET(
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
       ] : chromium.args,
-      defaultViewport: chromium.defaultViewport,
       executablePath: isLocal 
         ? process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser'
         : await chromium.executablePath(),
-      headless: chromium.headless,
+      headless: true,
     });
 
     const page = await browser.newPage();
