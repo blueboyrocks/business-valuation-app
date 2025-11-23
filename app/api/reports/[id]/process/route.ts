@@ -110,7 +110,7 @@ export async function POST(
       if (reportData.openai_file_ids) {
         for (const fileId of reportData.openai_file_ids) {
           try {
-            await openai.files.del(fileId);
+            await openai.files.delete(fileId);
           } catch (e) {
             console.log(`[PROCESS] Could not delete file ${fileId}`);
           }
