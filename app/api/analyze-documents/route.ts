@@ -207,7 +207,8 @@ async function startOpenAIProcessing(
             file_id: id,
             tools: [{ type: 'file_search' }],
           })),
-        },      }),
+        },
+      ],
     });
 
     await supabase.from('reports').update({ report_data: { debug: 'Thread created', threadId: thread.id, timestamp: new Date().toISOString() } as any } as any).eq('id', reportId);
