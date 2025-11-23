@@ -59,13 +59,30 @@ export async function POST(
     // Check if we have OpenAI IDs
     const reportData = report.report_data as any;
     if (!reportData?.openai_thread_id || !reportData?.openai_run_id) {
-      console.log(`[PROCESS] No OpenAI IDs found yet for report ${reportId}`);
-      console.log(`[PROCESS] Report data:`, JSON.stringify(reportData));
-      return NextResponse.json({
-        status: 'processing',
-        message: 'Waiting for OpenAI initialization...',
-        progress: 5,
-      });
+      console.log(`[PROCESS] No OpenAI IDs found, starting initialization for report ${reportId}`);
+      
+      // Start the OpenAI processing
+      try {
+        await startOpenAIProcessing(reportId, report.company_name, user.id, supabase);
+        return NextResponse.json({
+          status: 'processing',
+          message: 'OpenAI processing started',
+          progress: 10,
+        });
+      } catch (error: any) {
+        console.error(`[PROCESS] Failed to start OpenAI processing:`, error);
+        await supabase
+          .from('reports')
+          .update({
+            report_status: 'failed',
+            error_message: `Failed to start OpenAI processing: ${error.message}`,
+          } as any)
+          .eq('id', reportId);
+        return NextResponse.json({
+          status: 'failed',
+          error: error.message,
+        });
+      }
     }
 
     const threadId = reportData.openai_thread_id;
@@ -192,4 +209,125 @@ export async function POST(
       { status: 500 }
     );
   }
+}
+
+async function startOpenAIProcessing(
+  reportId: string,
+  companyName: string,
+  userId: string,
+  supabase: any
+) {
+  console.log(`[START_PROCESSING] Initializing OpenAI for report ${reportId}`);
+  
+  // Get documents for this report
+  const { data: documents, error: docsError } = await supabase
+    .from('documents')
+    .select('*')
+    .eq('report_id', reportId);
+  
+  if (docsError || !documents || documents.length === 0) {
+    throw new Error('No documents found for this report');
+  }
+  
+  console.log(`[START_PROCESSING] Found ${documents.length} documents`);
+  
+  // Import necessary modules
+  const { getOpenAIClient } = require('@/lib/openai/client');
+  const { getAssistantId } = require('@/lib/openai/client');
+  const FormData = require('form-data');
+  
+  const openai = getOpenAIClient();
+  const assistantId = getAssistantId();
+  
+  // Upload files to OpenAI
+  const fileIds: string[] = [];
+  for (const doc of documents) {
+    const { data: fileData } = await supabase.storage
+      .from('documents')
+      .download(doc.file_path);
+    
+    if (!fileData) {
+      throw new Error(`Failed to download file: ${doc.file_name}`);
+    }
+    
+    const buffer = Buffer.from(await fileData.arrayBuffer());
+    const formData = new FormData();
+    formData.append('file', buffer, {
+      filename: doc.file_name,
+      contentType: doc.mime_type || 'application/pdf'
+    });
+    formData.append('purpose', 'assistants');
+    
+    const response = await fetch('https://api.openai.com/v1/files', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`,
+        'OpenAI-Beta': 'assistants=v2',
+        ...formData.getHeaders()
+      },
+      body: formData as any
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`[START_PROCESSING] File upload failed (${response.status}):`, errorText);
+      throw new Error(`File upload failed: ${response.status} - ${errorText}`);
+    }
+    
+    const uploadedFile = await response.json();
+    console.log(`[START_PROCESSING] Uploaded: ${doc.file_name} -> ${uploadedFile.id}`);
+    fileIds.push(uploadedFile.id);
+  }
+  
+  console.log(`[START_PROCESSING] All ${fileIds.length} files uploaded successfully`);
+  
+  // Create thread with files
+  const maxAttachmentsPerMessage = 10;
+  const thread = await openai.beta.threads.create({
+    messages: [
+      {
+        role: 'user',
+        content: `Please analyze the uploaded financial documents using the generate_enhanced_valuation_analysis function. Company: ${companyName}`,
+        attachments: fileIds.slice(0, maxAttachmentsPerMessage).map((id: string) => ({
+          file_id: id,
+          tools: [{ type: 'file_search' }],
+        })),
+      },
+    ],
+  });
+  
+  if (fileIds.length > maxAttachmentsPerMessage) {
+    await openai.beta.threads.messages.create(thread.id, {
+      role: 'user',
+      content: 'Additional documents for analysis:',
+      attachments: fileIds.slice(maxAttachmentsPerMessage).map((id: string) => ({
+        file_id: id,
+        tools: [{ type: 'file_search' }],
+      })),
+    });
+  }
+  
+  console.log(`[START_PROCESSING] Created thread: ${thread.id}`);
+  
+  // Start the run
+  const run = await openai.beta.threads.runs.create(thread.id, {
+    assistant_id: assistantId,
+  });
+  
+  console.log(`[START_PROCESSING] Started run: ${run.id}`);
+  
+  // Store the thread and run IDs
+  await supabase
+    .from('reports')
+    .update({
+      report_data: {
+        openai_thread_id: thread.id,
+        openai_run_id: run.id,
+        openai_file_ids: fileIds,
+        processing_started: new Date().toISOString(),
+      }
+    } as any)
+    .eq('id', reportId);
+  
+  console.log(`[START_PROCESSING] Stored OpenAI IDs in database`);
 }
