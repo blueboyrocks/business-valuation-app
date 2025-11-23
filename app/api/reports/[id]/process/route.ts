@@ -10,9 +10,9 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
  * This endpoint checks the OpenAI run status and processes tool calls if needed.
  * It should be called repeatedly by the frontend until the report is completed.
  */
-export async function POST(
+async function processReport(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  params: { id: string }
 ) {
   const reportId = params.id;
   console.log(`[PROCESS] Checking report ${reportId}`);
@@ -259,6 +259,21 @@ export async function POST(
       { status: 500 }
     );
   }
+}
+
+// Export both GET and POST handlers
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  return processReport(request, params);
+}
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  return processReport(request, params);
 }
 
 async function startOpenAIProcessing(
