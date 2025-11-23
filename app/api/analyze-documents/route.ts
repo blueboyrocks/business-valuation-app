@@ -206,7 +206,7 @@ async function processAnalysisAsync(
           'OpenAI-Beta': 'assistants=v2',
           ...formData.getHeaders()
         },
-        body: formData
+        body: formData as any
       });
       
       if (!response.ok) {
