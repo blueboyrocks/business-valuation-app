@@ -253,7 +253,8 @@ async function startOpenAIProcessing(
   const { data: documents, error: docsError } = await supabase
     .from('documents')
     .select('*')
-    .eq('report_id', reportId);
+    .eq('report_id', reportId)
+    .eq('user_id', userId);
   
   if (docsError || !documents || documents.length === 0) {
     throw new Error('No documents found for this report');
