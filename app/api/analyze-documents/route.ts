@@ -94,7 +94,17 @@ export async function POST(request: NextRequest) {
       .eq('id', reportId);
 
     // Start the OpenAI processing (non-blocking, stores IDs immediately)
-    startOpenAIProcessing(reportId, documents, report.company_name, user.id);
+    startOpenAIProcessing(reportId, documents, report.company_name, user.id).catch(async (error) => {
+      console.error(`[ANALYZE-V2] ❌ Unhandled error in startOpenAIProcessing:`, error);
+      const supabase = createClient(supabaseUrl, supabaseServiceKey);
+      await supabase
+        .from('reports')
+        .update({
+          report_status: 'failed',
+          error_message: `OpenAI processing failed: ${error.message}`,
+        } as any)
+        .eq('id', reportId);
+    });
 
     return NextResponse.json({
       success: true,
