@@ -14,6 +14,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   resetPassword: (email: string) => Promise<{ error: Error | null }>;
+  updatePassword: (newPassword: string) => Promise<{ error: Error | null }>;
   updateProfile: (data: Partial<Database['public']['Tables']['profiles']['Update']>) => Promise<{ error: Error | null }>;
 }
 
@@ -175,6 +176,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const updatePassword = async (newPassword: string) => {
+    try {
+      const { error } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (error) throw error;
+
+      return { error: null };
+    } catch (error) {
+      return { error: error as Error };
+    }
+  };
+
   const updateProfile = async (updateData: Partial<Database['public']['Tables']['profiles']['Update']>) => {
     if (!user) {
       return { error: new Error('No user logged in') };
@@ -208,6 +223,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signIn,
     signOut,
     resetPassword,
+    updatePassword,
     updateProfile,
   };
 
