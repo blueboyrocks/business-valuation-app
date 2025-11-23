@@ -125,14 +125,6 @@ export async function POST(
         message: 'Analysis complete!',
         progress: 100,
       });
-      }
-    } catch (openaiError) {
-      console.error(`[PROCESS] Error calling OpenAI API:`, openaiError);
-      return NextResponse.json({
-        status: 'processing',
-        message: 'Temporary error checking status, will retry...',
-        progress: report.report_status === 'processing' ? 50 : 5,
-      });
     }
 
     if (run.status === 'requires_action') {
@@ -183,6 +175,15 @@ export async function POST(
       message: `Analysis ${run.status}...`,
       progress,
     });
+
+    } catch (openaiError) {
+      console.error(`[PROCESS] Error calling OpenAI API:`, openaiError);
+      return NextResponse.json({
+        status: 'processing',
+        message: 'Temporary error checking status, will retry...',
+        progress: report.report_status === 'processing' ? 50 : 5,
+      });
+    }
 
   } catch (error) {
     console.error('[PROCESS] Error:', error);
