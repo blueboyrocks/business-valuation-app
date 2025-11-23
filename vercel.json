@@ -1,0 +1,13 @@
+{
+  "functions": {
+    "app/api/reports/[id]/export/route.ts": {
+      "maxDuration": 60,
+      "memory": 3008
+    }
+  },
+  "build": {
+    "env": {
+      "PUPPETEER_SKIP_DOWNLOAD": "true"
+    }
+  }
+}
