@@ -59,11 +59,31 @@ export async function POST(
     // Check if we have OpenAI IDs
     const reportData = report.report_data as any;
     if (!reportData?.openai_thread_id || !reportData?.openai_run_id) {
-      console.log(`[PROCESS] No OpenAI IDs found, starting initialization for report ${reportId}`);
+      console.log(`[PROCESS] No OpenAI IDs found, checking if initialization is in progress...`);
+      
+      // Race condition protection: Check if another request is already initializing
+      // by looking for a recent processing_started timestamp without OpenAI IDs
+      if (reportData?.processing_started) {
+        const startedAt = new Date(reportData.processing_started).getTime();
+        const now = Date.now();
+        const timeSinceStart = now - startedAt;
+        
+        // If processing started less than 2 minutes ago, assume another request is handling it
+        if (timeSinceStart < 120000) {
+          console.log(`[PROCESS] Initialization already in progress (started ${Math.round(timeSinceStart/1000)}s ago), waiting...`);
+          return NextResponse.json({
+            status: 'processing',
+            message: 'Initialization in progress',
+            progress: 5,
+          });
+        }
+      }
+      
+      console.log(`[PROCESS] Starting initialization for report ${reportId}`);
       
       // Start the OpenAI processing
       try {
-        await startOpenAIProcessing(reportId, report.company_name, user.id, supabase);
+        await startOpenAIProcessing(reportId, report.company_name, user.id, supabase, reportData || {});
         return NextResponse.json({
           status: 'processing',
           message: 'OpenAI processing started',
@@ -245,7 +265,8 @@ async function startOpenAIProcessing(
   reportId: string,
   companyName: string,
   userId: string,
-  supabase: any
+  supabase: any,
+  existingReportData: any = {}
 ) {
   console.log(`[START_PROCESSING] Initializing OpenAI for report ${reportId}`);
   
@@ -335,11 +356,12 @@ async function startOpenAIProcessing(
   
   console.log(`[START_PROCESSING] Started run: ${run.id}`);
   
-  // Store the thread and run IDs
+  // Store the thread and run IDs (merge with existing data)
   await supabase
     .from('reports')
     .update({
       report_data: {
+        ...existingReportData,
         openai_thread_id: thread.id,
         openai_run_id: run.id,
         openai_file_ids: fileIds,
