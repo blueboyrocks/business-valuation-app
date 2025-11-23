@@ -128,6 +128,14 @@ async function startOpenAIProcessing(
 ) {
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+  // Immediately write to database to confirm function is called
+  await supabase
+    .from('reports')
+    .update({
+      report_data: { debug: 'startOpenAIProcessing called', timestamp: new Date().toISOString() } as any,
+    } as any)
+    .eq('id', reportId);
+
   try {
     console.log(`[ASYNC] Starting OpenAI processing for report ${reportId}`);
     console.log(`[ASYNC] Company: ${companyName}, Documents: ${documents.length}`);
