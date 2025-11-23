@@ -120,6 +120,18 @@ async function startOpenAIProcessing(
 
   try {
     console.log(`[ASYNC] Starting OpenAI processing for report ${reportId}`);
+    console.log(`[ASYNC] Company: ${companyName}, Documents: ${documents.length}`);
+    
+    // Check environment variables
+    if (!process.env.OPENAI_API_KEY) {
+      throw new Error('OPENAI_API_KEY environment variable is not set');
+    }
+    if (!process.env.OPENAI_ASSISTANT_ID) {
+      throw new Error('OPENAI_ASSISTANT_ID environment variable is not set');
+    }
+    
+    console.log(`[ASYNC] API Key length: ${process.env.OPENAI_API_KEY.length}`);
+    console.log(`[ASYNC] Assistant ID: ${process.env.OPENAI_ASSISTANT_ID}`);
     
     const openai = getOpenAIClient();
     const assistantId = getAssistantId();
@@ -154,11 +166,13 @@ async function startOpenAIProcessing(
       });
       
       if (!response.ok) {
-        throw new Error(`File upload failed: ${response.status}`);
+        const errorText = await response.text();
+        console.error(`[ASYNC] ❌ File upload failed (${response.status}):`, errorText);
+        throw new Error(`File upload failed: ${response.status} - ${errorText}`);
       }
       
       const uploadedFile = await response.json();
-      console.log(`[ASYNC] Uploaded: ${doc.file_name} -> ${uploadedFile.id}`);
+      console.log(`[ASYNC] ✅ Uploaded: ${doc.file_name} -> ${uploadedFile.id}`);
       fileIds.push(uploadedFile.id);
     }
 
@@ -213,13 +227,24 @@ async function startOpenAIProcessing(
     console.log(`[ASYNC] Stored OpenAI IDs in database. Processing will continue via polling endpoint.`);
 
   } catch (error) {
-    console.error(`[ASYNC] Error in OpenAI processing:`, error);
+    console.error(`[ASYNC] ❌ CRITICAL ERROR in OpenAI processing:`, error);
+    console.error(`[ASYNC] Error stack:`, error instanceof Error ? error.stack : 'No stack');
+    
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    
     await supabase
       .from('reports')
       .update({
         report_status: 'failed',
-        error_message: error instanceof Error ? error.message : 'Unknown error',
+        error_message: `Processing failed: ${errorMessage}`,
+        report_data: {
+          error: errorMessage,
+          error_stack: error instanceof Error ? error.stack : undefined,
+          failed_at: new Date().toISOString(),
+        }
       } as any)
       .eq('id', reportId);
+    
+    console.log(`[ASYNC] Report ${reportId} marked as failed in database`);
   }
 }

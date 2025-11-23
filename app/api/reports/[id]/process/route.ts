@@ -59,6 +59,8 @@ export async function POST(
     // Check if we have OpenAI IDs
     const reportData = report.report_data as any;
     if (!reportData?.openai_thread_id || !reportData?.openai_run_id) {
+      console.log(`[PROCESS] No OpenAI IDs found yet for report ${reportId}`);
+      console.log(`[PROCESS] Report data:`, JSON.stringify(reportData));
       return NextResponse.json({
         status: 'processing',
         message: 'Waiting for OpenAI initialization...',
@@ -69,14 +71,15 @@ export async function POST(
     const threadId = reportData.openai_thread_id;
     const runId = reportData.openai_run_id;
 
-    console.log(`[PROCESS] Checking OpenAI run ${runId}`);
+    console.log(`[PROCESS] Checking OpenAI run ${runId} in thread ${threadId}`);
 
-    const openai = getOpenAIClient();
-    const run = await openai.beta.threads.runs.retrieve(runId, { thread_id: threadId });
+    try {
+      const openai = getOpenAIClient();
+      const run = await openai.beta.threads.runs.retrieve(runId, { thread_id: threadId });
 
-    console.log(`[PROCESS] Run status: ${run.status}`);
+      console.log(`[PROCESS] Run status: ${run.status}`);
 
-    // Handle different run statuses
+      // Handle different run statuses
     if (run.status === 'completed') {
       // Get the messages from the thread
       const messages = await openai.beta.threads.messages.list(threadId);
@@ -121,6 +124,14 @@ export async function POST(
         status: 'completed',
         message: 'Analysis complete!',
         progress: 100,
+      });
+      }
+    } catch (openaiError) {
+      console.error(`[PROCESS] Error calling OpenAI API:`, openaiError);
+      return NextResponse.json({
+        status: 'processing',
+        message: 'Temporary error checking status, will retry...',
+        progress: report.report_status === 'processing' ? 50 : 5,
       });
     }
 
