@@ -151,6 +151,36 @@ export async function POST(
         const toolCalls = run.required_action.submit_tool_outputs.tool_calls;
         console.log(`[PROCESS] Submitting outputs for ${toolCalls.length} tool calls`);
 
+        // Extract structured valuation data from function call arguments
+        for (const toolCall of toolCalls) {
+          if (toolCall.function.name === 'generate_enhanced_valuation_analysis') {
+            try {
+              const functionArgs = JSON.parse(toolCall.function.arguments);
+              console.log(`[PROCESS] Extracted valuation data:`, functionArgs);
+              
+              // Update report with structured valuation data
+              await supabase
+                .from('reports')
+                .update({
+                  valuation_amount: functionArgs.valuation_amount,
+                  valuation_method: functionArgs.valuation_method,
+                  confidence_level: functionArgs.confidence_level,
+                  key_assumptions: functionArgs.key_assumptions,
+                  risk_factors: functionArgs.risk_factors,
+                  report_data: {
+                    ...reportData,
+                    ...functionArgs,
+                  }
+                } as any)
+                .eq('id', reportId);
+              
+              console.log(`[PROCESS] Stored structured valuation data in database`);
+            } catch (parseError) {
+              console.error(`[PROCESS] Error parsing function arguments:`, parseError);
+            }
+          }
+        }
+
         const toolOutputs = toolCalls.map(toolCall => ({
           tool_call_id: toolCall.id,
           output: JSON.stringify({ success: true }),
