@@ -251,15 +251,19 @@ async function startOpenAIProcessing(
     
     const buffer = Buffer.from(await fileData.arrayBuffer());
     
-    // Create a File object from the buffer
-    const file = new File([buffer], doc.file_name, {
-      type: doc.mime_type || 'application/pdf'
-    });
-    
     console.log(`[START_PROCESSING] Uploading ${doc.file_name} (${buffer.length} bytes)...`);
     
+    // Create a Blob with the correct type
+    const blob = new Blob([buffer], { type: doc.mime_type || 'application/pdf' });
+    
+    // Create a File-like object that OpenAI SDK expects
+    const fileToUpload = Object.assign(blob, {
+      name: doc.file_name,
+      lastModified: Date.now()
+    });
+    
     const uploadedFile = await openai.files.create({
-      file: file,
+      file: fileToUpload as any,
       purpose: 'assistants'
     });
     
