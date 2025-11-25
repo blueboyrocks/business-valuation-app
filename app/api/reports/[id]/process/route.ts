@@ -158,31 +158,48 @@ export async function POST(
           console.log(`[PROCESS] Tool arguments: ${toolCall.function.arguments}`);
           
           try {
-            const args = JSON.parse(toolCall.function.arguments);
+            // Clean and parse JSON - handle cases where there's extra text after the JSON
+            let jsonString = toolCall.function.arguments.trim();
             
-            // Save the valuation data to the database
-            if (args.valuation_amount || args.valuation_method || args.key_metrics) {
-              console.log(`[PROCESS] Saving valuation data:`, args);
-              
-              await supabase
-                .from('reports')
-                .update({
-                  valuation_amount: args.valuation_amount || null,
-                  valuation_method: args.valuation_method || null,
-                  key_metrics: args.key_metrics || null,
-                  financial_summary: args.financial_summary || null,
-                  risk_factors: args.risk_factors || null,
-                  recommendations: args.recommendations || null,
-                  report_data: {
-                    ...reportData,
-                    valuation_data: args,
-                    tool_call_processed: new Date().toISOString(),
-                  }
-                } as any)
-                .eq('id', reportId);
-              
-              console.log(`[PROCESS] Valuation data saved successfully`);
+            // Try to find the last closing brace and extract only the JSON part
+            const lastBraceIndex = jsonString.lastIndexOf('}');
+            if (lastBraceIndex !== -1 && lastBraceIndex < jsonString.length - 1) {
+              console.log(`[PROCESS] Detected extra content after JSON, truncating...`);
+              jsonString = jsonString.substring(0, lastBraceIndex + 1);
             }
+            
+            const args = JSON.parse(jsonString);
+            
+            // Save the complete valuation report data to the database
+            console.log(`[PROCESS] Saving complete valuation data...`);
+            
+            // Extract key fields for quick access
+            const valuationAmount = args.valuation_summary?.estimated_value || 
+                                   args.valuation_analysis?.estimated_value ||
+                                   args.valuation_amount || null;
+            
+            const valuationMethod = args.valuation_summary?.primary_method ||
+                                   args.valuation_analysis?.primary_method ||
+                                   args.valuation_method || null;
+            
+            await supabase
+              .from('reports')
+              .update({
+                valuation_amount: valuationAmount,
+                valuation_method: valuationMethod,
+                key_metrics: args.key_metrics || args.financial_metrics || null,
+                financial_summary: args.financial_summary || args.financial_analysis || null,
+                risk_factors: args.risk_factors || args.risk_assessment || null,
+                recommendations: args.recommendations || args.strategic_recommendations || null,
+                report_data: args,  // Store the complete report structure
+                executive_summary: args.executive_summary?.overview || args.executive_summary || null,
+              } as any)
+              .eq('id', reportId);
+            
+            console.log(`[PROCESS] Complete valuation data saved successfully`);
+            console.log(`[PROCESS] Valuation amount: ${valuationAmount}`);
+            console.log(`[PROCESS] Valuation method: ${valuationMethod}`);
+            
             
             toolOutputs.push({
               tool_call_id: toolCall.id,
