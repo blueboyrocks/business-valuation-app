@@ -356,7 +356,7 @@ async function startOpenAIProcessing(
     messages: [
       {
         role: 'user',
-        content: `Please analyze the uploaded financial documents using the generate_enhanced_valuation_analysis function. Company: ${companyName}`,
+        content: `Please analyze the uploaded financial documents using the generate_comprehensive_valuation_report function. Company: ${companyName}`,
         attachments: fileIds.slice(0, maxAttachmentsPerMessage).map((id: string) => ({
           file_id: id,
           tools: [{ type: 'file_search' }],
