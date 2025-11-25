@@ -112,18 +112,26 @@ export async function POST(
       }
 
       // Update report as completed
+      // Preserve existing report_data if it exists (from tool calls)
+      const updatePayload: any = {
+        report_status: 'completed',
+        processing_completed_at: new Date().toISOString(),
+      };
+      
+      // Only update report_data if it doesn't already have valuation data
+      if (!reportData.report_data || !reportData.report_data.valuation_summary) {
+        updatePayload.report_data = {
+          ...reportData,
+          full_analysis: analysisText,
+          completed_at: new Date().toISOString(),
+        };
+        updatePayload.executive_summary = analysisText.substring(0, 5000);
+      }
+      
+      console.log(`[PROCESS] Marking report as completed`);
       await supabase
         .from('reports')
-        .update({
-          report_status: 'completed',
-          processing_completed_at: new Date().toISOString(),
-          executive_summary: analysisText.substring(0, 5000), // Store first 5000 chars
-          report_data: {
-            ...reportData,
-            full_analysis: analysisText,
-            completed_at: new Date().toISOString(),
-          }
-        } as any)
+        .update(updatePayload)
         .eq('id', reportId);
 
       // Clean up OpenAI files
@@ -182,19 +190,26 @@ export async function POST(
                                    args.valuation_analysis?.primary_method ||
                                    args.valuation_method || null;
             
-            await supabase
+            // Update the report with extracted data
+            // Only update fields that exist in the database schema
+            const { data: updateData, error: updateError } = await supabase
               .from('reports')
               .update({
                 valuation_amount: valuationAmount,
                 valuation_method: valuationMethod,
-                key_metrics: args.key_metrics || args.financial_metrics || null,
-                financial_summary: args.financial_summary || args.financial_analysis || null,
-                risk_factors: args.risk_factors || args.risk_assessment || null,
-                recommendations: args.recommendations || args.strategic_recommendations || null,
-                report_data: args,  // Store the complete report structure
+                report_data: args,  // Store the complete report structure in JSONB
                 executive_summary: args.executive_summary?.overview || args.executive_summary || null,
-              } as any)
-              .eq('id', reportId);
+                report_status: 'processing',  // Keep as processing until run completes
+              })
+              .eq('id', reportId)
+              .select();
+            
+            if (updateError) {
+              console.error(`[PROCESS] Database update error:`, updateError);
+              throw new Error(`Database update failed: ${updateError.message}`);
+            }
+            
+            console.log(`[PROCESS] Database update successful:`, updateData);
             
             console.log(`[PROCESS] Complete valuation data saved successfully`);
             console.log(`[PROCESS] Valuation amount: ${valuationAmount}`);
