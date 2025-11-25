@@ -151,10 +151,51 @@ export async function POST(
         const toolCalls = run.required_action.submit_tool_outputs.tool_calls;
         console.log(`[PROCESS] Submitting outputs for ${toolCalls.length} tool calls`);
 
-        const toolOutputs = toolCalls.map(toolCall => ({
-          tool_call_id: toolCall.id,
-          output: JSON.stringify({ success: true }),
-        }));
+        // Process each tool call and extract valuation data
+        const toolOutputs = [];
+        for (const toolCall of toolCalls) {
+          console.log(`[PROCESS] Tool call: ${toolCall.function.name}`);
+          console.log(`[PROCESS] Tool arguments: ${toolCall.function.arguments}`);
+          
+          try {
+            const args = JSON.parse(toolCall.function.arguments);
+            
+            // Save the valuation data to the database
+            if (args.valuation_amount || args.valuation_method || args.key_metrics) {
+              console.log(`[PROCESS] Saving valuation data:`, args);
+              
+              await supabase
+                .from('reports')
+                .update({
+                  valuation_amount: args.valuation_amount || null,
+                  valuation_method: args.valuation_method || null,
+                  key_metrics: args.key_metrics || null,
+                  financial_summary: args.financial_summary || null,
+                  risk_factors: args.risk_factors || null,
+                  recommendations: args.recommendations || null,
+                  report_data: {
+                    ...reportData,
+                    valuation_data: args,
+                    tool_call_processed: new Date().toISOString(),
+                  }
+                } as any)
+                .eq('id', reportId);
+              
+              console.log(`[PROCESS] Valuation data saved successfully`);
+            }
+            
+            toolOutputs.push({
+              tool_call_id: toolCall.id,
+              output: JSON.stringify({ success: true, message: 'Data saved successfully' }),
+            });
+          } catch (e) {
+            console.error(`[PROCESS] Error processing tool call:`, e);
+            toolOutputs.push({
+              tool_call_id: toolCall.id,
+              output: JSON.stringify({ success: false, error: String(e) }),
+            });
+          }
+        }
 
         await openai.beta.threads.runs.submitToolOutputs(runId, {
           thread_id: threadId,
