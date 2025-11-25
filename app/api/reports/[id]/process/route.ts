@@ -366,7 +366,7 @@ async function startOpenAIProcessing(
     messages: [
       {
         role: 'user',
-        content: `Please analyze the uploaded financial documents using the generate_comprehensive_valuation_report function. Company: ${companyName}`,
+        content: `Please analyze the uploaded financial documents for ${companyName} and call the generate_comprehensive_valuation_report function ONCE with your complete analysis. After calling the function, provide a brief summary of your findings.`,
         attachments: fileIds.slice(0, maxAttachmentsPerMessage).map((id: string) => ({
           file_id: id,
           tools: [{ type: 'file_search' }],
