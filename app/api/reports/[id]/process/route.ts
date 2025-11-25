@@ -234,7 +234,9 @@ export async function POST(
         }
 
         // Re-fetch the run to check if it's still in requires_action status
-        const currentRun = await openai.beta.threads.runs.retrieve(threadId, runId);
+        const currentRun = await openai.beta.threads.runs.retrieve(runId, {
+          thread_id: threadId,
+        });
         
         if (currentRun.status === 'requires_action') {
           await openai.beta.threads.runs.submitToolOutputs(runId, {
