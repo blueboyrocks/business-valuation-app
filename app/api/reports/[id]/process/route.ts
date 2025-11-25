@@ -163,7 +163,17 @@ export async function POST(
         const toolOutputs = [];
         for (const toolCall of toolCalls) {
           console.log(`[PROCESS] Tool call: ${toolCall.function.name}`);
-          console.log(`[PROCESS] Tool arguments: ${toolCall.function.arguments}`);
+          console.log(`[PROCESS] Tool arguments length: ${toolCall.function.arguments.length} characters`);
+          
+          // Log first and last 500 characters to identify malformation
+          const args = toolCall.function.arguments;
+          console.log(`[PROCESS] Arguments start: ${args.substring(0, 500)}`);
+          console.log(`[PROCESS] Arguments end: ${args.substring(args.length - 500)}`);
+          
+          // Check for common JSON issues
+          const braceCount = (args.match(/{/g) || []).length;
+          const closeBraceCount = (args.match(/}/g) || []).length;
+          console.log(`[PROCESS] Brace count: ${braceCount} open, ${closeBraceCount} close`);
           
           try {
             // Clean and parse JSON - handle cases where there's extra text after the JSON
