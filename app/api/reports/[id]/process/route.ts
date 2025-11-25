@@ -191,15 +191,9 @@ export async function POST(
             // Save the complete valuation report data to the database
             console.log(`[PROCESS] Saving complete valuation data...`);
             
-            // Extract key fields for quick access
-            const valuationAmount = args.valuation_summary?.estimated_value || 
-                                   args.valuation_analysis?.estimated_value ||
-                                   args.valuation_amount || null;
-            
-            const valuationMethod = args.valuation_summary?.primary_method ||
-                                   args.valuation_analysis?.primary_method ||
-                                   args.valuation_method || null;
-            
+            // Extract key fields from the new simplified schema
+            const valuationAmount = args.valuation_amount || null;
+            const valuationMethod = args.valuation_method || 'Not specified';         
             // Update the report with extracted data
             // Only update fields that exist in the database schema
             const { data: updateData, error: updateError } = await supabase
@@ -208,7 +202,7 @@ export async function POST(
                 valuation_amount: valuationAmount,
                 valuation_method: valuationMethod,
                 report_data: args,  // Store the complete report structure in JSONB
-                executive_summary: args.executive_summary?.overview || args.executive_summary || null,
+                executive_summary: args.executive_summary || null,
                 report_status: 'processing',  // Keep as processing until run completes
               })
               .eq('id', reportId)
