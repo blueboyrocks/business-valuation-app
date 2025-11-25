@@ -237,7 +237,8 @@ export async function POST(
         const currentRun = await openai.beta.threads.runs.retrieve(threadId, runId);
         
         if (currentRun.status === 'requires_action') {
-          await openai.beta.threads.runs.submitToolOutputs(threadId, runId, {
+          await openai.beta.threads.runs.submitToolOutputs(runId, {
+            thread_id: threadId,
             tool_outputs: toolOutputs,
           });
           console.log(`[PROCESS] Tool outputs submitted successfully`);
