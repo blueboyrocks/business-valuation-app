@@ -201,7 +201,10 @@ export async function POST(
               .update({
                 valuation_amount: valuationAmount,
                 valuation_method: valuationMethod,
-                report_data: args,  // Store the complete report structure in JSONB
+                report_data: {
+                  ...reportData,  // Preserve existing data (including OpenAI IDs)
+                  ...args,        // Add new valuation data
+                },
                 executive_summary: args.executive_summary || null,
                 report_status: 'processing',  // Keep as processing until run completes
               })
