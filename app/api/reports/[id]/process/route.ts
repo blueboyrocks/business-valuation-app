@@ -233,10 +233,17 @@ export async function POST(
           }
         }
 
-        await openai.beta.threads.runs.submitToolOutputs(runId, {
-          thread_id: threadId,
-          tool_outputs: toolOutputs,
-        });
+        // Re-fetch the run to check if it's still in requires_action status
+        const currentRun = await openai.beta.threads.runs.retrieve(threadId, runId);
+        
+        if (currentRun.status === 'requires_action') {
+          await openai.beta.threads.runs.submitToolOutputs(threadId, runId, {
+            tool_outputs: toolOutputs,
+          });
+          console.log(`[PROCESS] Tool outputs submitted successfully`);
+        } else {
+          console.log(`[PROCESS] Run status changed to ${currentRun.status}, skipping tool output submission`);
+        }
 
         return NextResponse.json({
           status: 'processing',
