@@ -283,10 +283,15 @@ export default function ReportDetailPage() {
                       }).format(value);
                     };
                     
+                    // Calculate estimated value as average of low and high
+                    const estimatedValue = report_data.estimated_value_low && report_data.estimated_value_high 
+                      ? (report_data.estimated_value_low + report_data.estimated_value_high) / 2
+                      : 0;
+                    
                     doc.setFontSize(16);
                     doc.text('Estimated Value', pageWidth / 2, 130, { align: 'center' });
                     doc.setFontSize(36);
-                    doc.text(formatCurrency(report_data.estimated_value || 0), pageWidth / 2, 150, { align: 'center' });
+                    doc.text(formatCurrency(estimatedValue), pageWidth / 2, 150, { align: 'center' });
                     doc.setFontSize(14);
                     doc.text(`Range: ${formatCurrency(report_data.estimated_value_low || 0)} - ${formatCurrency(report_data.estimated_value_high || 0)}`, pageWidth / 2, 165, { align: 'center' });
                     
@@ -300,7 +305,7 @@ export default function ReportDetailPage() {
 
                     // Valuation Summary
                     addText('Valuation Summary', 18, true);
-                    addText(`Estimated Value: ${formatCurrency(report_data.estimated_value || 0)}`, 12);
+                    addText(`Estimated Value: ${formatCurrency(estimatedValue)}`, 12);
                     addText(`Value Range: ${formatCurrency(report_data.estimated_value_low || 0)} - ${formatCurrency(report_data.estimated_value_high || 0)}`, 12);
                     addText(`Valuation Method: ${report_data.valuation_method || 'N/A'}`, 12);
                     addText(`Standard: ${report_data.valuation_standard || 'N/A'}`, 12);
