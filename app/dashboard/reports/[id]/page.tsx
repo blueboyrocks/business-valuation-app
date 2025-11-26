@@ -233,7 +233,11 @@ export default function ReportDetailPage() {
                       throw new Error('Failed to fetch report data');
                     }
 
-                    const { company_name, report_data, created_at } = await response.json();
+                    const responseData = await response.json();
+                    console.log('Export API response:', responseData);
+                    const { company_name, report_data, created_at } = responseData;
+                    console.log('Generating PDF for:', company_name);
+                    console.log('Report data keys:', Object.keys(report_data || {}));
                     
                     // Generate PDF using jsPDF
                     const doc = new jsPDF();
@@ -371,7 +375,9 @@ export default function ReportDetailPage() {
                     addText(report_data.value_enhancement_recommendations, 11);
 
                     // Save PDF
+                    console.log('Saving PDF...');
                     doc.save(`${company_name.replace(/[^a-z0-9]/gi, '_')}_Valuation_Report.pdf`);
+                    console.log('PDF saved successfully');
                   } catch (error) {
                     console.error('Error generating PDF:', error);
                     alert('Failed to generate PDF');
