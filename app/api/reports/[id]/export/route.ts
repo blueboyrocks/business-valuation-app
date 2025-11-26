@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 export async function GET(
   request: NextRequest,
@@ -9,8 +12,8 @@ export async function GET(
     const reportId = params.id;
     console.log(`[EXPORT] Fetching report data for ${reportId}`);
 
-    // Get report data from database
-    const supabase = createServerClient();
+    // Get report data from database using service role
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const { data: report, error } = await supabase
       .from('reports')
       .select('*')
