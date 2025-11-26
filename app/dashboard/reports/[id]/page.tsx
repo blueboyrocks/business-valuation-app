@@ -286,9 +286,9 @@ export default function ReportDetailPage() {
                     doc.setFontSize(16);
                     doc.text('Estimated Value', pageWidth / 2, 130, { align: 'center' });
                     doc.setFontSize(36);
-                    doc.text(formatCurrency(report_data.estimated_value), pageWidth / 2, 150, { align: 'center' });
+                    doc.text(formatCurrency(report_data.estimated_value || 0), pageWidth / 2, 150, { align: 'center' });
                     doc.setFontSize(14);
-                    doc.text(`Range: ${formatCurrency(report_data.value_range_low)} - ${formatCurrency(report_data.value_range_high)}`, pageWidth / 2, 165, { align: 'center' });
+                    doc.text(`Range: ${formatCurrency(report_data.estimated_value_low || 0)} - ${formatCurrency(report_data.estimated_value_high || 0)}`, pageWidth / 2, 165, { align: 'center' });
                     
                     doc.setFontSize(12);
                     doc.text(`Generated on ${new Date(created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, pageWidth / 2, 190, { align: 'center' });
@@ -300,8 +300,8 @@ export default function ReportDetailPage() {
 
                     // Valuation Summary
                     addText('Valuation Summary', 18, true);
-                    addText(`Estimated Value: ${formatCurrency(report_data.estimated_value)}`, 12);
-                    addText(`Value Range: ${formatCurrency(report_data.value_range_low)} - ${formatCurrency(report_data.value_range_high)}`, 12);
+                    addText(`Estimated Value: ${formatCurrency(report_data.estimated_value || 0)}`, 12);
+                    addText(`Value Range: ${formatCurrency(report_data.estimated_value_low || 0)} - ${formatCurrency(report_data.estimated_value_high || 0)}`, 12);
                     addText(`Valuation Method: ${report_data.valuation_method || 'N/A'}`, 12);
                     addText(`Standard: ${report_data.valuation_standard || 'N/A'}`, 12);
                     addText(`Confidence Level: ${report_data.confidence_level || 'N/A'}`, 12);
