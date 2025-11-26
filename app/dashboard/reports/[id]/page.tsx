@@ -284,8 +284,8 @@ export default function ReportDetailPage() {
                     };
                     
                     // Calculate estimated value as average of low and high
-                    const estimatedValue = report_data.estimated_value_low && report_data.estimated_value_high 
-                      ? (report_data.estimated_value_low + report_data.estimated_value_high) / 2
+                    const estimatedValue = report_data.valuation_range_low && report_data.valuation_range_high 
+                      ? (report_data.valuation_range_low + report_data.valuation_range_high) / 2
                       : 0;
                     
                     doc.setFontSize(16);
@@ -293,7 +293,7 @@ export default function ReportDetailPage() {
                     doc.setFontSize(36);
                     doc.text(formatCurrency(estimatedValue), pageWidth / 2, 150, { align: 'center' });
                     doc.setFontSize(14);
-                    doc.text(`Range: ${formatCurrency(report_data.estimated_value_low || 0)} - ${formatCurrency(report_data.estimated_value_high || 0)}`, pageWidth / 2, 165, { align: 'center' });
+                    doc.text(`Range: ${formatCurrency(report_data.valuation_range_low || 0)} - ${formatCurrency(report_data.valuation_range_high || 0)}`, pageWidth / 2, 165, { align: 'center' });
                     
                     doc.setFontSize(12);
                     doc.text(`Generated on ${new Date(created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}`, pageWidth / 2, 190, { align: 'center' });
@@ -306,7 +306,7 @@ export default function ReportDetailPage() {
                     // Valuation Summary
                     addText('Valuation Summary', 18, true);
                     addText(`Estimated Value: ${formatCurrency(estimatedValue)}`, 12);
-                    addText(`Value Range: ${formatCurrency(report_data.estimated_value_low || 0)} - ${formatCurrency(report_data.estimated_value_high || 0)}`, 12);
+                    addText(`Value Range: ${formatCurrency(report_data.valuation_range_low || 0)} - ${formatCurrency(report_data.valuation_range_high || 0)}`, 12);
                     addText(`Valuation Method: ${report_data.valuation_method || 'N/A'}`, 12);
                     addText(`Standard: ${report_data.valuation_standard || 'N/A'}`, 12);
                     addText(`Confidence Level: ${report_data.confidence_level || 'N/A'}`, 12);
