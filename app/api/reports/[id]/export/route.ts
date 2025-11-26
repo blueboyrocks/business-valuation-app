@@ -25,7 +25,7 @@ export async function GET(
       );
     }
 
-    if (report.status !== 'completed') {
+    if (report.report_status !== 'completed') {
       console.error('[EXPORT] Report not completed yet');
       return NextResponse.json(
         { error: 'Report is not completed yet' },
