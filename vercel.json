@@ -2,8 +2,7 @@
   "functions": {
     "app/api/upload-documents/route.ts": {
       "memory": 1024,
-      "maxDuration": 300,
-      "maxRequestBodySize": "100mb"
+      "maxDuration": 300
     },
     "app/api/reports/[id]/export/route.ts": {
       "memory": 1024,
