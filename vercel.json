@@ -1,10 +1,22 @@
 {
   "functions": {
+    "app/api/upload-documents/route.ts": {
+      "memory": 1024,
+      "maxDuration": 300
+    },
     "app/api/reports/[id]/export/route.ts": {
       "memory": 1024,
       "maxDuration": 60
     },
+    "app/api/reports/[id]/process/route.ts": {
+      "memory": 1024,
+      "maxDuration": 300
+    },
     "app/api/analyze-documents/route.ts": {
+      "memory": 1024,
+      "maxDuration": 60
+    },
+    "app/api/reports/[id]/download-pdf/route.ts": {
       "memory": 1024,
       "maxDuration": 60
     }
