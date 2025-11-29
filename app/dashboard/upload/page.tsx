@@ -183,9 +183,23 @@ export default function UploadPage() {
       console.log('Upload response status:', uploadResponse.status);
 
       if (!uploadResponse.ok) {
-        const errorData = await uploadResponse.json();
-        console.error('Upload error:', errorData);
-        throw new Error(errorData.error || 'Upload failed');
+        let errorMessage = 'Upload failed';
+        try {
+          const contentType = uploadResponse.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await uploadResponse.json();
+            console.error('Upload error:', errorData);
+            errorMessage = errorData.error || 'Upload failed';
+          } else {
+            const errorText = await uploadResponse.text();
+            console.error('Upload error (non-JSON):', errorText);
+            errorMessage = errorText || `Upload failed with status ${uploadResponse.status}`;
+          }
+        } catch (parseError) {
+          console.error('Error parsing upload response:', parseError);
+          errorMessage = `Upload failed with status ${uploadResponse.status}`;
+        }
+        throw new Error(errorMessage);
       }
 
       const { reportId } = await uploadResponse.json();
@@ -212,9 +226,23 @@ export default function UploadPage() {
       console.log('Analyze response status:', analyzeResponse.status);
 
       if (!analyzeResponse.ok) {
-        const errorData = await analyzeResponse.json();
-        console.error('Analyze error:', errorData);
-        throw new Error(errorData.error || 'Analysis failed to start');
+        let errorMessage = 'Analysis failed to start';
+        try {
+          const contentType = analyzeResponse.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await analyzeResponse.json();
+            console.error('Analyze error:', errorData);
+            errorMessage = errorData.error || 'Analysis failed to start';
+          } else {
+            const errorText = await analyzeResponse.text();
+            console.error('Analyze error (non-JSON):', errorText);
+            errorMessage = errorText || `Analysis failed with status ${analyzeResponse.status}`;
+          }
+        } catch (parseError) {
+          console.error('Error parsing analyze response:', parseError);
+          errorMessage = `Analysis failed with status ${analyzeResponse.status}`;
+        }
+        throw new Error(errorMessage);
       }
 
       setUploadProgress('AI analysis initiated! Redirecting to report...');
