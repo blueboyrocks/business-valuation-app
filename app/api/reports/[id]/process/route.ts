@@ -191,6 +191,43 @@ export async function POST(
             // Save the complete valuation report data to the database
             console.log(`[PROCESS] Saving complete valuation data...`);
             
+            // CRITICAL: Validate and correct weighted average calculation
+            if (args.asset_approach_value && args.income_approach_value && args.market_approach_value &&
+                args.asset_approach_weight && args.income_approach_weight && args.market_approach_weight) {
+              
+              const calculatedWeightedAvg = 
+                (args.asset_approach_value * args.asset_approach_weight) +
+                (args.income_approach_value * args.income_approach_weight) +
+                (args.market_approach_value * args.market_approach_weight);
+              
+              const difference = Math.abs(calculatedWeightedAvg - args.valuation_amount);
+              const tolerance = 1000; // Allow $1,000 rounding difference
+              
+              console.log(`[PROCESS] Weighted Average Validation:`);
+              console.log(`  Asset: ${args.asset_approach_value} × ${args.asset_approach_weight} = ${args.asset_approach_value * args.asset_approach_weight}`);
+              console.log(`  Income: ${args.income_approach_value} × ${args.income_approach_weight} = ${args.income_approach_value * args.income_approach_weight}`);
+              console.log(`  Market: ${args.market_approach_value} × ${args.market_approach_weight} = ${args.market_approach_value * args.market_approach_weight}`);
+              console.log(`  Calculated Weighted Avg: ${calculatedWeightedAvg}`);
+              console.log(`  OpenAI Provided: ${args.valuation_amount}`);
+              console.log(`  Difference: ${difference}`);
+              
+              if (difference > tolerance) {
+                console.warn(`[PROCESS] ⚠️  WEIGHTED AVERAGE MISMATCH DETECTED!`);
+                console.warn(`[PROCESS] Correcting valuation_amount from ${args.valuation_amount} to ${Math.round(calculatedWeightedAvg)}`);
+                args.valuation_amount = Math.round(calculatedWeightedAvg);
+                
+                // Also recalculate range based on corrected value
+                if (args.valuation_range_low && args.valuation_range_high) {
+                  const rangePercentage = (args.valuation_range_high - args.valuation_range_low) / 2 / args.valuation_amount;
+                  args.valuation_range_low = Math.round(args.valuation_amount * (1 - rangePercentage));
+                  args.valuation_range_high = Math.round(args.valuation_amount * (1 + rangePercentage));
+                  console.log(`[PROCESS] Recalculated range: ${args.valuation_range_low} - ${args.valuation_range_high}`);
+                }
+              } else {
+                console.log(`[PROCESS] ✅ Weighted average calculation is correct`);
+              }
+            }
+            
             // Extract key fields from the new simplified schema
             const valuationAmount = args.valuation_amount || null;
             const valuationMethod = args.valuation_method || 'Not specified';         

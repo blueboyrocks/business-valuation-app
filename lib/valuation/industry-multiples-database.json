@@ -1,0 +1,585 @@
+{
+  "metadata": {
+    "source": "2016 Business Reference Guide by Tom West",
+    "publisher": "Business Brokerage Press",
+    "last_updated": "2025-11-26",
+    "description": "Comprehensive database of business valuation multiples by industry (NAICS code)",
+    "usage_notes": "These are rules of thumb based on actual business sales. Adjust for company-specific factors including size, growth, profitability, risk, and market conditions."
+  },
+  "industries": [
+    {
+      "industry_name": "Accounting Firms",
+      "naics_code": "541211",
+      "sic_code": "8721",
+      "valuation_rules": [
+        "40% to 125% of annual revenues",
+        "2.5 to 3.5 times SDE",
+        "4 to 6 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.75,
+      "typical_sde_multiple": 3.0,
+      "typical_ebitda_multiple": 5.0,
+      "notes": "Higher multiples for firms with recurring revenue and strong client retention"
+    },
+    {
+      "industry_name": "Advertising Agencies",
+      "naics_code": "541810",
+      "sic_code": "7311",
+      "valuation_rules": [
+        "40% to 75% of annual revenues",
+        "2 to 4 times SDE",
+        "3 to 6 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.55,
+      "typical_sde_multiple": 3.0,
+      "typical_ebitda_multiple": 4.5,
+      "notes": "Digital agencies command higher multiples than traditional"
+    },
+    {
+      "industry_name": "Architectural Firms",
+      "naics_code": "541310",
+      "sic_code": "8712",
+      "valuation_rules": [
+        "40% to 60% of annual revenues",
+        "2 to 3 times SDE",
+        "3 to 5 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.50,
+      "typical_sde_multiple": 2.5,
+      "typical_ebitda_multiple": 4.0,
+      "notes": "Project-based revenue can be volatile"
+    },
+    {
+      "industry_name": "Auto Repair Shops",
+      "naics_code": "811111",
+      "sic_code": "7538",
+      "valuation_rules": [
+        "30% to 40% of annual sales plus inventory",
+        "2 to 3 times SDE plus inventory",
+        "3 to 5 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.35,
+      "typical_sde_multiple": 2.5,
+      "typical_ebitda_multiple": 4.0,
+      "notes": "Location and equipment condition are critical factors"
+    },
+    {
+      "industry_name": "Bakeries",
+      "naics_code": "311811",
+      "sic_code": "5461",
+      "valuation_rules": [
+        "30% to 45% of annual sales plus inventory",
+        "2 to 3 times SDE plus inventory",
+        "3 to 4 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.375,
+      "typical_sde_multiple": 2.5,
+      "typical_ebitda_multiple": 3.5,
+      "notes": "Wholesale bakeries typically valued higher than retail"
+    },
+    {
+      "industry_name": "Bars and Taverns",
+      "naics_code": "722410",
+      "sic_code": "5813",
+      "valuation_rules": [
+        "30% to 40% of annual sales plus inventory",
+        "2.5 to 3.5 times SDE plus inventory",
+        "3 to 5 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.35,
+      "typical_sde_multiple": 3.0,
+      "typical_ebitda_multiple": 4.0,
+      "notes": "Liquor license value can be significant in some markets"
+    },
+    {
+      "industry_name": "Beauty Salons",
+      "naics_code": "812112",
+      "sic_code": "7231",
+      "valuation_rules": [
+        "30% to 50% of annual revenues",
+        "2 to 3 times SDE",
+        "3 to 4 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.40,
+      "typical_sde_multiple": 2.5,
+      "typical_ebitda_multiple": 3.5,
+      "notes": "Stylist retention is a key value driver"
+    },
+    {
+      "industry_name": "Bookstores",
+      "naics_code": "451211",
+      "sic_code": "5942",
+      "valuation_rules": [
+        "15% to 25% of annual sales plus inventory",
+        "1.5 to 2.5 times SDE plus inventory",
+        "2 to 3 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.20,
+      "typical_sde_multiple": 2.0,
+      "typical_ebitda_multiple": 2.5,
+      "notes": "Declining industry; online competition is significant"
+    },
+    {
+      "industry_name": "Coffee Shops",
+      "naics_code": "722515",
+      "sic_code": "5812",
+      "valuation_rules": [
+        "40% of annual sales plus inventory",
+        "2.2 times SDE plus inventory",
+        "2.5 to 3 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.40,
+      "typical_sde_multiple": 2.2,
+      "typical_ebitda_multiple": 2.75,
+      "notes": "Location and customer loyalty are critical"
+    },
+    {
+      "industry_name": "Computer Software Development",
+      "naics_code": "541511",
+      "sic_code": "7371",
+      "valuation_rules": [
+        "100% to 300% of annual revenues (for SaaS with recurring revenue)",
+        "3 to 8 times SDE",
+        "6 to 15 times EBITDA"
+      ],
+      "typical_revenue_multiple": 2.0,
+      "typical_sde_multiple": 5.0,
+      "typical_ebitda_multiple": 10.0,
+      "notes": "SaaS companies with high recurring revenue command premium multiples"
+    },
+    {
+      "industry_name": "Consulting Services",
+      "naics_code": "541618",
+      "sic_code": "8748",
+      "valuation_rules": [
+        "40% to 80% of annual revenues",
+        "2 to 4 times SDE",
+        "3 to 6 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.60,
+      "typical_sde_multiple": 3.0,
+      "typical_ebitda_multiple": 4.5,
+      "notes": "Key person dependency can significantly reduce value"
+    },
+    {
+      "industry_name": "Convenience Stores",
+      "naics_code": "445120",
+      "sic_code": "5411",
+      "valuation_rules": [
+        "Traditional: 3 to 4 times EBITDA (includes real estate)",
+        "Expanded: 4 to 5 times EBITDA (includes real estate)",
+        "15% to 25% of annual sales plus inventory (without real estate)"
+      ],
+      "typical_revenue_multiple": 0.20,
+      "typical_sde_multiple": 2.5,
+      "typical_ebitda_multiple": 3.5,
+      "notes": "Fuel sales and real estate ownership significantly impact value"
+    },
+    {
+      "industry_name": "Day Care Centers",
+      "naics_code": "624410",
+      "sic_code": "8351",
+      "valuation_rules": [
+        "50% to 75% of annual revenues",
+        "2.5 to 3.5 times SDE",
+        "3 to 5 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.625,
+      "typical_sde_multiple": 3.0,
+      "typical_ebitda_multiple": 4.0,
+      "notes": "Licensing and capacity utilization are key factors"
+    },
+    {
+      "industry_name": "Dental Practices",
+      "naics_code": "621210",
+      "sic_code": "8021",
+      "valuation_rules": [
+        "60% to 80% of annual revenues",
+        "3 to 4 times SDE",
+        "5 to 7 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.70,
+      "typical_sde_multiple": 3.5,
+      "typical_ebitda_multiple": 6.0,
+      "notes": "Specialty practices (orthodontics, oral surgery) command higher multiples"
+    },
+    {
+      "industry_name": "Dry Cleaners",
+      "naics_code": "812320",
+      "sic_code": "7216",
+      "valuation_rules": [
+        "60% to 100% of annual revenues",
+        "2.5 to 3.5 times SDE",
+        "3 to 4 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.80,
+      "typical_sde_multiple": 3.0,
+      "typical_ebitda_multiple": 3.5,
+      "notes": "Environmental liabilities can reduce value"
+    },
+    {
+      "industry_name": "E-commerce Businesses",
+      "naics_code": "454110",
+      "sic_code": "5961",
+      "valuation_rules": [
+        "50% to 150% of annual revenues",
+        "2 to 5 times SDE",
+        "4 to 8 times EBITDA"
+      ],
+      "typical_revenue_multiple": 1.0,
+      "typical_sde_multiple": 3.5,
+      "typical_ebitda_multiple": 6.0,
+      "notes": "Recurring revenue models and owned brands command premium multiples"
+    },
+    {
+      "industry_name": "Engineering Services",
+      "naics_code": "541330",
+      "sic_code": "8711",
+      "valuation_rules": [
+        "30% to 60% of annual revenues",
+        "2 to 3 times SDE",
+        "3 to 6 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.45,
+      "typical_sde_multiple": 2.5,
+      "typical_ebitda_multiple": 4.5,
+      "notes": "Government contracts and recurring clients increase value"
+    },
+    {
+      "industry_name": "Fitness Centers",
+      "naics_code": "713940",
+      "sic_code": "7991",
+      "valuation_rules": [
+        "30% to 50% of annual revenues",
+        "2 to 3 times SDE",
+        "3 to 5 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.40,
+      "typical_sde_multiple": 2.5,
+      "typical_ebitda_multiple": 4.0,
+      "notes": "Membership retention and equipment condition are critical"
+    },
+    {
+      "industry_name": "Florists",
+      "naics_code": "453110",
+      "sic_code": "5992",
+      "valuation_rules": [
+        "30% to 40% of annual sales plus inventory",
+        "2 to 2.5 times SDE plus inventory",
+        "2.5 to 3.5 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.35,
+      "typical_sde_multiple": 2.25,
+      "typical_ebitda_multiple": 3.0,
+      "notes": "Wire service affiliations add value"
+    },
+    {
+      "industry_name": "Franchises (General)",
+      "naics_code": "Various",
+      "sic_code": "Various",
+      "valuation_rules": [
+        "Varies widely by franchise system",
+        "Typically 2 to 4 times SDE",
+        "Typically 3 to 6 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.50,
+      "typical_sde_multiple": 3.0,
+      "typical_ebitda_multiple": 4.5,
+      "notes": "Franchise fees and transfer restrictions impact value"
+    },
+    {
+      "industry_name": "Grocery Stores",
+      "naics_code": "445110",
+      "sic_code": "5411",
+      "valuation_rules": [
+        "15% to 25% of annual sales plus inventory",
+        "2 to 3 times SDE plus inventory",
+        "3 to 5 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.20,
+      "typical_sde_multiple": 2.5,
+      "typical_ebitda_multiple": 4.0,
+      "notes": "Real estate ownership significantly increases value"
+    },
+    {
+      "industry_name": "HVAC Contractors",
+      "naics_code": "238220",
+      "sic_code": "1711",
+      "valuation_rules": [
+        "40% to 60% of annual revenues",
+        "2.5 to 3.5 times SDE",
+        "3 to 5 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.50,
+      "typical_sde_multiple": 3.0,
+      "typical_ebitda_multiple": 4.0,
+      "notes": "Service contracts and recurring maintenance increase value"
+    },
+    {
+      "industry_name": "Insurance Agencies",
+      "naics_code": "524210",
+      "sic_code": "6411",
+      "valuation_rules": [
+        "100% to 150% of annual commissions",
+        "3 to 5 times SDE",
+        "5 to 8 times EBITDA"
+      ],
+      "typical_revenue_multiple": 1.25,
+      "typical_sde_multiple": 4.0,
+      "typical_ebitda_multiple": 6.5,
+      "notes": "Renewal rates and client retention are key drivers"
+    },
+    {
+      "industry_name": "IT Services and Managed Services",
+      "naics_code": "541512",
+      "sic_code": "7373",
+      "valuation_rules": [
+        "50% to 150% of annual revenues",
+        "2.5 to 5 times SDE",
+        "4 to 8 times EBITDA"
+      ],
+      "typical_revenue_multiple": 1.0,
+      "typical_sde_multiple": 3.5,
+      "typical_ebitda_multiple": 6.0,
+      "notes": "Recurring managed services contracts command premium multiples"
+    },
+    {
+      "industry_name": "Landscaping Services",
+      "naics_code": "561730",
+      "sic_code": "0782",
+      "valuation_rules": [
+        "40% to 60% of annual revenues",
+        "2 to 3 times SDE",
+        "3 to 5 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.50,
+      "typical_sde_multiple": 2.5,
+      "typical_ebitda_multiple": 4.0,
+      "notes": "Commercial contracts more valuable than residential"
+    },
+    {
+      "industry_name": "Law Firms",
+      "naics_code": "541110",
+      "sic_code": "8111",
+      "valuation_rules": [
+        "40% to 80% of annual revenues",
+        "2 to 4 times SDE",
+        "3 to 6 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.60,
+      "typical_sde_multiple": 3.0,
+      "typical_ebitda_multiple": 4.5,
+      "notes": "Practice area and client base quality significantly impact value"
+    },
+    {
+      "industry_name": "Manufacturing (General)",
+      "naics_code": "31-33",
+      "sic_code": "20-39",
+      "valuation_rules": [
+        "40% to 100% of annual revenues",
+        "2.5 to 4 times SDE",
+        "4 to 8 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.70,
+      "typical_sde_multiple": 3.0,
+      "typical_ebitda_multiple": 6.0,
+      "notes": "Asset-heavy businesses; equipment condition and capacity utilization matter"
+    },
+    {
+      "industry_name": "Marketing Agencies",
+      "naics_code": "541613",
+      "sic_code": "8742",
+      "valuation_rules": [
+        "40% to 80% of annual revenues",
+        "2.5 to 4 times SDE",
+        "4 to 7 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.60,
+      "typical_sde_multiple": 3.0,
+      "typical_ebitda_multiple": 5.5,
+      "notes": "Digital marketing agencies command higher multiples"
+    },
+    {
+      "industry_name": "Medical Practices (General)",
+      "naics_code": "621111",
+      "sic_code": "8011",
+      "valuation_rules": [
+        "50% to 80% of annual revenues",
+        "2.5 to 4 times SDE",
+        "4 to 7 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.65,
+      "typical_sde_multiple": 3.0,
+      "typical_ebitda_multiple": 5.5,
+      "notes": "Specialty practices command higher multiples than general practice"
+    },
+    {
+      "industry_name": "Pet Grooming",
+      "naics_code": "812910",
+      "sic_code": "0752",
+      "valuation_rules": [
+        "40% to 60% of annual revenues",
+        "2 to 3 times SDE",
+        "3 to 4 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.50,
+      "typical_sde_multiple": 2.5,
+      "typical_ebitda_multiple": 3.5,
+      "notes": "Location and customer base loyalty are key"
+    },
+    {
+      "industry_name": "Plumbing Contractors",
+      "naics_code": "238220",
+      "sic_code": "1711",
+      "valuation_rules": [
+        "40% to 60% of annual revenues",
+        "2.5 to 3.5 times SDE",
+        "3 to 5 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.50,
+      "typical_sde_multiple": 3.0,
+      "typical_ebitda_multiple": 4.0,
+      "notes": "Service contracts add significant value"
+    },
+    {
+      "industry_name": "Printing Services",
+      "naics_code": "323111",
+      "sic_code": "2752",
+      "valuation_rules": [
+        "40% to 60% of annual revenues",
+        "2 to 3 times SDE",
+        "3 to 5 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.50,
+      "typical_sde_multiple": 2.5,
+      "typical_ebitda_multiple": 4.0,
+      "notes": "Digital printing commands higher multiples than offset"
+    },
+    {
+      "industry_name": "Real Estate Agencies",
+      "naics_code": "531210",
+      "sic_code": "6531",
+      "valuation_rules": [
+        "40% to 60% of annual revenues",
+        "2 to 3 times SDE",
+        "3 to 5 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.50,
+      "typical_sde_multiple": 2.5,
+      "typical_ebitda_multiple": 4.0,
+      "notes": "Agent retention is critical to value"
+    },
+    {
+      "industry_name": "Restaurants (Full Service)",
+      "naics_code": "722511",
+      "sic_code": "5812",
+      "valuation_rules": [
+        "30% to 40% of annual sales plus inventory",
+        "2.5 to 3.5 times SDE plus inventory",
+        "3 to 5 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.35,
+      "typical_sde_multiple": 3.0,
+      "typical_ebitda_multiple": 4.0,
+      "notes": "Location, concept, and lease terms are critical"
+    },
+    {
+      "industry_name": "Restaurants (Quick Service)",
+      "naics_code": "722513",
+      "sic_code": "5812",
+      "valuation_rules": [
+        "35% to 45% of annual sales plus inventory",
+        "2.5 to 3.5 times SDE plus inventory",
+        "3 to 5 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.40,
+      "typical_sde_multiple": 3.0,
+      "typical_ebitda_multiple": 4.0,
+      "notes": "Franchises typically valued higher than independents"
+    },
+    {
+      "industry_name": "Retail Stores (General)",
+      "naics_code": "44-45",
+      "sic_code": "52-59",
+      "valuation_rules": [
+        "20% to 40% of annual sales plus inventory",
+        "2 to 3 times SDE plus inventory",
+        "3 to 5 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.30,
+      "typical_sde_multiple": 2.5,
+      "typical_ebitda_multiple": 4.0,
+      "notes": "E-commerce competition has reduced multiples in recent years"
+    },
+    {
+      "industry_name": "SaaS Companies",
+      "naics_code": "511210",
+      "sic_code": "7372",
+      "valuation_rules": [
+        "300% to 1000% of annual recurring revenue (ARR)",
+        "5 to 10 times SDE",
+        "8 to 20 times EBITDA"
+      ],
+      "typical_revenue_multiple": 6.0,
+      "typical_sde_multiple": 7.0,
+      "typical_ebitda_multiple": 12.0,
+      "notes": "High growth and low churn command premium multiples; adjust for profitability"
+    },
+    {
+      "industry_name": "Staffing and Recruiting",
+      "naics_code": "561320",
+      "sic_code": "7363",
+      "valuation_rules": [
+        "40% to 80% of annual revenues",
+        "2.5 to 4 times SDE",
+        "4 to 7 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.60,
+      "typical_sde_multiple": 3.0,
+      "typical_ebitda_multiple": 5.5,
+      "notes": "Specialized/niche staffing commands higher multiples"
+    },
+    {
+      "industry_name": "Veterinary Practices",
+      "naics_code": "541940",
+      "sic_code": "0742",
+      "valuation_rules": [
+        "60% to 100% of annual revenues",
+        "3 to 4 times SDE",
+        "5 to 8 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.80,
+      "typical_sde_multiple": 3.5,
+      "typical_ebitda_multiple": 6.5,
+      "notes": "Emergency and specialty practices command premium multiples"
+    },
+    {
+      "industry_name": "Web Design and Development",
+      "naics_code": "541511",
+      "sic_code": "7371",
+      "valuation_rules": [
+        "50% to 100% of annual revenues",
+        "2.5 to 4 times SDE",
+        "4 to 7 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.75,
+      "typical_sde_multiple": 3.0,
+      "typical_ebitda_multiple": 5.5,
+      "notes": "Recurring maintenance contracts significantly increase value"
+    },
+    {
+      "industry_name": "Wholesale Distribution",
+      "naics_code": "42",
+      "sic_code": "50-51",
+      "valuation_rules": [
+        "20% to 40% of annual sales",
+        "2 to 3 times SDE",
+        "3 to 6 times EBITDA"
+      ],
+      "typical_revenue_multiple": 0.30,
+      "typical_sde_multiple": 2.5,
+      "typical_ebitda_multiple": 4.5,
+      "notes": "Exclusive distribution rights add significant value"
+    }
+  ]
+}
