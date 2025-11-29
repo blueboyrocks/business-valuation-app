@@ -155,29 +155,63 @@ export default function UploadPage() {
     setUploadProgress(`Uploading ${files.length} document${files.length > 1 ? 's' : ''} to secure storage...`);
 
     try {
-      const formData = new FormData();
-      formData.append('companyName', companyName);
-
-      files.forEach((file) => {
-        formData.append('files', file);
-      });
-
       const supabase = createBrowserClient();
       const { data: { session } } = await supabase.auth.getSession();
       const token = session?.access_token;
+      const userId = session?.user?.id;
 
-      if (!token) {
+      if (!token || !userId) {
         throw new Error('Not authenticated');
       }
 
-      console.log(`Starting upload of ${files.length} files...`);
+      console.log(`Starting direct Supabase upload of ${files.length} files...`);
 
+      // Upload files directly to Supabase Storage
+      const uploadedFiles: { name: string; path: string; size: number }[] = [];
+      
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setUploadProgress(`Uploading file ${i + 1} of ${files.length}: ${file.name}...`);
+        
+        const timestamp = Date.now();
+        const filePath = `${userId}/${timestamp}-${file.name}`;
+        
+        console.log(`Uploading ${file.name} to ${filePath}`);
+        
+        const { data, error } = await supabase.storage
+          .from('documents')
+          .upload(filePath, file, {
+            contentType: file.type,
+            upsert: false,
+          });
+        
+        if (error) {
+          console.error(`Failed to upload ${file.name}:`, error);
+          throw new Error(`Failed to upload ${file.name}: ${error.message}`);
+        }
+        
+        uploadedFiles.push({
+          name: file.name,
+          path: data.path,
+          size: file.size,
+        });
+        
+        console.log(`Successfully uploaded ${file.name}`);
+      }
+
+      setUploadProgress('Files uploaded! Creating report...');
+
+      // Call API to create report with file paths
       const uploadResponse = await fetch('/api/upload-documents', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
         },
-        body: formData,
+        body: JSON.stringify({
+          companyName,
+          files: uploadedFiles,
+        }),
       });
 
       console.log('Upload response status:', uploadResponse.status);

@@ -47,9 +47,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const formData = await request.formData();
-    const companyName = formData.get('companyName') as string;
-    const files = formData.getAll('files') as File[];
+    // Parse JSON body with file paths (files already uploaded to Supabase)
+    const body = await request.json();
+    const { companyName, files } = body as {
+      companyName: string;
+      files: { name: string; path: string; size: number }[];
+    };
 
     if (!companyName || !companyName.trim()) {
       return NextResponse.json(
@@ -72,8 +75,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Validate all files are PDFs by name
     for (const file of files) {
-      if (file.type !== 'application/pdf') {
+      if (!file.name.toLowerCase().endsWith('.pdf')) {
         return NextResponse.json(
           { error: 'Only PDF files are allowed' },
           { status: 400 }
@@ -88,50 +92,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    console.log(`📤 Starting upload of ${files.length} files for company: ${companyName}`);
+    console.log(`📤 Processing ${files.length} files for company: ${companyName}`);
+    console.log(`   Files already uploaded to Supabase Storage`);
     const uploadedDocuments: any[] = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       console.log(`📄 Processing file ${i + 1}/${files.length}: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)}MB)`);
-
-      const timestamp = Date.now();
-      const randomString = Math.random().toString(36).substring(7);
-      const fileName = `${timestamp}-${randomString}-${file.name}`;
-      const filePath = `${userId}/${fileName}`;
-
-      console.log(`   Uploading to Supabase Storage...`);
-      const uploadStartTime = Date.now();
-
-      const arrayBuffer = await file.arrayBuffer();
-      const fileBuffer = Buffer.from(arrayBuffer);
-
-      const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey);
-
-      const uploadPromise = supabaseAdmin.storage
-        .from('documents')
-        .upload(filePath, fileBuffer, {
-          contentType: file.type,
-          upsert: false,
-        });
-
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error('Upload timeout after 30s')), 30000)
-      );
-
-      const { data: uploadData, error: uploadError } = await Promise.race([uploadPromise, timeoutPromise]);
-      const uploadDuration = ((Date.now() - uploadStartTime) / 1000).toFixed(2);
-
-      if (uploadError) {
-        console.error('❌ Error uploading file:', uploadError);
-        console.error('   Error details:', JSON.stringify(uploadError, null, 2));
-        return NextResponse.json(
-          { error: `Failed to upload file ${file.name}: ${uploadError.message}` },
-          { status: 500 }
-        );
-      }
-
-      console.log(`   ✓ File uploaded successfully in ${uploadDuration}s`);
+      console.log(`   File path: ${file.path}`);
 
       console.log(`   Creating database record...`);
       const { data: documentData, error: documentError } = await supabase
@@ -139,9 +107,9 @@ export async function POST(request: NextRequest) {
         .insert({
           user_id: userId,
           file_name: file.name,
-          file_path: filePath,
+          file_path: file.path,
           file_size: file.size,
-          mime_type: file.type,
+          mime_type: 'application/pdf',
           company_name: companyName,
           upload_status: 'completed',
         } as any)
