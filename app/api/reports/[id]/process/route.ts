@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getOpenAIClient } from '@/lib/openai/client';
+import { validateValuationCalculations } from '@/lib/valuation/calculations';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -191,42 +192,52 @@ export async function POST(
             // Save the complete valuation report data to the database
             console.log(`[PROCESS] Saving complete valuation data...`);
             
-            // CRITICAL: Validate and correct weighted average calculation
-            if (args.asset_approach_value && args.income_approach_value && args.market_approach_value &&
-                args.asset_approach_weight && args.income_approach_weight && args.market_approach_weight) {
-              
-              const calculatedWeightedAvg = 
-                (args.asset_approach_value * args.asset_approach_weight) +
-                (args.income_approach_value * args.income_approach_weight) +
-                (args.market_approach_value * args.market_approach_weight);
-              
-              const difference = Math.abs(calculatedWeightedAvg - args.valuation_amount);
-              const tolerance = 1000; // Allow $1,000 rounding difference
-              
-              console.log(`[PROCESS] Weighted Average Validation:`);
-              console.log(`  Asset: ${args.asset_approach_value} × ${args.asset_approach_weight} = ${args.asset_approach_value * args.asset_approach_weight}`);
-              console.log(`  Income: ${args.income_approach_value} × ${args.income_approach_weight} = ${args.income_approach_value * args.income_approach_weight}`);
-              console.log(`  Market: ${args.market_approach_value} × ${args.market_approach_weight} = ${args.market_approach_value * args.market_approach_weight}`);
-              console.log(`  Calculated Weighted Avg: ${calculatedWeightedAvg}`);
-              console.log(`  OpenAI Provided: ${args.valuation_amount}`);
-              console.log(`  Difference: ${difference}`);
-              
-              if (difference > tolerance) {
-                console.warn(`[PROCESS] ⚠️  WEIGHTED AVERAGE MISMATCH DETECTED!`);
-                console.warn(`[PROCESS] Correcting valuation_amount from ${args.valuation_amount} to ${Math.round(calculatedWeightedAvg)}`);
-                args.valuation_amount = Math.round(calculatedWeightedAvg);
-                
-                // Also recalculate range based on corrected value
-                if (args.valuation_range_low && args.valuation_range_high) {
-                  const rangePercentage = (args.valuation_range_high - args.valuation_range_low) / 2 / args.valuation_amount;
-                  args.valuation_range_low = Math.round(args.valuation_amount * (1 - rangePercentage));
-                  args.valuation_range_high = Math.round(args.valuation_amount * (1 + rangePercentage));
-                  console.log(`[PROCESS] Recalculated range: ${args.valuation_range_low} - ${args.valuation_range_high}`);
-                }
-              } else {
-                console.log(`[PROCESS] ✅ Weighted average calculation is correct`);
-              }
-            }
+            // CRITICAL: Validate and correct all calculations using comprehensive validation module
+            const valuationData = {
+              revenue: args.annual_revenue,
+              ebitda: args.normalized_ebitda,
+              sde: args.normalized_sde,
+              asset_approach_value: args.asset_approach_value,
+              asset_approach_weight: args.asset_approach_weight,
+              income_approach_value: args.income_approach_value,
+              income_approach_weight: args.income_approach_weight,
+              market_approach_value: args.market_approach_value,
+              market_approach_weight: args.market_approach_weight,
+              valuation_amount: args.valuation_amount,
+              valuation_range_low: args.valuation_range_low,
+              valuation_range_high: args.valuation_range_high,
+              industry_name: args.industry_name,
+              naics_code: args.industry_naics_code,
+              revenue_multiple: args.revenue_multiple_used,
+              ebitda_multiple: args.ebitda_multiple_used,
+              sde_multiple: args.sde_multiple_used,
+            };
+            
+            const financialData = {
+              revenue: args.annual_revenue,
+              pretax_income: args.pretax_income,
+              owner_compensation: args.owner_compensation,
+              interest_expense: args.interest_expense,
+              depreciation: args.depreciation_amortization,
+              ebitda: args.normalized_ebitda,
+              sde: args.normalized_sde,
+              total_assets: args.total_assets,
+              total_liabilities: args.total_liabilities,
+            };
+            
+            // Run comprehensive validation and correction
+            const correctedData = validateValuationCalculations(valuationData, financialData);
+            
+            // Update args with corrected values (NO ROUNDING)
+            args.valuation_amount = correctedData.valuation_amount;
+            args.valuation_range_low = correctedData.valuation_range_low;
+            args.valuation_range_high = correctedData.valuation_range_high;
+            args.asset_approach_value = correctedData.asset_approach_value;
+            args.income_approach_value = correctedData.income_approach_value;
+            args.market_approach_value = correctedData.market_approach_value;
+            args.normalized_sde = correctedData.sde;
+            args.normalized_ebitda = correctedData.ebitda;
+            args.annual_revenue = correctedData.revenue;
             
             // Extract key fields from the new simplified schema
             const valuationAmount = args.valuation_amount || null;
