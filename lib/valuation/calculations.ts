@@ -204,7 +204,7 @@ export function validateApproachCalculations(data: ValuationData, financial: Fin
     const primaryMetric = sde || ebitda;
     const multiple = data.sde_multiple || data.ebitda_multiple;
     
-    if (multiple) {
+    if (multiple && primaryMetric) {
       const expectedValue = primaryMetric * multiple;
       const difference = Math.abs(expectedValue - data.income_approach_value);
       const tolerance = expectedValue * 0.20; // 20% tolerance
