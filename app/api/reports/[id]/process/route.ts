@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getOpenAIClient } from '@/lib/openai/client';
-import { validateValuationCalculations } from '@/lib/valuation/calculations';
+import { calculateValuation, type ExtractedFinancialData, type IndustryData } from '@/lib/valuation/engine';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -192,52 +192,54 @@ export async function POST(
             // Save the complete valuation report data to the database
             console.log(`[PROCESS] Saving complete valuation data...`);
             
-            // CRITICAL: Validate and correct all calculations using comprehensive validation module
-            const valuationData = {
-              revenue: args.annual_revenue,
-              ebitda: args.normalized_ebitda,
-              sde: args.normalized_sde,
-              asset_approach_value: args.asset_approach_value,
-              asset_approach_weight: args.asset_approach_weight,
-              income_approach_value: args.income_approach_value,
-              income_approach_weight: args.income_approach_weight,
-              market_approach_value: args.market_approach_value,
-              market_approach_weight: args.market_approach_weight,
-              valuation_amount: args.valuation_amount,
-              valuation_range_low: args.valuation_range_low,
-              valuation_range_high: args.valuation_range_high,
-              industry_name: args.industry_name,
-              naics_code: args.industry_naics_code,
-              revenue_multiple: args.revenue_multiple_used,
-              ebitda_multiple: args.ebitda_multiple_used,
-              sde_multiple: args.sde_multiple_used,
-            };
+            // CRITICAL: Calculate ALL valuations server-side using calculation engine
+            // AI only extracts data, server does ALL math
+            console.log(`[PROCESS] ========== SERVER-SIDE CALCULATION ==========`);
             
-            const financialData = {
+            const financialData: ExtractedFinancialData = {
               revenue: args.annual_revenue,
               pretax_income: args.pretax_income,
               owner_compensation: args.owner_compensation,
               interest_expense: args.interest_expense,
-              depreciation: args.depreciation_amortization,
-              ebitda: args.normalized_ebitda,
-              sde: args.normalized_sde,
+              depreciation_amortization: args.depreciation_amortization,
               total_assets: args.total_assets,
               total_liabilities: args.total_liabilities,
+              cash: args.cash || 0,
+              accounts_receivable: args.accounts_receivable || 0,
+              inventory: args.inventory || 0,
+              fixed_assets: args.fixed_assets || 0,
+              intangible_assets: args.intangible_assets || 0,
+              current_liabilities: args.current_liabilities || 0,
+              long_term_debt: args.long_term_debt || 0,
             };
             
-            // Run comprehensive validation and correction
-            const correctedData = validateValuationCalculations(valuationData, financialData);
+            const industryData: IndustryData = {
+              naics_code: args.industry_naics_code,
+              industry_name: args.industry_name,
+            };
             
-            // Update args with corrected values (NO ROUNDING)
-            args.valuation_amount = correctedData.valuation_amount;
-            args.valuation_range_low = correctedData.valuation_range_low;
-            args.valuation_range_high = correctedData.valuation_range_high;
-            args.asset_approach_value = correctedData.asset_approach_value;
-            args.income_approach_value = correctedData.income_approach_value;
-            args.market_approach_value = correctedData.market_approach_value;
-            args.normalized_sde = correctedData.sde;
-            args.normalized_ebitda = correctedData.ebitda;
-            args.annual_revenue = correctedData.revenue;
+            // Calculate valuation using server-side engine
+            const calculatedValuation = calculateValuation(financialData, industryData);
+            
+            console.log(`[PROCESS] Server calculated valuation: $${calculatedValuation.valuation_amount.toLocaleString()}`);
+            console.log(`[PROCESS] ========== CALCULATION COMPLETE ==========`);
+            
+            // Update args with calculated values (PRECISE - NO ROUNDING)
+            args.normalized_ebitda = calculatedValuation.ebitda;
+            args.normalized_sde = calculatedValuation.sde;
+            args.asset_approach_value = calculatedValuation.asset_approach_value;
+            args.asset_approach_weight = calculatedValuation.asset_approach_weight;
+            args.income_approach_value = calculatedValuation.income_approach_value;
+            args.income_approach_weight = calculatedValuation.income_approach_weight;
+            args.market_approach_value = calculatedValuation.market_approach_value;
+            args.market_approach_weight = calculatedValuation.market_approach_weight;
+            args.valuation_amount = calculatedValuation.valuation_amount;
+            args.valuation_range_low = calculatedValuation.valuation_range_low;
+            args.valuation_range_high = calculatedValuation.valuation_range_high;
+            args.revenue_multiple_used = calculatedValuation.revenue_multiple;
+            args.ebitda_multiple_used = calculatedValuation.ebitda_multiple;
+            args.sde_multiple_used = calculatedValuation.sde_multiple;
+            args.calculation_notes = calculatedValuation.calculation_notes;
             
             // Extract key fields from the new simplified schema
             const valuationAmount = args.valuation_amount || null;
