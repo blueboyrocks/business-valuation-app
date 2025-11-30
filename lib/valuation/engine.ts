@@ -107,7 +107,8 @@ export function getIndustryMultiples(naicsCode: string): {
   sde_multiple: number;
 } | null {
   // Find industry in database by NAICS code
-  const industry = (industryMultiplesDatabase as any[]).find(
+  const database = industryMultiplesDatabase as { industries: any[] };
+  const industry = database.industries.find(
     (ind) => ind.naics_code === naicsCode
   );
   
