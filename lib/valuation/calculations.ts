@@ -201,10 +201,10 @@ export function validateApproachCalculations(data: ValuationData, financial: Fin
   
   // Validate Income Approach if we have SDE/EBITDA and multiples
   if (data.income_approach_value && (sde || ebitda)) {
-    const primaryMetric = sde || ebitda;
+    const primaryMetric = (sde || ebitda) as number;
     const multiple = data.sde_multiple || data.ebitda_multiple;
     
-    if (multiple && primaryMetric) {
+    if (multiple) {
       const expectedValue = primaryMetric * multiple;
       const difference = Math.abs(expectedValue - data.income_approach_value);
       const tolerance = expectedValue * 0.20; // 20% tolerance
