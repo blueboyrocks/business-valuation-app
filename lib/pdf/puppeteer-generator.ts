@@ -1,4 +1,5 @@
-import puppeteer from 'puppeteer';
+import puppeteer from 'puppeteer-core';
+import chromium from '@sparticuz/chromium';
 import { marked } from 'marked';
 import fs from 'fs/promises';
 import path from 'path';
@@ -529,10 +530,11 @@ export class PuppeteerPDFGenerator {
     const template = await fs.readFile(this.templatePath, 'utf-8');
     const html = template.replace('{{CONTENT}}', content);
 
-    // Launch Puppeteer
+    // Launch Puppeteer with serverless chromium
     const browser = await puppeteer.launch({
+      args: chromium.args,
+      executablePath: await chromium.executablePath(),
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox'],
     });
 
     const page = await browser.newPage();
