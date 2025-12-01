@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Business Valuation Report</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    /* Reset and Base Styles */
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    @page {
+      size: letter;
+      margin: 0.75in;
+      @top-center {
+        content: element(header);
+      }
+      @bottom-center {
+        content: element(footer);
+      }
+    }
+
+    body {
+      font-family: 'Georgia', 'Times New Roman', serif;
+      font-size: 11pt;
+      line-height: 1.6;
+      color: #1e293b;
+      background: white;
+    }
+
+    /* Typography */
+    h1 {
+      font-size: 28pt;
+      font-weight: 700;
+      color: #1e40af;
+      margin-bottom: 12pt;
+      page-break-after: avoid;
+    }
+
+    h2 {
+      font-size: 20pt;
+      font-weight: 600;
+      color: #1e40af;
+      margin-top: 24pt;
+      margin-bottom: 12pt;
+      page-break-after: avoid;
+      border-bottom: 2pt solid #3b82f6;
+      padding-bottom: 6pt;
+    }
+
+    h3 {
+      font-size: 14pt;
+      font-weight: 600;
+      color: #334155;
+      margin-top: 18pt;
+      margin-bottom: 9pt;
+      page-break-after: avoid;
+    }
+
+    h4 {
+      font-size: 12pt;
+      font-weight: 600;
+      color: #475569;
+      margin-top: 12pt;
+      margin-bottom: 6pt;
+      page-break-after: avoid;
+    }
+
+    p {
+      margin-bottom: 12pt;
+      text-align: justify;
+    }
+
+    /* Cover Page */
+    .cover-page {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      page-break-after: always;
+      background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%);
+      color: white;
+      padding: 2in;
+    }
+
+    .cover-page h1 {
+      font-size: 42pt;
+      color: white;
+      margin-bottom: 24pt;
+      border-bottom: none;
+    }
+
+    .cover-page .company-name {
+      font-size: 32pt;
+      font-weight: 300;
+      margin-bottom: 48pt;
+    }
+
+    .cover-page .metadata {
+      font-size: 14pt;
+      margin-top: 48pt;
+      opacity: 0.9;
+    }
+
+    /* Executive Summary Box */
+    .executive-summary-box {
+      background: #f8fafc;
+      border-left: 4pt solid #3b82f6;
+      padding: 18pt;
+      margin: 18pt 0;
+      page-break-inside: avoid;
+    }
+
+    /* Key Metrics Grid */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 18pt;
+      margin: 24pt 0;
+      page-break-inside: avoid;
+    }
+
+    .metric-card {
+      background: #f8fafc;
+      border: 1pt solid #e2e8f0;
+      border-radius: 6pt;
+      padding: 18pt;
+      text-align: center;
+    }
+
+    .metric-label {
+      font-size: 10pt;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.5pt;
+      margin-bottom: 6pt;
+    }
+
+    .metric-value {
+      font-size: 20pt;
+      font-weight: 700;
+      color: #1e40af;
+    }
+
+    .metric-subtitle {
+      font-size: 9pt;
+      color: #64748b;
+      margin-top: 4pt;
+    }
+
+    /* Tables */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 18pt 0;
+      page-break-inside: avoid;
+      font-size: 10pt;
+    }
+
+    thead {
+      background: #1e40af;
+      color: white;
+    }
+
+    th {
+      padding: 9pt 12pt;
+      text-align: left;
+      font-weight: 600;
+      border-bottom: 2pt solid #1e40af;
+    }
+
+    td {
+      padding: 9pt 12pt;
+      border-bottom: 1pt solid #e2e8f0;
+    }
+
+    tbody tr:nth-child(even) {
+      background: #f8fafc;
+    }
+
+    tbody tr:hover {
+      background: #f1f5f9;
+    }
+
+    .table-number {
+      text-align: right;
+      font-family: 'Courier New', monospace;
+    }
+
+    /* Valuation Approaches Table */
+    .valuation-table {
+      margin: 24pt 0;
+    }
+
+    .valuation-table tfoot {
+      background: #f1f5f9;
+      font-weight: 700;
+    }
+
+    .valuation-table tfoot td {
+      border-top: 2pt solid #1e40af;
+      padding-top: 12pt;
+    }
+
+    /* Lists */
+    ul, ol {
+      margin: 12pt 0 12pt 24pt;
+    }
+
+    li {
+      margin-bottom: 6pt;
+    }
+
+    /* Blockquotes */
+    blockquote {
+      border-left: 3pt solid #3b82f6;
+      padding-left: 18pt;
+      margin: 18pt 0;
+      font-style: italic;
+      color: #475569;
+    }
+
+    /* Risk Assessment */
+    .risk-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 18pt;
+      margin: 18pt 0;
+    }
+
+    .risk-card {
+      background: #fef2f2;
+      border-left: 3pt solid #ef4444;
+      padding: 12pt;
+      page-break-inside: avoid;
+    }
+
+    .risk-card h4 {
+      color: #dc2626;
+      margin-top: 0;
+    }
+
+    /* Recommendations */
+    .recommendation-card {
+      background: #f0fdf4;
+      border-left: 3pt solid #22c55e;
+      padding: 12pt;
+      margin: 9pt 0;
+      page-break-inside: avoid;
+    }
+
+    .recommendation-card h4 {
+      color: #16a34a;
+      margin-top: 0;
+    }
+
+    /* Page Breaks */
+    .page-break {
+      page-break-after: always;
+    }
+
+    .avoid-break {
+      page-break-inside: avoid;
+    }
+
+    /* Headers and Footers */
+    .header {
+      position: running(header);
+      font-size: 9pt;
+      color: #64748b;
+      text-align: center;
+      padding-bottom: 6pt;
+      border-bottom: 1pt solid #e2e8f0;
+    }
+
+    .footer {
+      position: running(footer);
+      font-size: 9pt;
+      color: #64748b;
+      text-align: center;
+      padding-top: 6pt;
+      border-top: 1pt solid #e2e8f0;
+    }
+
+    /* Confidentiality Notice */
+    .confidentiality-notice {
+      background: #fef3c7;
+      border: 1pt solid #fbbf24;
+      padding: 12pt;
+      margin: 24pt 0;
+      font-size: 9pt;
+      page-break-inside: avoid;
+    }
+
+    /* Chart Container */
+    .chart-container {
+      margin: 24pt 0;
+      page-break-inside: avoid;
+      text-align: center;
+    }
+
+    .chart-container canvas {
+      max-width: 100%;
+      height: auto;
+    }
+
+    /* Signature Block */
+    .signature-block {
+      margin-top: 48pt;
+      page-break-inside: avoid;
+    }
+
+    .signature-line {
+      border-top: 1pt solid #1e293b;
+      width: 300pt;
+      margin-top: 36pt;
+    }
+
+    /* Print Optimization */
+    @media print {
+      body {
+        print-color-adjust: exact;
+        -webkit-print-color-adjust: exact;
+      }
+    }
+
+    /* Utility Classes */
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .font-bold { font-weight: 700; }
+    .text-sm { font-size: 9pt; }
+    .text-lg { font-size: 13pt; }
+    .mb-0 { margin-bottom: 0; }
+    .mt-0 { margin-top: 0; }
+  </style>
+</head>
+<body>
+  {{CONTENT}}
+</body>
+</html>

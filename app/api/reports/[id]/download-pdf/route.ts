@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { PDFGenerator } from '@/lib/pdf/generator';
+import { PuppeteerPDFGenerator } from '@/lib/pdf/puppeteer-generator';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 /**
- * Generate a professional PDF report using jsPDF
+ * Generate a professional PDF report using Puppeteer
  */
 export async function POST(
   request: NextRequest,
@@ -43,6 +43,7 @@ export async function POST(
       .maybeSingle();
 
     if (reportError || !report) {
+      console.error('[PDF] Report not found:', reportError);
       return NextResponse.json({ error: 'Report not found' }, { status: 404 });
     }
 
@@ -58,12 +59,9 @@ export async function POST(
       day: 'numeric'
     });
 
-    console.log('[PDF] Generating PDF with jsPDF...');
-    const generator = new PDFGenerator();
-    const pdf = generator.generate(report.company_name, reportData, generatedDate);
-
-    // Convert to buffer
-    const pdfBuffer = Buffer.from(pdf.output('arraybuffer'));
+    console.log('[PDF] Generating PDF with Puppeteer...');
+    const generator = new PuppeteerPDFGenerator();
+    const pdfBuffer = await generator.generate(report.company_name, reportData, generatedDate);
 
     console.log(`[PDF] PDF generated successfully (${pdfBuffer.length} bytes)`);
 
