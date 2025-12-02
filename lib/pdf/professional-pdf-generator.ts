@@ -2,7 +2,7 @@ import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 import { calculateKPIs, formatKPI, type FinancialData } from '../valuation/kpi-calculator';
 import { marked } from 'marked';
-import { generateValuationChart, generateFinancialMetricsChart, type ValuationData, type FinancialMetricsData } from './quickchart-generator';
+import { generateValuationChart, generateFinancialMetricsChart, generateKPIChart, type ValuationChartData, type FinancialMetricsChartData, type KPIChartData } from './puppeteer-chart-renderer';
 
 interface ReportData {
   // Valuation outputs
@@ -87,7 +87,7 @@ export class ProfessionalPDFGenerator {
       const kpis = calculateKPIs(currentYearData);
 
       // Generate charts
-      const charts = await this.generateCharts(reportData);
+      const charts = await this.generateCharts(reportData, kpis);
 
       // Calculate enterprise and liquidation values
       const enterprise_value = this.calculateEnterpriseValue(reportData);
@@ -129,20 +129,41 @@ export class ProfessionalPDFGenerator {
   }
 
   /**
-   * Generate charts using QuickChart API
+   * Generate charts using Puppeteer + Chart.js
    */
-  private async generateCharts(reportData: ReportData): Promise<{ valuation?: string; financialMetrics?: string }> {
-    const charts: { valuation?: string; financialMetrics?: string } = {};
+  private async generateCharts(reportData: ReportData, kpis: any): Promise<{ valuation?: string; financialMetrics?: string; kpiPerformance?: string }> {
+    const charts: { valuation?: string; financialMetrics?: string; kpiPerformance?: string } = {};
 
     try {
+      console.log('[PDF] Generating charts...');
+      
       // Valuation approaches chart
       if (reportData.asset_approach_value && reportData.income_approach_value && reportData.market_approach_value) {
-        const valuationData: ValuationData = {
+        console.log('[PDF] Generating valuation chart...');
+        const valuationData: ValuationChartData = {
           asset: reportData.asset_approach_value,
           income: reportData.income_approach_value,
           market: reportData.market_approach_value,
         };
         charts.valuation = await generateValuationChart(valuationData);
+        console.log('[PDF] Valuation chart generated:', charts.valuation ? 'success' : 'failed');
+      }
+
+      // KPI performance chart
+      if (kpis) {
+        console.log('[PDF] Generating KPI chart...');
+        const kpiData: KPIChartData[] = [
+          { name: 'Cash Flow/Revenue', companyValue: kpis.cashFlowToRevenue * 100, industryBenchmark: 15 },
+          { name: 'Cash/Revenue', companyValue: kpis.cashToRevenue * 100, industryBenchmark: 10 },
+          { name: 'Fixed Assets/Revenue', companyValue: kpis.fixedAssetsToRevenue * 100, industryBenchmark: 20 },
+          { name: 'Total Debt/Revenue', companyValue: kpis.totalDebtToRevenue * 100, industryBenchmark: 30 },
+          { name: 'AR/Revenue', companyValue: kpis.arToRevenue * 100, industryBenchmark: 12 },
+          { name: 'Inventory/Revenue', companyValue: kpis.inventoryToRevenue * 100, industryBenchmark: 15 },
+          { name: 'Current Ratio', companyValue: kpis.currentRatio * 100, industryBenchmark: 150 },
+          { name: 'Debt/Equity', companyValue: Math.abs(kpis.debtToEquity) * 100, industryBenchmark: 100 },
+        ];
+        charts.kpiPerformance = await generateKPIChart(kpiData);
+        console.log('[PDF] KPI chart generated:', charts.kpiPerformance ? 'success' : 'failed');
       }
 
       // Financial metrics chart (if multi-year data available)
@@ -191,7 +212,7 @@ export class ProfessionalPDFGenerator {
     kpis: any,
     enterprise_value: number | null,
     liquidation_value: number | null,
-    charts: { valuation?: string; financialMetrics?: string }
+    charts: { valuation?: string; financialMetrics?: string; kpiPerformance?: string }
   ): Promise<string> {
     const fmt = (val: number | null | undefined) => val ? `$${Math.round(val).toLocaleString()}` : 'N/A';
 
@@ -658,6 +679,13 @@ export class ProfessionalPDFGenerator {
         <div class="kpi-value">${formatKPI(kpis.return_on_assets, 'percentage')}</div>
       </div>
     </div>
+    
+    ${charts.kpiPerformance ? `
+    <h2 style="margin-top: 40px;">KPI Performance Analysis</h2>
+    <div class="chart-container">
+      <img src="${charts.kpiPerformance}" alt="KPI Performance Chart" style="max-width: 100%; height: auto; margin: 20px 0;"/>
+    </div>
+    ` : ''}
   </div>
 
   <!-- Executive Summary -->
