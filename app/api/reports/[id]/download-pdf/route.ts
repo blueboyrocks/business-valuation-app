@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { PuppeteerPDFGenerator } from '@/lib/pdf/puppeteer-generator';
+import { BizEquityPDFGenerator } from '@/lib/pdf/bizequity-pdf-generator';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -59,8 +59,8 @@ export async function POST(
       day: 'numeric'
     });
 
-    console.log('[PDF] Generating PDF with Puppeteer...');
-    const generator = new PuppeteerPDFGenerator();
+    console.log('[PDF] Generating BizEquity-style PDF...');
+    const generator = new BizEquityPDFGenerator();
     const pdfBuffer = await generator.generate(report.company_name, reportData, generatedDate);
 
     console.log(`[PDF] PDF generated successfully (${pdfBuffer.length} bytes)`);
