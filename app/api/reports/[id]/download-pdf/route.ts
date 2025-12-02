@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { BizEquityPDFGenerator } from '@/lib/pdf/bizequity-pdf-generator';
+import { ProfessionalPDFGenerator } from '@/lib/pdf/professional-pdf-generator';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -59,8 +59,8 @@ export async function POST(
       day: 'numeric'
     });
 
-    console.log('[PDF] Generating BizEquity-style PDF...');
-    const generator = new BizEquityPDFGenerator();
+    console.log('[PDF] Generating professional PDF...');
+    const generator = new ProfessionalPDFGenerator();
     const pdfBuffer = await generator.generate(report.company_name, reportData, generatedDate);
 
     console.log(`[PDF] PDF generated successfully (${pdfBuffer.length} bytes)`);
