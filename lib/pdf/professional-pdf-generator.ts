@@ -2,6 +2,7 @@ import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
 import { calculateKPIs, formatKPI, type FinancialData } from '../valuation/kpi-calculator';
 import { marked } from 'marked';
+import { generateValuationChart, generateFinancialMetricsChart, type ValuationData, type FinancialMetricsData } from './quickchart-generator';
 
 interface ReportData {
   // Valuation outputs
@@ -85,12 +86,15 @@ export class ProfessionalPDFGenerator {
       // Calculate KPIs
       const kpis = calculateKPIs(currentYearData);
 
+      // Generate charts
+      const charts = await this.generateCharts(reportData);
+
       // Calculate enterprise and liquidation values
       const enterprise_value = this.calculateEnterpriseValue(reportData);
       const liquidation_value = this.calculateLiquidationValue(reportData);
 
       // Build HTML
-      const html = await this.buildHTML(companyName, reportData, generatedDate, kpis, enterprise_value, liquidation_value);
+      const html = await this.buildHTML(companyName, reportData, generatedDate, kpis, enterprise_value, liquidation_value, charts);
 
       // Generate PDF with Puppeteer
       const browser = await puppeteer.launch({
@@ -122,6 +126,34 @@ export class ProfessionalPDFGenerator {
       console.error('[PDF] Generation error:', error);
       throw error;
     }
+  }
+
+  /**
+   * Generate charts using QuickChart API
+   */
+  private async generateCharts(reportData: ReportData): Promise<{ valuation?: string; financialMetrics?: string }> {
+    const charts: { valuation?: string; financialMetrics?: string } = {};
+
+    try {
+      // Valuation approaches chart
+      if (reportData.asset_approach_value && reportData.income_approach_value && reportData.market_approach_value) {
+        const valuationData: ValuationData = {
+          asset: reportData.asset_approach_value,
+          income: reportData.income_approach_value,
+          market: reportData.market_approach_value,
+        };
+        charts.valuation = await generateValuationChart(valuationData);
+      }
+
+      // Financial metrics chart (if multi-year data available)
+      // Note: This requires financial_years array in reportData
+      // Will be available once expanded schema is deployed
+      
+    } catch (error) {
+      console.error('[PDF] Chart generation error:', error);
+    }
+
+    return charts;
   }
 
   /**
@@ -158,7 +190,8 @@ export class ProfessionalPDFGenerator {
     generatedDate: string,
     kpis: any,
     enterprise_value: number | null,
-    liquidation_value: number | null
+    liquidation_value: number | null,
+    charts: { valuation?: string; financialMetrics?: string }
   ): Promise<string> {
     const fmt = (val: number | null | undefined) => val ? `$${Math.round(val).toLocaleString()}` : 'N/A';
 
@@ -493,33 +526,34 @@ export class ProfessionalPDFGenerator {
       <div class="value-subtitle">Based on Weighted Average of Three Approaches</div>
     </div>
     
-    <h2>Valuation Approaches</h2>
-    <table>
-      <thead>
-        <tr>
-          <th>Approach</th>
-          <th style="text-align: right;">Value</th>
-          <th style="text-align: right;">Weight</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Asset Approach</td>
-          <td style="text-align: right; font-weight: bold;">${fmt(reportData.asset_approach_value)}</td>
-          <td style="text-align: right;">20%</td>
-        </tr>
-        <tr>
-          <td>Income Approach</td>
-          <td style="text-align: right; font-weight: bold;">${fmt(reportData.income_approach_value)}</td>
-          <td style="text-align: right;">40%</td>
-        </tr>
-        <tr>
-          <td>Market Approach</td>
-          <td style="text-align: right; font-weight: bold;">${fmt(reportData.market_approach_value)}</td>
-          <td style="text-align: right;">40%</td>
-        </tr>
-      </tbody>
-    </table>
+          <h2>Valuation Approaches</h2>
+          ${charts.valuation ? `<div class="chart-container"><img src="${charts.valuation}" alt="Valuation Approaches Chart" style="max-width: 100%; height: auto;"/></div>` : ''}
+          <table class="financial-table">
+            <thead>
+              <tr>
+                <th>Approach</th>
+                <th>Value</th>
+                <th>Weight</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Asset Approach</td>
+                <td>${fmt(reportData.asset_approach_value)}</td>
+                <td>20%</td>
+              </tr>
+              <tr>
+                <td>Income Approach</td>
+                <td>${fmt(reportData.income_approach_value)}</td>
+                <td>40%</td>
+              </tr>
+              <tr>
+                <td>Market Approach</td>
+                <td>${fmt(reportData.market_approach_value)}</td>
+                <td>40%</td>
+              </tr>
+            </tbody>
+          </table>
     
     <div class="three-col">
       <div class="col">

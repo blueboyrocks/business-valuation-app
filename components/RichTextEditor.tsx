@@ -20,7 +20,7 @@ export default function RichTextEditor({ content, onSave, sectionName }: RichTex
     extensions: [
       StarterKit,
       Underline,
-      TextStyle.configure(),
+      TextStyle,
     ],
     content: content,
     editable: isEditing,
