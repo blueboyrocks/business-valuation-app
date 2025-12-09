@@ -38,8 +38,8 @@ export default function ReportDetailPage() {
 
       if (!token) return;
 
-      // Call the multi-pass process endpoint to advance OpenAI processing
-      const processResponse = await fetch(`/api/reports/${params.id}/process-multipass`, {
+      // Call the 13-pass process endpoint to advance OpenAI processing
+      const processResponse = await fetch(`/api/reports/${params.id}/process-13pass`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
