@@ -38,8 +38,8 @@ export default function ReportDetailPage() {
 
       if (!token) return;
 
-      // Call the process endpoint to advance OpenAI processing
-      const processResponse = await fetch(`/api/reports/${params.id}/process`, {
+      // Call the multi-pass process endpoint to advance OpenAI processing
+      const processResponse = await fetch(`/api/reports/${params.id}/process-multipass`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -54,6 +54,7 @@ export default function ReportDetailPage() {
           status: processData.status,
           progressPercentage: processData.progress || 0,
           estimatedTimeRemaining: processData.message,
+          currentPass: processData.pass || 1,
         });
 
         if (processData.status === 'completed' || processData.status === 'failed') {
