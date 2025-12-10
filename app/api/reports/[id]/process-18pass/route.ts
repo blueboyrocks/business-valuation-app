@@ -68,9 +68,12 @@ export async function POST(
     // Determine current pass (starts at -1, so first pass is 0)
     const currentPass = report.current_pass !== null ? report.current_pass : -1;
     const nextPass = currentPass + 1;
+    
+    console.log(`Report ${reportId}: current_pass=${currentPass}, nextPass=${nextPass}, status=${report.report_status}`);
 
     if (nextPass > 17) {
       // All passes complete - calculate final valuation
+      console.log(`All 18 passes complete for report ${reportId}, calculating final valuation...`);
       return await calculateFinalValuation(supabase, reportId);
     }
 
@@ -79,12 +82,16 @@ export async function POST(
     // Check if this pass is already running
     if (report.openai_thread_id && report.openai_run_id) {
       // Check run status
+      console.log(`Checking status of run ${report.openai_run_id} for pass ${nextPass}...`);
       const run = await openai.beta.threads.runs.retrieve(
         report.openai_thread_id,
         report.openai_run_id
       );
+      
+      console.log(`Run status: ${run.status}`);
 
       if (run.status === 'completed') {
+        console.log(`Pass ${nextPass} completed!`);
         // Extract results and move to next pass
         await processPassResults(supabase, reportId, nextPass, run);
         
@@ -146,6 +153,39 @@ export async function POST(
             report.openai_run_id,
             { tool_outputs: toolOutputs } as any
           );
+          
+          console.log(`Submitted tool outputs for pass ${nextPass}, checking if run completed...`);
+          
+          // Wait a moment for the run to potentially complete
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          
+          // Check if run completed immediately after tool submission
+          const updatedRun = await openai.beta.threads.runs.retrieve(
+            report.openai_thread_id,
+            report.openai_run_id
+          );
+          
+          if (updatedRun.status === 'completed') {
+            console.log(`Pass ${nextPass} completed immediately after tool submission`);
+            
+            // Update to next pass
+            await supabase
+              .from('reports')
+              .update({
+                current_pass: nextPass,
+                openai_thread_id: null,
+                openai_run_id: null,
+              })
+              .eq('id', reportId);
+
+            return NextResponse.json({
+              status: 'processing',
+              pass: nextPass + 1,
+              totalPasses: 18,
+              progress: PASS_CONFIG[nextPass + 1]?.progress || 100,
+              message: `Pass ${nextPass}/17 complete. ${PASS_CONFIG[nextPass + 1]?.description || 'Finalizing...'}`,
+            });
+          }
         }
 
         return NextResponse.json({
@@ -168,7 +208,9 @@ export async function POST(
     }
 
     // Start new pass
+    console.log(`Starting pass ${nextPass} for report ${reportId}...`);
     await startPass(supabase, reportId, nextPass, report);
+    console.log(`Pass ${nextPass} started successfully`);
 
     return NextResponse.json({
       status: 'processing',
@@ -274,29 +316,43 @@ async function getAccumulatedData(supabase: any, reportId: string, currentPass: 
   
   // Get data from all previous passes
   for (let i = 0; i < currentPass; i++) {
-    const { data: passData } = await supabase
+    const { data: passData, error } = await supabase
       .from('report_pass_data')
       .select('data')
       .eq('report_id', reportId)
       .eq('pass_number', i)
       .single();
     
+    if (error) {
+      console.warn(`No data found for pass ${i} (this is normal for the first pass):`, error.message);
+      continue;
+    }
+    
     if (passData) {
       data[`pass_${i}`] = passData.data;
+      console.log(`Retrieved data for pass ${i}`);
     }
   }
   
+  console.log(`Accumulated data from ${Object.keys(data).length} previous passes`);
   return data;
 }
 
 async function storePassData(supabase: any, reportId: string, passNumber: number, data: any) {
-  await supabase
+  const { error } = await supabase
     .from('report_pass_data')
     .upsert({
       report_id: reportId,
       pass_number: passNumber,
       data: data,
     });
+  
+  if (error) {
+    console.error(`Failed to store pass ${passNumber} data:`, error);
+    throw new Error(`Failed to store pass ${passNumber} data: ${error.message}`);
+  }
+  
+  console.log(`Successfully stored pass ${passNumber} data for report ${reportId}`);
 }
 
 async function processPassResults(supabase: any, reportId: string, passNumber: number, run: any) {
