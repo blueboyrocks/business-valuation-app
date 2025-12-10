@@ -362,7 +362,7 @@ async function processPassResults(supabase: any, reportId: string, passNumber: n
 
 async function calculateFinalValuation(supabase: any, reportId: string) {
   // Import valuation engine
-  const { ValuationEngine } = await import('@/lib/valuation/engine');
+  const { calculateValuation } = await import('@/lib/valuation/engine');
   
   // Get all accumulated data
   const accumulatedData = await getAccumulatedData(supabase, reportId, 18);
@@ -376,9 +376,16 @@ async function calculateFinalValuation(supabase: any, reportId: string) {
     ...accumulatedData.pass_5,
   };
   
+  // Get industry data from Pass 0 or Pass 1
+  const industryData = {
+    naics_code: financialData.naics_code || '000000',
+    industry_name: financialData.industry_name || 'General Business',
+  };
+  
+  console.log('[FINAL] Calculating valuation with financial data:', Object.keys(financialData));
+  
   // Calculate valuation
-  const engine = new ValuationEngine();
-  const result = engine.calculateValuation(financialData);
+  const result = calculateValuation(financialData, industryData);
   
   // Merge all narrative data
   const narrativeData = {
