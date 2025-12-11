@@ -112,7 +112,7 @@ export async function POST(
     }
 
     // Determine current pass (starts at -1, so first pass is 0)
-    const currentPass = report.current_pass !== null ? report.current_pass : -1;
+    const currentPass = (report as any).current_pass !== null ? (report as any).current_pass : -1;
     const nextPass = currentPass + 1;
     
     console.log(`Report ${reportId}: current_pass=${currentPass}, nextPass=${nextPass}, status=${report.report_status}`);
@@ -126,12 +126,12 @@ export async function POST(
     const passConfig = PASS_CONFIG[nextPass];
 
     // Check if this pass is already running
-    if (report.openai_thread_id && report.openai_run_id) {
+    if ((report as any).openai_thread_id && (report as any).openai_run_id) {
       // Check run status
-      console.log(`Checking status of run ${report.openai_run_id} for pass ${nextPass}...`);
+      console.log(`Checking status of run ${(report as any).openai_run_id} for pass ${nextPass}...`);
       const run = await openai.beta.threads.runs.retrieve(
-        report.openai_thread_id,
-        report.openai_run_id
+        (report as any).openai_thread_id,
+        (report as any).openai_run_id
       );
       
       console.log(`Run status: ${run.status}`);
@@ -208,9 +208,9 @@ export async function POST(
           console.log(`Submitting ${toolOutputs.length} tool outputs for pass ${nextPass}...`);
           
           try {
-            await openai.beta.threads.runs.submitToolOutputs(
-              report.openai_thread_id,
-              report.openai_run_id,
+          await openai.beta.threads.runs.submitToolOutputs(
+            (report as any).openai_thread_id,
+            (report as any).openai_run_id,
               { tool_outputs: toolOutputs } as any
             );
             console.log(`✓ Tool outputs submitted successfully for pass ${nextPass}`);
@@ -228,8 +228,8 @@ export async function POST(
           let updatedRun;
           try {
             updatedRun = await openai.beta.threads.runs.retrieve(
-              report.openai_thread_id,
-              report.openai_run_id
+              (report as any).openai_thread_id,
+              (report as any).openai_run_id
             );
             console.log(`Updated run status after tool submission: ${updatedRun.status}`);
           } catch (error: any) {
@@ -377,7 +377,7 @@ async function startPass(
       {
         role: 'user',
         content: contextMessage,
-        attachments: report.file_ids?.map((fileId: string) => ({
+        attachments: (report as any).file_ids?.map((fileId: string) => ({
           file_id: fileId,
           tools: [{ type: 'file_search' as const }],
         })) || [],
