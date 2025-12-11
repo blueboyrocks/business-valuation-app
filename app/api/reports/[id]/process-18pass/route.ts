@@ -78,17 +78,11 @@ export async function POST(
 
     const token = authHeader.replace('Bearer ', '');
     
-    // Create Supabase client with user token
-    const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      },
-    });
+    // Create Supabase client with service role
+    const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey);
     console.log(`[18-PASS] Supabase client created`);
     
-    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     console.log(`[18-PASS] Auth check: user=${user?.id}, error=${authError?.message}`);
 
     if (authError || !user) {
@@ -150,7 +144,7 @@ export async function POST(
             current_pass: nextPass,
             openai_thread_id: null,
             openai_run_id: null,
-          })
+          } as any)
           .eq('id', reportId);
 
         return NextResponse.json({
@@ -256,7 +250,7 @@ export async function POST(
                 current_pass: nextPass,
                 openai_thread_id: null,
                 openai_run_id: null,
-              })
+              } as any)
               .eq('id', reportId);
 
             return NextResponse.json({
@@ -407,7 +401,7 @@ async function startPass(
     .update({
       openai_thread_id: thread.id,
       openai_run_id: run.id,
-    })
+    } as any)
     .eq('id', reportId);
 }
 
