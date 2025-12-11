@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
+import { Database } from '@/lib/supabase/types';
 import OpenAI from 'openai';
+
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -63,18 +67,37 @@ export async function POST(
   console.log(`[18-PASS] ========================================`);
   
   try {
-    const supabase = await createServerClient();
+    // Get auth token from header
+    const authHeader = request.headers.get('authorization');
+    console.log(`[18-PASS] Auth header present: ${!!authHeader}`);
+    
+    if (!authHeader) {
+      console.log(`[18-PASS] ✗ Missing authorization header`);
+      return NextResponse.json({ error: 'Missing authorization header' }, { status: 401 });
+    }
+
+    const token = authHeader.replace('Bearer ', '');
+    
+    // Create Supabase client with user token
+    const supabase = createClient<Database>(supabaseUrl, supabaseServiceKey, {
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    });
     console.log(`[18-PASS] Supabase client created`);
     
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     console.log(`[18-PASS] Auth check: user=${user?.id}, error=${authError?.message}`);
 
-
     if (authError || !user) {
+      console.log(`[18-PASS] ✗ Unauthorized: ${authError?.message}`);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    
+    console.log(`[18-PASS] ✓ Authenticated as user: ${user.id}`);
 
-    const reportId = params.id;
 
     // Get current report state
     const { data: report, error: reportError } = await supabase
