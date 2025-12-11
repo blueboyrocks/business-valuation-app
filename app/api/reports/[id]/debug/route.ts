@@ -6,6 +6,7 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
+// Diagnostic endpoint for debugging report status
 export async function GET(
   request: NextRequest,
   { params }: { params: { id: string } }
