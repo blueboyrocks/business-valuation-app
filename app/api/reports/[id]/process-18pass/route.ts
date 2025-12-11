@@ -115,7 +115,7 @@ export async function POST(
     const currentPass = (report as any).current_pass !== null ? (report as any).current_pass : -1;
     const nextPass = currentPass + 1;
     
-    console.log(`Report ${reportId}: current_pass=${currentPass}, nextPass=${nextPass}, status=${report.report_status}`);
+    console.log(`Report ${reportId}: current_pass=${currentPass}, nextPass=${nextPass}, status=${(report as any).report_status}`);
 
     if (nextPass > 17) {
       // All passes complete - calculate final valuation
@@ -124,6 +124,8 @@ export async function POST(
     }
 
     const passConfig = PASS_CONFIG[nextPass];
+    
+    console.log(`[18-PASS] Processing pass ${nextPass}: ${passConfig.name}`);
 
     // Check if this pass is already running
     if ((report as any).openai_thread_id && (report as any).openai_run_id) {
