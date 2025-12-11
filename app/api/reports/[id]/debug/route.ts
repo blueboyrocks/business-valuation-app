@@ -54,7 +54,7 @@ export async function GET(
           started_at: run.started_at,
           completed_at: run.completed_at,
           failed_at: run.failed_at,
-          expired_at: run.expired_at,
+          expires_at: run.expires_at,
           last_error: run.last_error,
           required_action: run.required_action,
           model: run.model,
