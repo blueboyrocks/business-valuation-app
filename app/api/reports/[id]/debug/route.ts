@@ -86,7 +86,7 @@ export async function GET(
         created_at: p.created_at,
       })) || [],
       openai_run: openaiRunStatus,
-      diagnosis: generateDiagnosis(report, passData, openaiRunStatus),
+      diagnosis: generateDiagnosis(report, passData || [], openaiRunStatus),
     };
 
     return NextResponse.json(diagnostic, { status: 200 });
