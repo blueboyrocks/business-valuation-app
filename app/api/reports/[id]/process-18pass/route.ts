@@ -39,13 +39,36 @@ const PASS_CONFIG = [
   { pass: 17, name: 'write_assumptions_and_limiting_conditions', description: 'Writing assumptions...', progress: 98 },
 ];
 
+// Health check endpoint
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  return NextResponse.json({ 
+    endpoint: 'process-18pass',
+    reportId: params.id,
+    status: 'ready',
+    timestamp: new Date().toISOString()
+  });
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const reportId = params.id;
+  console.log(`[18-PASS] ========================================`);
+  console.log(`[18-PASS] POST request received for report: ${reportId}`);
+  console.log(`[18-PASS] Timestamp: ${new Date().toISOString()}`);
+  console.log(`[18-PASS] ========================================`);
+  
   try {
     const supabase = await createServerClient();
+    console.log(`[18-PASS] Supabase client created`);
+    
     const { data: { user }, error: authError } = await supabase.auth.getUser();
+    console.log(`[18-PASS] Auth check: user=${user?.id}, error=${authError?.message}`);
+
 
     if (authError || !user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

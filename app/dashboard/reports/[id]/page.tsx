@@ -38,15 +38,25 @@ export default function ReportDetailPage() {
 
       if (!token) return;
 
-      // Call the 16-pass process endpoint to advance OpenAI processing
-      const processResponse = await fetch(`/api/reports/${params.id}/process-18pass`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-      });
+      // Call the 18-pass process endpoint to advance OpenAI processing
+      console.log(`[Frontend] Calling process-18pass endpoint for report ${params.id}`);
+      
+      let processResponse;
+      try {
+        processResponse = await fetch(`/api/reports/${params.id}/process-18pass`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+        console.log(`[Frontend] Process endpoint responded with status: ${processResponse.status}`);
+      } catch (error) {
+        console.error(`[Frontend] Failed to call process endpoint:`, error);
+        // Fall back to status endpoint
+        processResponse = null;
+      }
 
-      if (processResponse.ok) {
+      if (processResponse && processResponse.ok) {
         const processData = await processResponse.json();
         
         // Update status data with process response
@@ -62,6 +72,11 @@ export default function ReportDetailPage() {
           fetchReport();
         }
       } else {
+        // Log the error response
+        if (processResponse) {
+          const errorText = await processResponse.text();
+          console.error(`[Frontend] Process endpoint error (${processResponse.status}):`, errorText);
+        }
         // Fallback to status endpoint if process fails
         const statusResponse = await fetch(`/api/reports/${params.id}/status`, {
           headers: {
