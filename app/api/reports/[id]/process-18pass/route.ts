@@ -128,17 +128,28 @@ export async function POST(
         }, { status: 500 });
       } else if (run.status === 'requires_action') {
         // Handle tool calls
+        console.log(`Run requires action for pass ${nextPass}`);
+        
         if (run.required_action?.type === 'submit_tool_outputs') {
           const toolCalls = run.required_action.submit_tool_outputs.tool_calls;
+          console.log(`Processing ${toolCalls.length} tool calls for pass ${nextPass}`);
           const toolOutputs = [];
 
           for (const toolCall of toolCalls) {
             if (toolCall.type === 'function') {
               const functionName = toolCall.function.name;
               const functionArgs = JSON.parse(toolCall.function.arguments);
+              
+              console.log(`Tool call: ${functionName} with ${Object.keys(functionArgs).length} fields`);
 
               // Store the extracted data
-              await storePassData(supabase, reportId, nextPass, functionArgs);
+              try {
+                await storePassData(supabase, reportId, nextPass, functionArgs);
+                console.log(`✓ Data stored for pass ${nextPass}`);
+              } catch (error: any) {
+                console.error(`✗ Failed to store data for pass ${nextPass}:`, error.message);
+                // Continue anyway to submit tool output
+              }
 
               toolOutputs.push({
                 tool_call_id: toolCall.id,
@@ -148,22 +159,44 @@ export async function POST(
           }
 
           // Submit tool outputs
-          await openai.beta.threads.runs.submitToolOutputs(
-            report.openai_thread_id,
-            report.openai_run_id,
-            { tool_outputs: toolOutputs } as any
-          );
+          console.log(`Submitting ${toolOutputs.length} tool outputs for pass ${nextPass}...`);
           
-          console.log(`Submitted tool outputs for pass ${nextPass}, checking if run completed...`);
+          try {
+            await openai.beta.threads.runs.submitToolOutputs(
+              report.openai_thread_id,
+              report.openai_run_id,
+              { tool_outputs: toolOutputs } as any
+            );
+            console.log(`✓ Tool outputs submitted successfully for pass ${nextPass}`);
+          } catch (error: any) {
+            console.error(`✗ Failed to submit tool outputs for pass ${nextPass}:`, error.message);
+            throw error;
+          }
+          
+          console.log(`Checking if run completed immediately...`);
           
           // Wait a moment for the run to potentially complete
           await new Promise(resolve => setTimeout(resolve, 2000));
           
           // Check if run completed immediately after tool submission
-          const updatedRun = await openai.beta.threads.runs.retrieve(
-            report.openai_thread_id,
-            report.openai_run_id
-          );
+          let updatedRun;
+          try {
+            updatedRun = await openai.beta.threads.runs.retrieve(
+              report.openai_thread_id,
+              report.openai_run_id
+            );
+            console.log(`Updated run status after tool submission: ${updatedRun.status}`);
+          } catch (error: any) {
+            console.error(`Failed to retrieve run status after tool submission:`, error.message);
+            // Return processing status and let next poll handle it
+            return NextResponse.json({
+              status: 'processing',
+              pass: nextPass,
+              totalPasses: 18,
+              progress: passConfig.progress,
+              message: passConfig.description,
+            });
+          }
           
           if (updatedRun.status === 'completed') {
             console.log(`Pass ${nextPass} completed immediately after tool submission`);
@@ -209,8 +242,27 @@ export async function POST(
 
     // Start new pass
     console.log(`Starting pass ${nextPass} for report ${reportId}...`);
-    await startPass(supabase, reportId, nextPass, report);
-    console.log(`Pass ${nextPass} started successfully`);
+    try {
+      await startPass(supabase, reportId, nextPass, report);
+      console.log(`✓ Pass ${nextPass} started successfully`);
+    } catch (error: any) {
+      console.error(`✗ Failed to start pass ${nextPass}:`, error.message);
+      
+      // Mark report as failed
+      await supabase
+        .from('reports')
+        .update({
+          report_status: 'failed',
+          error_message: `Failed to start pass ${nextPass}: ${error.message}`,
+        })
+        .eq('id', reportId);
+      
+      return NextResponse.json({
+        status: 'failed',
+        error: `Failed to start pass ${nextPass}`,
+        details: error.message,
+      }, { status: 500 });
+    }
 
     return NextResponse.json({
       status: 'processing',
