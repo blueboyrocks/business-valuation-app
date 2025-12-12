@@ -115,11 +115,21 @@ export async function POST(
       // A pass is currently running - check its status
       const passConfig = PASS_CONFIG[currentPass];
       console.log(`[18-PASS] Checking status of pass ${currentPass}: ${passConfig.name}`);
-      console.log(`Checking run ${(report as any).openai_run_id} in thread ${(report as any).openai_thread_id}...`);
+      
+      const threadId = (report as any).openai_thread_id;
+      const runId = (report as any).openai_run_id;
+      
+      console.log(`DEBUG: threadId type=${typeof threadId}, value=${threadId}`);
+      console.log(`DEBUG: runId type=${typeof runId}, value=${runId}`);
+      console.log(`Checking run ${runId} in thread ${threadId}...`);
+      
+      if (!threadId || !runId) {
+        throw new Error(`Missing thread_id (${threadId}) or run_id (${runId})`);
+      }
       
       const run = await openai.beta.threads.runs.retrieve(
-        (report as any).openai_thread_id,
-        (report as any).openai_run_id
+        threadId,
+        runId
       );
       
       console.log(`Run status: ${run.status}`);
