@@ -373,14 +373,18 @@ async function startPass(
   
   if (passNumber === 0) {
     // Pass 0: Company research
-    contextMessage = `You are analyzing financial documents for ${report.company_name}. Extract comprehensive company background information from the documents.`;
+    contextMessage = `You are analyzing financial documents for ${report.company_name}.
+
+Your task: Extract comprehensive company background information from the documents and call the "${passConfig.name}" function with ALL the data you extract.
+
+IMPORTANT: You MUST call the function with the extracted data. Do not leave any fields empty - extract ALL available information from the documents.`;
   } else if (passNumber >= 1 && passNumber <= 5) {
     // Data extraction passes - include Pass 0 data
     contextMessage = `You are extracting financial data for ${report.company_name}.\n\n`;
     if (accumulatedData.pass_0) {
       contextMessage += `COMPANY BACKGROUND:\n${JSON.stringify(accumulatedData.pass_0, null, 2)}\n\n`;
     }
-    contextMessage += `Extract the requested financial data from the documents.`;
+    contextMessage += `Your task: Extract ALL financial data from the documents and call the "${passConfig.name}" function with the complete data.\n\nIMPORTANT: You MUST call the function with ALL extracted financial data. Follow the system instructions for which specific fields to extract. Do not leave fields empty if data is available in the documents.`;
   } else {
     // Narrative passes - include all previous data
     contextMessage = `You are writing a professional business valuation report for ${report.company_name}.\n\n`;
@@ -401,7 +405,7 @@ async function startPass(
       contextMessage += `FINANCIAL DATA:\n${JSON.stringify(financialData, null, 2)}\n\n`;
     }
     
-    contextMessage += `Write a comprehensive, professional ${passConfig.description.replace('Writing ', '').replace('...', '')} section. Reference the financial data and company background provided above.`;
+    contextMessage += `Your task: Write a comprehensive, professional ${passConfig.description.replace('Writing ', '').replace('...', '')} section and call the "${passConfig.name}" function with your written content.\n\nIMPORTANT: You MUST call the function with your complete written narrative. Reference specific numbers from the financial data and company background provided above. Write 800-3000 words depending on the section complexity.`;
   }
 
   // Upload documents to OpenAI if not already uploaded
