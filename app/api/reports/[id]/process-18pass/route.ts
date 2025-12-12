@@ -119,18 +119,27 @@ export async function POST(
       const threadId = (report as any).openai_thread_id;
       const runId = (report as any).openai_run_id;
       
-      console.log(`DEBUG: threadId type=${typeof threadId}, value=${threadId}`);
-      console.log(`DEBUG: runId type=${typeof runId}, value=${runId}`);
-      console.log(`Checking run ${runId} in thread ${threadId}...`);
+      console.log(`DEBUG: threadId type=${typeof threadId}, value=${JSON.stringify(threadId)}`);
+      console.log(`DEBUG: runId type=${typeof runId}, value=${JSON.stringify(runId)}`);
+      console.log(`DEBUG: threadId is null? ${threadId === null}`);
+      console.log(`DEBUG: runId is null? ${runId === null}`);
+      console.log(`DEBUG: threadId is undefined? ${threadId === undefined}`);
+      console.log(`DEBUG: runId is undefined? ${runId === undefined}`);
       
-      if (!threadId || !runId) {
-        throw new Error(`Missing thread_id (${threadId}) or run_id (${runId})`);
+      if (!threadId || threadId === null || threadId === undefined) {
+        throw new Error(`Invalid thread_id: type=${typeof threadId}, value=${JSON.stringify(threadId)}`);
       }
       
-      // Try swapped parameters based on error analysis
+      if (!runId || runId === null || runId === undefined) {
+        throw new Error(`Invalid run_id: type=${typeof runId}, value=${JSON.stringify(runId)}`);
+      }
+      
+      console.log(`Checking run ${runId} in thread ${threadId}...`);
+      
+      // Correct parameter order per OpenAI API docs: thread_id first, run_id second
       const run = await openai.beta.threads.runs.retrieve(
-        runId,
-        threadId
+        threadId,
+        runId
       );
       
       console.log(`Run status: ${run.status}`);
@@ -230,9 +239,13 @@ export async function POST(
           // Check if run completed immediately after tool submission
           let updatedRun;
           try {
+            const checkThreadId = (report as any).openai_thread_id;
+            const checkRunId = (report as any).openai_run_id;
+            console.log(`DEBUG: About to retrieve run - threadId=${checkThreadId}, runId=${checkRunId}`);
+            
             updatedRun = await openai.beta.threads.runs.retrieve(
-              (report as any).openai_thread_id,
-              (report as any).openai_run_id
+              checkThreadId,
+              checkRunId
             );
             console.log(`Updated run status after tool submission: ${updatedRun.status}`);
           } catch (error: any) {
