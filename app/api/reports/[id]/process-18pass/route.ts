@@ -138,9 +138,7 @@ export async function POST(
         await processPassResults(supabase, reportId, nextPass, run);
         
         // Update to next pass
-        await supabase
-          .from('reports')
-          .update({
+        await (supabase.from('reports') as any).update({
             current_pass: nextPass,
             openai_thread_id: null,
             openai_run_id: null,
@@ -156,9 +154,7 @@ export async function POST(
         });
       } else if (run.status === 'failed' || run.status === 'cancelled' || run.status === 'expired') {
         // Pass failed - mark report as failed
-        await supabase
-          .from('reports')
-          .update({
+        await (supabase.from('reports') as any).update({
             report_status: 'failed',
             error_message: `Pass ${nextPass} failed: ${run.last_error?.message || 'Unknown error'}`,
           })
@@ -244,9 +240,7 @@ export async function POST(
             console.log(`Pass ${nextPass} completed immediately after tool submission`);
             
             // Update to next pass
-            await supabase
-              .from('reports')
-              .update({
+            await (supabase.from('reports') as any).update({
                 current_pass: nextPass,
                 openai_thread_id: null,
                 openai_run_id: null,
@@ -291,9 +285,7 @@ export async function POST(
       console.error(`✗ Failed to start pass ${nextPass}:`, error.message);
       
       // Mark report as failed
-      await supabase
-        .from('reports')
-        .update({
+      await (supabase.from('reports') as any).update({
           report_status: 'failed',
           error_message: `Failed to start pass ${nextPass}: ${error.message}`,
         })
@@ -396,9 +388,7 @@ async function startPass(
   });
 
   // Store thread and run IDs
-  await supabase
-    .from('reports')
-    .update({
+  await (supabase.from('reports') as any).update({
       openai_thread_id: thread.id,
       openai_run_id: run.id,
     } as any)
@@ -499,9 +489,7 @@ async function calculateFinalValuation(supabase: any, reportId: string) {
   };
   
   // Update report with final data
-  await supabase
-    .from('reports')
-    .update({
+  await (supabase.from('reports') as any).update({
       report_status: 'completed',
       report_data: {
         ...financialData,
