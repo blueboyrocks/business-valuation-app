@@ -404,16 +404,80 @@ async function startPass(
     contextMessage += `Write a comprehensive, professional ${passConfig.description.replace('Writing ', '').replace('...', '')} section. Reference the financial data and company background provided above.`;
   }
 
+  // Upload documents to OpenAI if not already uploaded
+  let fileIds = report.file_ids || [];
+  if (fileIds.length === 0) {
+    console.log(`[18-PASS] No file_ids found, uploading documents to OpenAI...`);
+    
+    // Get documents from database
+    const { data: documents, error: docsError } = await supabase
+      .from('documents')
+      .select('*')
+      .eq('report_id', reportId);
+    
+    if (docsError || !documents || documents.length === 0) {
+      console.error(`[18-PASS] Failed to fetch documents:`, docsError);
+      throw new Error('No documents found for this report');
+    }
+    
+    console.log(`[18-PASS] Found ${documents.length} documents to upload`);
+    
+    // Upload each document to OpenAI
+    for (const doc of documents) {
+      try {
+        console.log(`[18-PASS] Downloading ${doc.file_name} from Supabase storage...`);
+        
+        // Download file from Supabase storage
+        const { data: fileData, error: downloadError } = await supabase.storage
+          .from('documents')
+          .download(doc.file_path);
+        
+        if (downloadError || !fileData) {
+          console.error(`[18-PASS] Failed to download ${doc.file_name}:`, downloadError);
+          continue;
+        }
+        
+        console.log(`[18-PASS] Uploading ${doc.file_name} to OpenAI...`);
+        
+        // Upload to OpenAI
+        const file = await openai.files.create({
+          file: new File([fileData], doc.file_name, { type: doc.mime_type }),
+          purpose: 'assistants',
+        });
+        
+        fileIds.push(file.id);
+        console.log(`[18-PASS] ✓ Uploaded ${doc.file_name} to OpenAI (file_id: ${file.id})`);
+      } catch (error: any) {
+        console.error(`[18-PASS] Error uploading ${doc.file_name}:`, error.message);
+        // Continue with other files
+      }
+    }
+    
+    // Store file IDs in database
+    if (fileIds.length > 0) {
+      await supabase
+        .from('reports')
+        .update({ file_ids: fileIds })
+        .eq('id', reportId);
+      
+      console.log(`[18-PASS] ✓ Stored ${fileIds.length} file IDs in database`);
+    } else {
+      throw new Error('Failed to upload any documents to OpenAI');
+    }
+  } else {
+    console.log(`[18-PASS] Using existing ${fileIds.length} file IDs`);
+  }
+
   // Create thread with context
   const thread = await openai.beta.threads.create({
     messages: [
       {
         role: 'user',
         content: contextMessage,
-        attachments: (report as any).file_ids?.map((fileId: string) => ({
+        attachments: fileIds.map((fileId: string) => ({
           file_id: fileId,
           tools: [{ type: 'file_search' as const }],
-        })) || [],
+        })),
       },
     ],
   });
