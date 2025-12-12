@@ -182,7 +182,7 @@ export async function POST(
 
               // Store the extracted data
               try {
-                await storePassData(supabase, reportId, nextPass, functionArgs);
+                await storePassData(supabase, reportId, currentPass, functionArgs);
                 console.log(`✓ Data stored for pass ${currentPass}`);
               } catch (error: any) {
                 console.error(`✗ Failed to store data for pass ${currentPass}:`, error.message);
@@ -229,7 +229,7 @@ export async function POST(
             // Return processing status and let next poll handle it
             return NextResponse.json({
               status: 'processing',
-              pass: nextPass,
+              pass: currentPass,
               totalPasses: 18,
               progress: passConfig.progress,
               message: passConfig.description,
@@ -237,7 +237,14 @@ export async function POST(
           }
           
           if (updatedRun.status === 'completed') {
-            console.log(`Pass ${nextPass} completed immediately after tool submission`);
+            console.log(`Pass ${currentPass} completed immediately after tool submission`);
+            
+            const nextPass = currentPass + 1;
+            
+            if (nextPass > 17) {
+              console.log(`All 18 passes complete for report ${reportId}, calculating final valuation...`);
+              return await calculateFinalValuation(supabase, reportId);
+            }
             
             // Update to next pass
             await (supabase.from('reports') as any).update({
@@ -251,8 +258,8 @@ export async function POST(
               status: 'processing',
               pass: nextPass + 1,
               totalPasses: 18,
-              progress: PASS_CONFIG[nextPass + 1]?.progress || 100,
-              message: `Pass ${nextPass}/17 complete. ${PASS_CONFIG[nextPass + 1]?.description || 'Finalizing...'}`,
+              progress: PASS_CONFIG[nextPass]?.progress || 100,
+              message: `Pass ${currentPass}/17 complete. ${PASS_CONFIG[nextPass]?.description || 'Finalizing...'}`,
             });
           }
         }
