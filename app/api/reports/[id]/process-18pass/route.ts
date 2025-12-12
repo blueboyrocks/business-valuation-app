@@ -127,9 +127,10 @@ export async function POST(
         throw new Error(`Missing thread_id (${threadId}) or run_id (${runId})`);
       }
       
+      // Try swapped parameters based on error analysis
       const run = await openai.beta.threads.runs.retrieve(
-        threadId,
-        runId
+        runId,
+        threadId
       );
       
       console.log(`Run status: ${run.status}`);
