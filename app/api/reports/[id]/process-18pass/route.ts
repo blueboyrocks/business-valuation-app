@@ -136,10 +136,10 @@ export async function POST(
       
       console.log(`Checking run ${runId} in thread ${threadId}...`);
       
-      // Correct parameter order per OpenAI API docs: thread_id first, run_id second
+      // OpenAI SDK v6+ requires: retrieve(runId, { thread_id: threadId })
       const run = await openai.beta.threads.runs.retrieve(
-        threadId,
-        runId
+        runId,
+        { thread_id: threadId }
       );
       
       console.log(`Run status: ${run.status}`);
@@ -244,8 +244,8 @@ export async function POST(
             console.log(`DEBUG: About to retrieve run - threadId=${checkThreadId}, runId=${checkRunId}`);
             
             updatedRun = await openai.beta.threads.runs.retrieve(
-              checkThreadId,
-              checkRunId
+              checkRunId,
+              { thread_id: checkThreadId }
             );
             console.log(`Updated run status after tool submission: ${updatedRun.status}`);
           } catch (error: any) {
