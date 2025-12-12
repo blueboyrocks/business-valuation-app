@@ -220,11 +220,14 @@ export async function POST(
           console.log(`Submitting ${toolOutputs.length} tool outputs for pass ${currentPass}...`);
           
           try {
+          // OpenAI SDK v6+ requires: submitToolOutputs(runId, { thread_id, tool_outputs })
           await openai.beta.threads.runs.submitToolOutputs(
-            (report as any).openai_thread_id,
             (report as any).openai_run_id,
-              { tool_outputs: toolOutputs } as any
-            );
+            {
+              thread_id: (report as any).openai_thread_id,
+              tool_outputs: toolOutputs
+            } as any
+          );
             console.log(`✓ Tool outputs submitted successfully for pass ${currentPass}`);
           } catch (error: any) {
             console.error(`✗ Failed to submit tool outputs for pass ${currentPass}:`, error.message);
@@ -481,6 +484,9 @@ async function storePassData(supabase: any, reportId: string, passNumber: number
       report_id: reportId,
       pass_number: passNumber,
       data: data,
+    }, {
+      onConflict: 'report_id,pass_number',
+      ignoreDuplicates: false
     });
   
   if (error) {
