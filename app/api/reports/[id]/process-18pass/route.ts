@@ -387,12 +387,16 @@ async function startPass(
     ],
   });
 
-  // Store thread and run IDs
+  // Store thread and run IDs, and update current_pass
   await (supabase.from('reports') as any).update({
+      current_pass: passNumber,
       openai_thread_id: thread.id,
       openai_run_id: run.id,
     } as any)
     .eq('id', reportId);
+  
+  console.log(`Updated current_pass to ${passNumber} for report ${reportId}`);
+
 }
 
 async function getAccumulatedData(supabase: any, reportId: string, currentPass: number) {
