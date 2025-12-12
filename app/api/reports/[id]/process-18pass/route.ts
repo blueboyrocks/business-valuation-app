@@ -200,6 +200,7 @@ export async function POST(
               const functionArgs = JSON.parse(toolCall.function.arguments);
               
               console.log(`Tool call: ${functionName} with ${Object.keys(functionArgs).length} fields`);
+              console.log(`Function arguments:`, JSON.stringify(functionArgs, null, 2));
 
               // Store the extracted data
               try {
