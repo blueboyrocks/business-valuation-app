@@ -157,9 +157,10 @@ export async function POST(
           return await calculateFinalValuation(supabase, reportId);
         }
         
-        // Update to next pass
+        // Clear thread/run IDs but keep current_pass as the last completed pass
+        // Next poll will start the next pass
         await (supabase.from('reports') as any).update({
-            current_pass: nextPass,
+            current_pass: currentPass,  // Keep as last completed pass
             openai_thread_id: null,
             openai_run_id: null,
           } as any)
@@ -167,7 +168,7 @@ export async function POST(
 
         return NextResponse.json({
           status: 'processing',
-          pass: nextPass + 1,
+          pass: nextPass,  // Tell frontend next pass will start
           totalPasses: 18,
           progress: PASS_CONFIG[nextPass]?.progress || 100,
           message: `Pass ${currentPass}/17 complete. ${PASS_CONFIG[nextPass]?.description || 'Finalizing...'}`,
@@ -273,9 +274,9 @@ export async function POST(
               return await calculateFinalValuation(supabase, reportId);
             }
             
-            // Update to next pass
+            // Clear thread/run IDs but keep current_pass as the last completed pass
             await (supabase.from('reports') as any).update({
-                current_pass: nextPass,
+                current_pass: currentPass,  // Keep as last completed pass
                 openai_thread_id: null,
                 openai_run_id: null,
               } as any)
@@ -283,7 +284,7 @@ export async function POST(
 
             return NextResponse.json({
               status: 'processing',
-              pass: nextPass + 1,
+              pass: nextPass,  // Tell frontend next pass will start
               totalPasses: 18,
               progress: PASS_CONFIG[nextPass]?.progress || 100,
               message: `Pass ${currentPass}/17 complete. ${PASS_CONFIG[nextPass]?.description || 'Finalizing...'}`,
