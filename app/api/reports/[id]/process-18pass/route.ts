@@ -388,14 +388,21 @@ async function startPass(
   });
 
   // Store thread and run IDs, and update current_pass
-  await (supabase.from('reports') as any).update({
+  const { data: updateData, error: updateError } = await (supabase.from('reports') as any).update({
       current_pass: passNumber,
       openai_thread_id: thread.id,
       openai_run_id: run.id,
     } as any)
-    .eq('id', reportId);
+    .eq('id', reportId)
+    .select();
   
-  console.log(`Updated current_pass to ${passNumber} for report ${reportId}`);
+  if (updateError) {
+    console.error(`Failed to update current_pass to ${passNumber}:`, updateError);
+    throw new Error(`Failed to update database: ${updateError.message}`);
+  }
+  
+  console.log(`✓ Updated current_pass to ${passNumber} for report ${reportId}`);
+  console.log(`Database update result:`, JSON.stringify(updateData));
 
 }
 
