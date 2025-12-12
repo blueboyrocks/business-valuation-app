@@ -107,24 +107,16 @@ export async function POST(
 
     // Determine current pass (starts at -1, so first pass is 0)
     const currentPass = (report as any).current_pass !== null ? (report as any).current_pass : -1;
-    const nextPass = currentPass + 1;
     
-    console.log(`Report ${reportId}: current_pass=${currentPass}, nextPass=${nextPass}, status=${(report as any).report_status}`);
+    console.log(`Report ${reportId}: current_pass=${currentPass}, status=${(report as any).report_status}`);
 
-    if (nextPass > 17) {
-      // All passes complete - calculate final valuation
-      console.log(`All 18 passes complete for report ${reportId}, calculating final valuation...`);
-      return await calculateFinalValuation(supabase, reportId);
-    }
-
-    const passConfig = PASS_CONFIG[nextPass];
-    
-    console.log(`[18-PASS] Processing pass ${nextPass}: ${passConfig.name}`);
-
-    // Check if this pass is already running
-    if ((report as any).openai_thread_id && (report as any).openai_run_id) {
-      // Check run status
-      console.log(`Checking status of run ${(report as any).openai_run_id} for pass ${nextPass}...`);
+    // Check if current pass is running
+    if (currentPass >= 0 && currentPass <= 17 && (report as any).openai_thread_id && (report as any).openai_run_id) {
+      // A pass is currently running - check its status
+      const passConfig = PASS_CONFIG[currentPass];
+      console.log(`[18-PASS] Checking status of pass ${currentPass}: ${passConfig.name}`);
+      console.log(`Checking run ${(report as any).openai_run_id} in thread ${(report as any).openai_thread_id}...`);
+      
       const run = await openai.beta.threads.runs.retrieve(
         (report as any).openai_thread_id,
         (report as any).openai_run_id
@@ -133,9 +125,17 @@ export async function POST(
       console.log(`Run status: ${run.status}`);
 
       if (run.status === 'completed') {
-        console.log(`Pass ${nextPass} completed!`);
+        console.log(`Pass ${currentPass} completed!`);
         // Extract results and move to next pass
-        await processPassResults(supabase, reportId, nextPass, run);
+        await processPassResults(supabase, reportId, currentPass, run);
+        
+        const nextPass = currentPass + 1;
+        
+        if (nextPass > 17) {
+          // All passes complete
+          console.log(`All 18 passes complete for report ${reportId}, calculating final valuation...`);
+          return await calculateFinalValuation(supabase, reportId);
+        }
         
         // Update to next pass
         await (supabase.from('reports') as any).update({
@@ -149,28 +149,28 @@ export async function POST(
           status: 'processing',
           pass: nextPass + 1,
           totalPasses: 18,
-          progress: passConfig.progress,
-          message: `Pass ${nextPass}/17 complete. ${PASS_CONFIG[nextPass + 1]?.description || 'Finalizing...'}`,
+          progress: PASS_CONFIG[nextPass]?.progress || 100,
+          message: `Pass ${currentPass}/17 complete. ${PASS_CONFIG[nextPass]?.description || 'Finalizing...'}`,
         });
       } else if (run.status === 'failed' || run.status === 'cancelled' || run.status === 'expired') {
         // Pass failed - mark report as failed
         await (supabase.from('reports') as any).update({
             report_status: 'failed',
-            error_message: `Pass ${nextPass} failed: ${run.last_error?.message || 'Unknown error'}`,
-          })
+            error_message: `Pass ${currentPass} failed: ${run.last_error?.message || 'Unknown error'}`,
+          } as any)
           .eq('id', reportId);
 
         return NextResponse.json({
           status: 'failed',
-          error: `Pass ${nextPass} failed`,
+          error: `Pass ${currentPass} failed`,
         }, { status: 500 });
       } else if (run.status === 'requires_action') {
         // Handle tool calls
-        console.log(`Run requires action for pass ${nextPass}`);
+        console.log(`Run requires action for pass ${currentPass}`);
         
         if (run.required_action?.type === 'submit_tool_outputs') {
           const toolCalls = run.required_action.submit_tool_outputs.tool_calls;
-          console.log(`Processing ${toolCalls.length} tool calls for pass ${nextPass}`);
+          console.log(`Processing ${toolCalls.length} tool calls for pass ${currentPass}`);
           const toolOutputs = [];
 
           for (const toolCall of toolCalls) {
@@ -183,9 +183,9 @@ export async function POST(
               // Store the extracted data
               try {
                 await storePassData(supabase, reportId, nextPass, functionArgs);
-                console.log(`✓ Data stored for pass ${nextPass}`);
+                console.log(`✓ Data stored for pass ${currentPass}`);
               } catch (error: any) {
-                console.error(`✗ Failed to store data for pass ${nextPass}:`, error.message);
+                console.error(`✗ Failed to store data for pass ${currentPass}:`, error.message);
                 // Continue anyway to submit tool output
               }
 
@@ -197,7 +197,7 @@ export async function POST(
           }
 
           // Submit tool outputs
-          console.log(`Submitting ${toolOutputs.length} tool outputs for pass ${nextPass}...`);
+          console.log(`Submitting ${toolOutputs.length} tool outputs for pass ${currentPass}...`);
           
           try {
           await openai.beta.threads.runs.submitToolOutputs(
@@ -205,9 +205,9 @@ export async function POST(
             (report as any).openai_run_id,
               { tool_outputs: toolOutputs } as any
             );
-            console.log(`✓ Tool outputs submitted successfully for pass ${nextPass}`);
+            console.log(`✓ Tool outputs submitted successfully for pass ${currentPass}`);
           } catch (error: any) {
-            console.error(`✗ Failed to submit tool outputs for pass ${nextPass}:`, error.message);
+            console.error(`✗ Failed to submit tool outputs for pass ${currentPass}:`, error.message);
             throw error;
           }
           
@@ -259,7 +259,7 @@ export async function POST(
 
         return NextResponse.json({
           status: 'processing',
-          pass: nextPass,
+          pass: currentPass,
           totalPasses: 18,
           progress: passConfig.progress,
           message: passConfig.description,
@@ -268,7 +268,7 @@ export async function POST(
         // Still running
         return NextResponse.json({
           status: 'processing',
-          pass: nextPass,
+          pass: currentPass,
           totalPasses: 18,
           progress: passConfig.progress,
           message: passConfig.description,
@@ -277,7 +277,17 @@ export async function POST(
     }
 
     // Start new pass
+    const nextPass = currentPass + 1;
+    
+    if (nextPass > 17) {
+      // All passes complete
+      console.log(`All 18 passes complete for report ${reportId}, calculating final valuation...`);
+      return await calculateFinalValuation(supabase, reportId);
+    }
+    
+    const passConfig = PASS_CONFIG[nextPass];
     console.log(`Starting pass ${nextPass} for report ${reportId}...`);
+    
     try {
       await startPass(supabase, reportId, nextPass, report);
       console.log(`✓ Pass ${nextPass} started successfully`);
@@ -288,7 +298,7 @@ export async function POST(
       await (supabase.from('reports') as any).update({
           report_status: 'failed',
           error_message: `Failed to start pass ${nextPass}: ${error.message}`,
-        })
+        } as any)
         .eq('id', reportId);
       
       return NextResponse.json({
