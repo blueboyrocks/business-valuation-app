@@ -218,6 +218,31 @@ export async function POST(
             }
           }
 
+          // Re-check run status before submitting (race condition prevention)
+          console.log(`Re-checking run status before submitting tool outputs...`);
+          let freshRun;
+          try {
+            freshRun = await openai.beta.threads.runs.retrieve(
+              (report as any).openai_run_id,
+              { thread_id: (report as any).openai_thread_id }
+            );
+            console.log(`Fresh run status: ${freshRun.status}`);
+          } catch (error: any) {
+            console.error(`Failed to re-check run status:`, error.message);
+            throw error;
+          }
+          
+          // Only submit if still in requires_action status
+          if (freshRun.status !== 'requires_action') {
+            console.log(`⚠️ Run status changed to "${freshRun.status}" - cannot submit tool outputs`);
+            console.log('This usually means OpenAI is processing. Will check again on next poll.');
+            return NextResponse.json({
+              status: 'processing',
+              pass: currentPass,
+              message: `Run status changed to ${freshRun.status}, waiting for completion`
+            });
+          }
+          
           // Submit tool outputs
           console.log(`Submitting ${toolOutputs.length} tool outputs for pass ${currentPass}...`);
           
