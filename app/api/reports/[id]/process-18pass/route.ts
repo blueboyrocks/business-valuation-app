@@ -197,7 +197,40 @@ export async function POST(
           for (const toolCall of toolCalls) {
             if (toolCall.type === 'function') {
               const functionName = toolCall.function.name;
-              const functionArgs = JSON.parse(toolCall.function.arguments);
+              
+              // Parse function arguments with error handling
+              let functionArgs;
+              try {
+                functionArgs = JSON.parse(toolCall.function.arguments);
+              } catch (parseError: any) {
+                console.error(`✗ JSON parse error for ${functionName}:`, parseError.message);
+                console.error(`Raw arguments (first 2000 chars):`, toolCall.function.arguments.substring(0, 2000));
+                console.error(`Raw arguments (around error position 1958):`, toolCall.function.arguments.substring(1900, 2100));
+                
+                // Try to fix common JSON issues
+                try {
+                  // Remove trailing commas
+                  let fixedJson = toolCall.function.arguments.replace(/,\s*([}\]])/g, '$1');
+                  // Remove comments
+                  fixedJson = fixedJson.replace(/\/\/.*$/gm, '');
+                  fixedJson = fixedJson.replace(/\/\*[\s\S]*?\*\//g, '');
+                  
+                  functionArgs = JSON.parse(fixedJson);
+                  console.log(`✓ JSON fixed and parsed successfully`);
+                } catch (fixError: any) {
+                  console.error(`✗ Could not fix JSON:`, fixError.message);
+                  // Return error and skip this tool call
+                  toolOutputs.push({
+                    tool_call_id: toolCall.id,
+                    output: JSON.stringify({ 
+                      success: false, 
+                      error: 'Invalid JSON in function arguments',
+                      details: parseError.message 
+                    }),
+                  });
+                  continue;
+                }
+              }
               
               console.log(`Tool call: ${functionName} with ${Object.keys(functionArgs).length} fields`);
               console.log(`Function arguments:`, JSON.stringify(functionArgs, null, 2));
