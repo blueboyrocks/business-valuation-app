@@ -218,47 +218,93 @@ export async function POST(
             }
           }
 
-          // Re-check run status before submitting (race condition prevention)
-          console.log(`Re-checking run status before submitting tool outputs...`);
-          let freshRun;
-          try {
-            freshRun = await openai.beta.threads.runs.retrieve(
-              (report as any).openai_run_id,
-              { thread_id: (report as any).openai_thread_id }
-            );
-            console.log(`Fresh run status: ${freshRun.status}`);
-          } catch (error: any) {
-            console.error(`Failed to re-check run status:`, error.message);
-            throw error;
+          // Submit tool outputs with retry mechanism (race condition prevention)
+          const maxRetries = 3;
+          let submitSuccess = false;
+          
+          for (let attempt = 1; attempt <= maxRetries; attempt++) {
+            console.log(`Attempt ${attempt}/${maxRetries}: Checking run status before submitting tool outputs...`);
+            
+            // Re-check run status
+            let freshRun;
+            try {
+              freshRun = await openai.beta.threads.runs.retrieve(
+                (report as any).openai_run_id,
+                { thread_id: (report as any).openai_thread_id }
+              );
+              console.log(`Run status: ${freshRun.status}`);
+            } catch (error: any) {
+              console.error(`Failed to check run status:`, error.message);
+              throw error;
+            }
+            
+            // If status is not requires_action, wait and retry
+            if (freshRun.status !== 'requires_action') {
+              console.log(`⚠️ Run status is "${freshRun.status}" (not requires_action)`);
+              
+              if (attempt < maxRetries) {
+                const waitTime = 500 * attempt; // Exponential backoff: 500ms, 1000ms, 1500ms
+                console.log(`Waiting ${waitTime}ms before retry...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+                continue;
+              } else {
+                console.log('Max retries reached. Returning to let next poll handle it.');
+                return NextResponse.json({
+                  status: 'processing',
+                  pass: currentPass,
+                  message: `Run status is ${freshRun.status}, waiting for completion`
+                });
+              }
+            }
+            
+            // Status is requires_action, try to submit
+            console.log(`Submitting ${toolOutputs.length} tool outputs for pass ${currentPass}...`);
+            
+            try {
+              // OpenAI SDK v6+ requires: submitToolOutputs(runId, { thread_id, tool_outputs })
+              await openai.beta.threads.runs.submitToolOutputs(
+                (report as any).openai_run_id,
+                {
+                  thread_id: (report as any).openai_thread_id,
+                  tool_outputs: toolOutputs
+                } as any
+              );
+              console.log(`✓ Tool outputs submitted successfully for pass ${currentPass}`);
+              submitSuccess = true;
+              break; // Success! Exit retry loop
+            } catch (error: any) {
+              // Check if it's the race condition error
+              if (error.message && error.message.includes('do not accept tool outputs')) {
+                console.error(`✗ Race condition detected: ${error.message}`);
+                
+                if (attempt < maxRetries) {
+                  const waitTime = 500 * attempt;
+                  console.log(`Waiting ${waitTime}ms before retry...`);
+                  await new Promise(resolve => setTimeout(resolve, waitTime));
+                  continue;
+                } else {
+                  console.log('Max retries reached. Returning to let next poll handle it.');
+                  return NextResponse.json({
+                    status: 'processing',
+                    pass: currentPass,
+                    message: 'Tool output submission failed due to race condition, will retry on next poll'
+                  });
+                }
+              } else {
+                // Different error, throw it
+                console.error(`✗ Failed to submit tool outputs:`, error.message);
+                throw error;
+              }
+            }
           }
           
-          // Only submit if still in requires_action status
-          if (freshRun.status !== 'requires_action') {
-            console.log(`⚠️ Run status changed to "${freshRun.status}" - cannot submit tool outputs`);
-            console.log('This usually means OpenAI is processing. Will check again on next poll.');
+          if (!submitSuccess) {
+            console.log('Tool output submission did not succeed after retries.');
             return NextResponse.json({
               status: 'processing',
               pass: currentPass,
-              message: `Run status changed to ${freshRun.status}, waiting for completion`
+              message: 'Waiting for next poll to retry tool output submission'
             });
-          }
-          
-          // Submit tool outputs
-          console.log(`Submitting ${toolOutputs.length} tool outputs for pass ${currentPass}...`);
-          
-          try {
-          // OpenAI SDK v6+ requires: submitToolOutputs(runId, { thread_id, tool_outputs })
-          await openai.beta.threads.runs.submitToolOutputs(
-            (report as any).openai_run_id,
-            {
-              thread_id: (report as any).openai_thread_id,
-              tool_outputs: toolOutputs
-            } as any
-          );
-            console.log(`✓ Tool outputs submitted successfully for pass ${currentPass}`);
-          } catch (error: any) {
-            console.error(`✗ Failed to submit tool outputs for pass ${currentPass}:`, error.message);
-            throw error;
           }
           
           console.log(`Checking if run completed immediately...`);
