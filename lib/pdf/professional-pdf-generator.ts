@@ -214,7 +214,12 @@ export class ProfessionalPDFGenerator {
     liquidation_value: number | null,
     charts: { valuation?: string; financialMetrics?: string; kpiPerformance?: string }
   ): Promise<string> {
-    const fmt = (val: number | null | undefined) => val ? `$${Math.round(val).toLocaleString()}` : 'N/A';
+    // Format currency - distinguish between 0 (actual zero) and null/undefined (not extracted)
+    const fmt = (val: number | null | undefined) => {
+      if (val === null || val === undefined) return 'N/A';
+      if (val === 0) return '$0';
+      return `$${Math.round(val).toLocaleString()}`;
+    };
 
     // Convert markdown to HTML for narratives
     const execSummary = reportData.executive_summary ? await marked(reportData.executive_summary) : '<p>No executive summary available.</p>';
