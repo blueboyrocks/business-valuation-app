@@ -694,27 +694,61 @@ async function calculateFinalValuation(supabase: any, reportId: string) {
   
   console.log('[FINAL] Raw extracted data fields:', Object.keys(rawData));
   
-  // Map extracted field names to engine interface
-  // The extraction functions use different field names than the engine expects
+  // Map extracted field names to engine interface and PDF expectations
+  // The extraction functions use different field names than the engine/PDF expects
   const financialData = {
     // Core financial metrics (required by engine)
-    revenue: rawData.annual_revenue || 0,
+    revenue: rawData.annual_revenue || rawData.total_revenue || rawData.revenue_total || rawData.gross_receipts || rawData.revenue_gross || 0,
     pretax_income: rawData.pretax_income || rawData.net_income || 0,
-    owner_compensation: rawData.officer_compensation || 0,
+    owner_compensation: rawData.officer_compensation || rawData.owner_compensation || 0,
     interest_expense: rawData.interest_expense || 0,
-    depreciation_amortization: rawData.depreciation || 0,
-    total_assets: rawData.total_assets || 0,
-    total_liabilities: rawData.total_liabilities || 0,
+    depreciation_amortization: rawData.depreciation || rawData.depreciation_amortization || rawData.amortization || 0,
+    total_assets: rawData.total_assets || rawData.assets || 0,
+    total_liabilities: rawData.total_liabilities || rawData.liabilities || 0,
     
-    // Optional additional data (Pass 3 balance sheet details)
-    cash: rawData.cash,
-    accounts_receivable: rawData.accounts_receivable,
-    inventory: rawData.inventory,
-    fixed_assets: rawData.fixed_assets_net || rawData.fixed_assets,  // Pass 3 uses fixed_assets_net
-    intangible_assets: rawData.intangible_assets,
-    accounts_payable: rawData.accounts_payable,
-    current_liabilities: rawData.total_current_liabilities || rawData.current_liabilities,  // Pass 3 uses total_current_liabilities
-    long_term_debt: rawData.long_term_debt,
+    // Additional income statement items (for PDF)
+    non_cash_expenses: rawData.non_cash_expenses || rawData.depreciation || rawData.depreciation_amortization || 0,
+    one_time_expenses: rawData.one_time_expenses || 0,
+    one_time_revenues: rawData.one_time_revenues || 0,
+    
+    // Balance sheet details (Pass 3)
+    cash: rawData.cash || rawData.cash_and_cash_equivalents || 0,
+    accounts_receivable: rawData.accounts_receivable || 0,
+    inventory: rawData.inventory || 0,
+    other_current_assets: rawData.other_current_assets || 0,
+    fixed_assets: rawData.fixed_assets_net || rawData.fixed_assets || 0,
+    intangible_assets: rawData.intangible_assets || 0,
+    
+    // Liability details (for PDF)
+    accounts_payable: rawData.accounts_payable || 0,
+    other_short_term_liabilities: rawData.other_current_liabilities || rawData.other_short_term_liabilities || 0,
+    bank_loans: rawData.credit_card_debt || rawData.bank_loans || rawData.current_portion_long_term_debt || 0,
+    other_long_term_liabilities: rawData.other_long_term_liabilities || 0,
+  };
+  
+  // Also map for PDF compatibility (PDF expects these exact field names)
+  const pdfData = {
+    annual_revenue: financialData.revenue,
+    pretax_income: financialData.pretax_income,
+    owner_compensation: financialData.owner_compensation,
+    officer_compensation: financialData.owner_compensation,  // PDF might look for this too
+    interest_expense: financialData.interest_expense,
+    depreciation_amortization: financialData.depreciation_amortization,
+    non_cash_expenses: financialData.non_cash_expenses,
+    one_time_expenses: financialData.one_time_expenses,
+    one_time_revenues: financialData.one_time_revenues,
+    cash: financialData.cash,
+    accounts_receivable: financialData.accounts_receivable,
+    inventory: financialData.inventory,
+    other_current_assets: financialData.other_current_assets,
+    fixed_assets: financialData.fixed_assets,
+    intangible_assets: financialData.intangible_assets,
+    total_assets: financialData.total_assets,
+    accounts_payable: financialData.accounts_payable,
+    other_short_term_liabilities: financialData.other_short_term_liabilities,
+    bank_loans: financialData.bank_loans,
+    other_long_term_liabilities: financialData.other_long_term_liabilities,
+    total_liabilities: financialData.total_liabilities,
   };
   
   // Get industry data from Pass 0 or Pass 1
@@ -751,6 +785,7 @@ async function calculateFinalValuation(supabase: any, reportId: string) {
       report_status: 'completed',
       report_data: {
         ...rawData,           // Original extracted data with original field names
+        ...pdfData,           // Mapped data with PDF-expected field names
         ...narrativeData,     // Narrative sections from passes 6-17
         ...result,            // Calculated valuation results
       },
