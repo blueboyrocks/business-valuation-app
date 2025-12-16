@@ -684,7 +684,7 @@ async function calculateFinalValuation(supabase: any, reportId: string) {
   const accumulatedData = await getAccumulatedData(supabase, reportId, 18);
   
   // Merge all financial data
-  const financialData = {
+  const rawData = {
     ...accumulatedData.pass_1,
     ...accumulatedData.pass_2,
     ...accumulatedData.pass_3,
@@ -692,13 +692,39 @@ async function calculateFinalValuation(supabase: any, reportId: string) {
     ...accumulatedData.pass_5,
   };
   
-  // Get industry data from Pass 0 or Pass 1
-  const industryData = {
-    naics_code: financialData.naics_code || '000000',
-    industry_name: financialData.industry_name || 'General Business',
+  console.log('[FINAL] Raw extracted data fields:', Object.keys(rawData));
+  
+  // Map extracted field names to engine interface
+  // The extraction functions use different field names than the engine expects
+  const financialData = {
+    // Core financial metrics (required by engine)
+    revenue: rawData.annual_revenue || 0,
+    pretax_income: rawData.pretax_income || rawData.net_income || 0,
+    owner_compensation: rawData.officer_compensation || 0,
+    interest_expense: rawData.interest_expense || 0,
+    depreciation_amortization: rawData.depreciation || 0,
+    total_assets: rawData.total_assets || 0,
+    total_liabilities: rawData.total_liabilities || 0,
+    
+    // Optional additional data
+    cash: rawData.cash,
+    accounts_receivable: rawData.accounts_receivable,
+    inventory: rawData.inventory,
+    fixed_assets: rawData.fixed_assets,
+    intangible_assets: rawData.intangible_assets,
+    accounts_payable: rawData.accounts_payable,
+    current_liabilities: rawData.current_liabilities,
+    long_term_debt: rawData.long_term_debt,
   };
   
-  console.log('[FINAL] Calculating valuation with financial data:', Object.keys(financialData));
+  // Get industry data from Pass 0 or Pass 1
+  const industryData = {
+    naics_code: rawData.industry_naics_code || rawData.naics_code || '000000',
+    industry_name: rawData.industry_name || 'General Business',
+  };
+  
+  console.log('[FINAL] Mapped financial data for engine:', financialData);
+  console.log('[FINAL] Industry data:', industryData);
   
   // Calculate valuation
   const result = calculateValuation(financialData, industryData);
@@ -724,9 +750,9 @@ async function calculateFinalValuation(supabase: any, reportId: string) {
   await (supabase.from('reports') as any).update({
       report_status: 'completed',
       report_data: {
-        ...financialData,
-        ...narrativeData,
-        ...result,
+        ...rawData,           // Original extracted data with original field names
+        ...narrativeData,     // Narrative sections from passes 6-17
+        ...result,            // Calculated valuation results
       },
       current_pass: null,
       openai_thread_id: null,

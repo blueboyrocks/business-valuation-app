@@ -242,9 +242,35 @@ export function calculateValuation(
 ): CalculatedValuation {
   console.log(`[ENGINE] ========== STARTING VALUATION CALCULATION ==========`);
   console.log(`[ENGINE] Company: ${industry.industry_name} (NAICS: ${industry.naics_code})`);
-  console.log(`[ENGINE] Revenue: $${financial.revenue.toLocaleString()}`);
+  
+  // Defensive checks - ensure all required fields are numbers
+  const safeFinancial: ExtractedFinancialData = {
+    revenue: Number(financial.revenue) || 0,
+    pretax_income: Number(financial.pretax_income) || 0,
+    owner_compensation: Number(financial.owner_compensation) || 0,
+    interest_expense: Number(financial.interest_expense) || 0,
+    depreciation_amortization: Number(financial.depreciation_amortization) || 0,
+    total_assets: Number(financial.total_assets) || 0,
+    total_liabilities: Number(financial.total_liabilities) || 0,
+    cash: financial.cash ? Number(financial.cash) : undefined,
+    accounts_receivable: financial.accounts_receivable ? Number(financial.accounts_receivable) : undefined,
+    inventory: financial.inventory ? Number(financial.inventory) : undefined,
+    fixed_assets: financial.fixed_assets ? Number(financial.fixed_assets) : undefined,
+    intangible_assets: financial.intangible_assets ? Number(financial.intangible_assets) : undefined,
+    accounts_payable: financial.accounts_payable ? Number(financial.accounts_payable) : undefined,
+    current_liabilities: financial.current_liabilities ? Number(financial.current_liabilities) : undefined,
+    long_term_debt: financial.long_term_debt ? Number(financial.long_term_debt) : undefined,
+  };
+  
+  console.log(`[ENGINE] Revenue: $${safeFinancial.revenue.toLocaleString()}`);
+  console.log(`[ENGINE] Pretax Income: $${safeFinancial.pretax_income.toLocaleString()}`);
+  console.log(`[ENGINE] Total Assets: $${safeFinancial.total_assets.toLocaleString()}`);
+  console.log(`[ENGINE] Total Liabilities: $${safeFinancial.total_liabilities.toLocaleString()}`);
   
   const notes: string[] = [];
+  
+  // Use safeFinancial for all calculations
+  financial = safeFinancial;
   
   // Step 1: Calculate EBITDA and SDE
   const ebitda = calculateEBITDA(financial);
