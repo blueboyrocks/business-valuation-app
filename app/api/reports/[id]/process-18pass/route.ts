@@ -706,14 +706,14 @@ async function calculateFinalValuation(supabase: any, reportId: string) {
     total_assets: rawData.total_assets || 0,
     total_liabilities: rawData.total_liabilities || 0,
     
-    // Optional additional data
+    // Optional additional data (Pass 3 balance sheet details)
     cash: rawData.cash,
     accounts_receivable: rawData.accounts_receivable,
     inventory: rawData.inventory,
-    fixed_assets: rawData.fixed_assets,
+    fixed_assets: rawData.fixed_assets_net || rawData.fixed_assets,  // Pass 3 uses fixed_assets_net
     intangible_assets: rawData.intangible_assets,
     accounts_payable: rawData.accounts_payable,
-    current_liabilities: rawData.current_liabilities,
+    current_liabilities: rawData.total_current_liabilities || rawData.current_liabilities,  // Pass 3 uses total_current_liabilities
     long_term_debt: rawData.long_term_debt,
   };
   
