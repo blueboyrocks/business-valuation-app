@@ -291,16 +291,20 @@ export function calculateValuation(
   
   // Step 3: Calculate three approaches
   const assetValue = calculateAssetApproach(financial);
-  const incomeValue = calculateIncomeApproach(financial, sde, ebitda, multiples.sde_multiple, multiples.ebitda_multiple);
-  const marketValue = calculateMarketApproach(financial, multiples.revenue_multiple);
+  const incomeValueRaw = calculateIncomeApproach(financial, sde, ebitda, multiples.sde_multiple, multiples.ebitda_multiple);
+  const marketValueRaw = calculateMarketApproach(financial, multiples.revenue_multiple);
+
+  // Valuation Floor 1: Approaches cannot be negative
+  const incomeValue = Math.max(0, incomeValueRaw);
+  const marketValue = Math.max(0, marketValueRaw);
   
   console.log(`[ENGINE] Asset Approach: $${assetValue.toLocaleString()}`);
   console.log(`[ENGINE] Income Approach: $${incomeValue.toLocaleString()}`);
   console.log(`[ENGINE] Market Approach: $${marketValue.toLocaleString()}`);
   
   notes.push(`Asset Approach: Total Assets ($${financial.total_assets.toLocaleString()}) - Total Liabilities ($${financial.total_liabilities.toLocaleString()}) = $${assetValue.toLocaleString()}`);
-  notes.push(`Income Approach: ${sde > ebitda * 1.2 ? 'SDE' : 'EBITDA'} × Multiple = $${incomeValue.toLocaleString()}`);
-  notes.push(`Market Approach: Revenue ($${financial.revenue.toLocaleString()}) × ${multiples.revenue_multiple}x = $${marketValue.toLocaleString()}`);
+  notes.push(`Income Approach: ${sde > ebitda * 1.2 ? 'SDE' : 'EBITDA'} × Multiple = $${incomeValue.toLocaleString()} (Raw: $${incomeValueRaw.toLocaleString()})`);
+  notes.push(`Market Approach: Revenue ($${financial.revenue.toLocaleString()}) × ${multiples.revenue_multiple}x = $${marketValue.toLocaleString()} (Raw: $${marketValueRaw.toLocaleString()})`);
   
   // Step 4: Determine weights
   const weights = determineWeights(financial, industry);
@@ -308,16 +312,24 @@ export function calculateValuation(
   notes.push(`Weights determined: Asset ${(weights.asset_weight * 100).toFixed(0)}%, Income ${(weights.income_weight * 100).toFixed(0)}%, Market ${(weights.market_weight * 100).toFixed(0)}%`);
   
   // Step 5: Calculate weighted average (PRECISE - NO ROUNDING)
-  const weightedAverage = 
+  const weightedAverageRaw = 
     (assetValue * weights.asset_weight) +
     (incomeValue * weights.income_weight) +
     (marketValue * weights.market_weight);
+
+  // Valuation Floor 2: Final valuation must be at least the Asset Approach Value
+  const weightedAverage = Math.max(assetValue, weightedAverageRaw);
+  
+  if (weightedAverage !== weightedAverageRaw) {
+    notes.push(`Valuation Floor Applied: Final valuation capped at Asset Approach Value ($${assetValue.toLocaleString()}) because weighted average was lower (Raw: $${weightedAverageRaw.toLocaleString()}).`);
+  }
   
   console.log(`[ENGINE] Weighted Average Calculation:`);
   console.log(`  Asset: $${assetValue.toLocaleString()} × ${weights.asset_weight.toFixed(2)} = $${(assetValue * weights.asset_weight).toLocaleString()}`);
   console.log(`  Income: $${incomeValue.toLocaleString()} × ${weights.income_weight.toFixed(2)} = $${(incomeValue * weights.income_weight).toLocaleString()}`);
   console.log(`  Market: $${marketValue.toLocaleString()} × ${weights.market_weight.toFixed(2)} = $${(marketValue * weights.market_weight).toLocaleString()}`);
-  console.log(`  TOTAL: $${weightedAverage.toLocaleString()}`);
+  console.log(`  TOTAL (Raw): $${weightedAverageRaw.toLocaleString()}`);
+  console.log(`  TOTAL (Floored): $${weightedAverage.toLocaleString()}`);
   
   notes.push(`Final Valuation: ($${assetValue.toLocaleString()} × ${weights.asset_weight.toFixed(2)}) + ($${incomeValue.toLocaleString()} × ${weights.income_weight.toFixed(2)}) + ($${marketValue.toLocaleString()} × ${weights.market_weight.toFixed(2)}) = $${weightedAverage.toLocaleString()}`);
   
@@ -345,6 +357,8 @@ export function calculateValuation(
     income_approach_weight: weights.income_weight,
     market_approach_weight: weights.market_weight,
     valuation_amount: weightedAverage,
+    income_approach_value_raw: incomeValueRaw,
+    market_approach_value_raw: marketValueRaw,
     valuation_range_low: rangeLow,
     valuation_range_high: rangeHigh,
     calculation_notes: notes,
