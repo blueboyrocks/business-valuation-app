@@ -67,6 +67,10 @@ export interface CalculatedValuation {
   valuation_range_low: number;
   valuation_range_high: number;
   
+  // Raw values before flooring (for transparency)
+  income_approach_value_raw: number;
+  market_approach_value_raw: number;
+  
   // Calculation details for transparency
   calculation_notes: string[];
 }
