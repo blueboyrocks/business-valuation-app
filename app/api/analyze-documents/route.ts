@@ -93,13 +93,13 @@ export async function POST(request: NextRequest) {
 
     console.log(`✓ [ANALYZE] Report ${reportId} marked as processing`);
 
-    // NOTE: OpenAI processing is now triggered by the frontend calling /api/reports/[id]/process
-    // This avoids Vercel serverless timeout issues with long-running background tasks
-    // The frontend will poll the /process endpoint which will initialize OpenAI if needed
+    // NOTE: Claude processing is triggered by the frontend calling /api/reports/[id]/process-claude
+    // The frontend will poll the process-claude endpoint which runs the 6-pass valuation pipeline
+    // This approach leverages Claude's native PDF understanding for document analysis
 
     return NextResponse.json({
       success: true,
-      message: 'Analysis started. Frontend will poll /api/reports/[id]/process to continue.',
+      message: 'Analysis started. Frontend will call /api/reports/[id]/process-claude to continue.',
       reportId,
     });
   } catch (error) {

@@ -38,18 +38,18 @@ export default function ReportDetailPage() {
 
       if (!token) return;
 
-      // Call the 18-pass process endpoint to advance OpenAI processing
-      console.log(`[Frontend] Calling process-18pass endpoint for report ${params.id}`);
-      
+      // Call the Claude 6-pass process endpoint
+      console.log(`[Frontend] Calling process-claude endpoint for report ${params.id}`);
+
       let processResponse;
       try {
-        processResponse = await fetch(`/api/reports/${params.id}/process-18pass`, {
+        processResponse = await fetch(`/api/reports/${params.id}/process-claude`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${token}`,
           },
         });
-        console.log(`[Frontend] Process endpoint responded with status: ${processResponse.status}`);
+        console.log(`[Frontend] Claude process endpoint responded with status: ${processResponse.status}`);
       } catch (error) {
         console.error(`[Frontend] Failed to call process endpoint:`, error);
         // Fall back to status endpoint
