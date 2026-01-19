@@ -103,17 +103,19 @@ export async function POST(
       }
     ];
 
-    // Add custom skill if configured
-    if (process.env.BUSINESS_VALUATION_SKILL_ID) {
-      skills.push({
-        type: 'custom',
-        skill_id: process.env.BUSINESS_VALUATION_SKILL_ID,
-        version: 'latest'
-      });
-      console.log('[SKILLS-API] Using custom business-valuation-expert skill');
-    } else {
-      console.log('[SKILLS-API] No custom skill configured, using built-in prompts');
+    // Require custom skill ID
+    const skillId = process.env.BUSINESS_VALUATION_SKILL_ID;
+    if (!skillId) {
+      console.error('[SKILLS-API] BUSINESS_VALUATION_SKILL_ID not configured');
+      throw new Error('Business valuation skill not configured. Please set BUSINESS_VALUATION_SKILL_ID in environment variables.');
     }
+
+    skills.push({
+      type: 'custom',
+      skill_id: skillId,
+      version: 'latest'
+    });
+    console.log('[SKILLS-API] Using custom business-valuation-expert skill:', skillId);
 
     const systemPrompt = `You are an expert business valuation analyst. Analyze the provided tax return document and generate a comprehensive business valuation report.
 
@@ -197,7 +199,7 @@ Output as a single valid JSON object. Do not include any text before or after th
         }
       ],
       tools: [{
-        type: 'code_execution' as any,
+        type: 'code_execution_20250825' as any,
         name: 'code_execution'
       }]
     });
