@@ -50,7 +50,10 @@ export async function callClaudeWithRetry(
   
   for (let attempt = 0; attempt <= retries; attempt++) {
     try {
-      const response = await client.messages.create(params);
+      const response = await client.messages.create({
+        ...params,
+        stream: false,
+      });
       return response;
     } catch (error: any) {
       console.error(`Claude API error (attempt ${attempt + 1}/${retries + 1}):`, error.message);
