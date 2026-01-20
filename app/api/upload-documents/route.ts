@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { Database } from '@/lib/supabase/types';
 
 export const maxDuration = 300;
 export const dynamic = 'force-dynamic';
@@ -26,7 +25,7 @@ export async function POST(request: NextRequest) {
     const token = authHeader.replace('Bearer ', '');
     console.log('🔑 Using user auth token for upload');
 
-    const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
       global: {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -179,9 +178,12 @@ export async function POST(request: NextRequest) {
       documents: uploadedDocuments,
     });
   } catch (error) {
-    console.error('Error in upload-documents route:', error);
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorStack = error instanceof Error ? error.stack : '';
+    console.error('Error in upload-documents route:', errorMessage);
+    console.error('Stack trace:', errorStack);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: `Internal server error: ${errorMessage}` },
       { status: 500 }
     );
   }
