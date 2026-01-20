@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import { createBrowserClient } from '@/lib/supabase/client';
@@ -11,8 +11,19 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { Upload, FileText, X, Loader2 } from 'lucide-react';
+import { Upload, FileText, X, Loader2, XCircle, CheckCircle2 } from 'lucide-react';
 import { logError } from '@/lib/errorLogger';
+
+interface AnalysisProgress {
+  phase: 'uploading' | 'extracting' | 'valuating' | 'completed' | 'failed' | 'cancelled';
+  progress: number;
+  message: string;
+  extractionDetails?: {
+    total: number;
+    completed: number;
+    failed: number;
+  };
+}
 
 export default function UploadPage() {
   const { user } = useAuth();
@@ -24,6 +35,16 @@ export default function UploadPage() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<string>('');
   const [testResult, setTestResult] = useState<string>('');
+
+  // Analysis progress tracking
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
+  const [currentReportId, setCurrentReportId] = useState<string | null>(null);
+
+  // Cancel handling
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const pollingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isCancelledRef = useRef(false);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -121,6 +142,171 @@ export default function UploadPage() {
     }
   };
 
+  // Poll for analysis status with exponential backoff
+  const pollAnalysisStatus = useCallback(async (
+    reportId: string,
+    token: string,
+    attempt: number = 0
+  ) => {
+    // Check if cancelled
+    if (isCancelledRef.current) {
+      return;
+    }
+
+    const MAX_ATTEMPTS = 60; // ~5 minutes with backoff
+    const BASE_DELAY = 2000; // Start at 2 seconds
+    const MAX_DELAY = 15000; // Max 15 seconds between polls
+
+    if (attempt >= MAX_ATTEMPTS) {
+      setAnalysisProgress({
+        phase: 'failed',
+        progress: 0,
+        message: 'Analysis timed out. Please check your report page for status.',
+      });
+      setIsAnalyzing(false);
+      return;
+    }
+
+    try {
+      const response = await fetch(`/api/analyze-documents?reportId=${reportId}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+        signal: abortControllerRef.current?.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch status');
+      }
+
+      const status = await response.json();
+      console.log('Analysis status:', status);
+
+      // Update progress based on status
+      const reportStatus = status.status;
+      const progress = status.progress || 0;
+      const message = status.message || '';
+      const extraction = status.extraction;
+
+      // Determine phase from status
+      let phase: AnalysisProgress['phase'] = 'extracting';
+      if (reportStatus === 'completed') {
+        phase = 'completed';
+      } else if (reportStatus === 'failed' || reportStatus === 'error' ||
+                 reportStatus === 'extraction_failed' || reportStatus === 'valuation_failed') {
+        phase = 'failed';
+      } else if (reportStatus === 'valuating' || reportStatus === 'extraction_complete' ||
+                 reportStatus === 'extraction_partial') {
+        phase = 'valuating';
+      } else if (reportStatus === 'extracting' || reportStatus === 'processing') {
+        phase = 'extracting';
+      }
+
+      setAnalysisProgress({
+        phase,
+        progress,
+        message,
+        extractionDetails: extraction ? {
+          total: extraction.total || 0,
+          completed: extraction.completed || 0,
+          failed: extraction.failed || 0,
+        } : undefined,
+      });
+
+      // Check if we should stop polling
+      if (phase === 'completed') {
+        toast({
+          title: 'Analysis complete!',
+          description: 'Your valuation report is ready.',
+        });
+        setTimeout(() => {
+          router.push(`/dashboard/reports/${reportId}`);
+        }, 1500);
+        setIsAnalyzing(false);
+        return;
+      }
+
+      if (phase === 'failed') {
+        toast({
+          title: 'Analysis failed',
+          description: status.error || 'An error occurred during analysis.',
+          variant: 'destructive',
+        });
+        setIsAnalyzing(false);
+        return;
+      }
+
+      // Continue polling with exponential backoff
+      const delay = Math.min(BASE_DELAY * Math.pow(1.2, attempt), MAX_DELAY);
+      pollingTimeoutRef.current = setTimeout(() => {
+        pollAnalysisStatus(reportId, token, attempt + 1);
+      }, delay);
+
+    } catch (error) {
+      if ((error as Error).name === 'AbortError') {
+        // Cancelled by user
+        return;
+      }
+
+      console.error('Error polling status:', error);
+
+      // Retry on error (network issues, etc.)
+      const delay = Math.min(BASE_DELAY * Math.pow(1.5, attempt), MAX_DELAY);
+      pollingTimeoutRef.current = setTimeout(() => {
+        pollAnalysisStatus(reportId, token, attempt + 1);
+      }, delay);
+    }
+  }, [router, toast]);
+
+  // Cancel analysis
+  const handleCancel = async () => {
+    isCancelledRef.current = true;
+
+    // Abort any ongoing fetch
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+
+    // Clear polling timeout
+    if (pollingTimeoutRef.current) {
+      clearTimeout(pollingTimeoutRef.current);
+      pollingTimeoutRef.current = null;
+    }
+
+    // Update local state
+    setAnalysisProgress({
+      phase: 'cancelled',
+      progress: 0,
+      message: 'Analysis cancelled by user',
+    });
+
+    // Optionally update report status in database
+    if (currentReportId) {
+      try {
+        const supabase = createBrowserClient();
+        // Use type assertion to work around Supabase typing issue
+        await (supabase
+          .from('reports') as any)
+          .update({
+            report_status: 'cancelled',
+            error_message: 'Cancelled by user',
+          })
+          .eq('id', currentReportId);
+      } catch (error) {
+        console.error('Failed to update report status:', error);
+      }
+    }
+
+    toast({
+      title: 'Analysis cancelled',
+      description: 'The analysis has been stopped.',
+    });
+
+    setIsAnalyzing(false);
+    setIsUploading(false);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -151,8 +337,16 @@ export default function UploadPage() {
       return;
     }
 
+    // Reset cancel state
+    isCancelledRef.current = false;
+    abortControllerRef.current = new AbortController();
+
     setIsUploading(true);
-    setUploadProgress(`Uploading ${files.length} document${files.length > 1 ? 's' : ''} to secure storage...`);
+    setAnalysisProgress({
+      phase: 'uploading',
+      progress: 0,
+      message: `Uploading ${files.length} document${files.length > 1 ? 's' : ''} to secure storage...`,
+    });
 
     try {
       const supabase = createBrowserClient();
@@ -168,38 +362,55 @@ export default function UploadPage() {
 
       // Upload files directly to Supabase Storage
       const uploadedFiles: { name: string; path: string; size: number }[] = [];
-      
+
       for (let i = 0; i < files.length; i++) {
+        if (isCancelledRef.current) {
+          throw new Error('Cancelled');
+        }
+
         const file = files[i];
-        setUploadProgress(`Uploading file ${i + 1} of ${files.length}: ${file.name}...`);
-        
+        const uploadPercent = Math.round((i / files.length) * 30);
+        setAnalysisProgress({
+          phase: 'uploading',
+          progress: uploadPercent,
+          message: `Uploading file ${i + 1} of ${files.length}: ${file.name}...`,
+        });
+
         const timestamp = Date.now();
         const filePath = `${userId}/${timestamp}-${file.name}`;
-        
+
         console.log(`Uploading ${file.name} to ${filePath}`);
-        
+
         const { data, error } = await supabase.storage
           .from('documents')
           .upload(filePath, file, {
             contentType: file.type,
             upsert: false,
           });
-        
+
         if (error) {
           console.error(`Failed to upload ${file.name}:`, error);
           throw new Error(`Failed to upload ${file.name}: ${error.message}`);
         }
-        
+
         uploadedFiles.push({
           name: file.name,
           path: data.path,
           size: file.size,
         });
-        
+
         console.log(`Successfully uploaded ${file.name}`);
       }
 
-      setUploadProgress('Files uploaded! Creating report...');
+      if (isCancelledRef.current) {
+        throw new Error('Cancelled');
+      }
+
+      setAnalysisProgress({
+        phase: 'uploading',
+        progress: 35,
+        message: 'Files uploaded! Creating report...',
+      });
 
       // Call API to create report with file paths
       const uploadResponse = await fetch('/api/upload-documents', {
@@ -212,6 +423,7 @@ export default function UploadPage() {
           companyName,
           files: uploadedFiles,
         }),
+        signal: abortControllerRef.current?.signal,
       });
 
       console.log('Upload response status:', uploadResponse.status);
@@ -237,8 +449,17 @@ export default function UploadPage() {
       }
 
       const { reportId } = await uploadResponse.json();
+      setCurrentReportId(reportId);
 
-      setUploadProgress('Upload complete! Preparing for AI analysis...');
+      if (isCancelledRef.current) {
+        throw new Error('Cancelled');
+      }
+
+      setAnalysisProgress({
+        phase: 'extracting',
+        progress: 40,
+        message: 'Starting AI analysis...',
+      });
 
       toast({
         title: 'Upload successful',
@@ -246,8 +467,8 @@ export default function UploadPage() {
       });
 
       console.log('Calling analyze API with reportId:', reportId);
-      console.log('Token length:', token?.length);
 
+      // Start analysis
       const analyzeResponse = await fetch('/api/analyze-documents', {
         method: 'POST',
         headers: {
@@ -255,6 +476,7 @@ export default function UploadPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ reportId }),
+        signal: abortControllerRef.current?.signal,
       });
 
       console.log('Analyze response status:', analyzeResponse.status);
@@ -279,18 +501,19 @@ export default function UploadPage() {
         throw new Error(errorMessage);
       }
 
-      setUploadProgress('AI analysis initiated! Redirecting to report...');
+      // Analysis started - now poll for status
+      setIsAnalyzing(true);
+      setIsUploading(false);
 
-      toast({
-        title: 'Analysis started',
-        description: 'Your documents are being analyzed by AI. This typically takes 10-15 minutes.',
-        duration: 5000,
-      });
+      // Start polling
+      pollAnalysisStatus(reportId, token, 0);
 
-      setTimeout(() => {
-        router.push(`/dashboard/reports/${reportId}`);
-      }, 1500);
     } catch (error) {
+      if ((error as Error).message === 'Cancelled' || (error as Error).name === 'AbortError') {
+        // Already handled by handleCancel
+        return;
+      }
+
       console.error('Upload error:', error);
 
       logError(
@@ -305,7 +528,12 @@ export default function UploadPage() {
         }
       );
 
-      setUploadProgress('');
+      setAnalysisProgress({
+        phase: 'failed',
+        progress: 0,
+        message: error instanceof Error ? error.message : 'An error occurred',
+      });
+
       toast({
         title: 'Upload failed',
         description: error instanceof Error ? error.message : 'An error occurred while uploading your documents.',
@@ -313,6 +541,7 @@ export default function UploadPage() {
         duration: 10000,
       });
       setIsUploading(false);
+      setIsAnalyzing(false);
     }
   };
 
@@ -322,6 +551,92 @@ export default function UploadPage() {
     const sizes = ['Bytes', 'KB', 'MB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
+
+  const isProcessing = isUploading || isAnalyzing;
+
+  // Render progress component
+  const renderProgress = () => {
+    if (!analysisProgress) return null;
+
+    const { phase, progress, message, extractionDetails } = analysisProgress;
+
+    // Determine colors based on phase
+    let bgColor = 'bg-blue-50 border-blue-200';
+    let textColor = 'text-blue-900';
+    let progressColor = 'bg-blue-600';
+    let icon = <Loader2 className="h-5 w-5 animate-spin text-blue-600" />;
+
+    if (phase === 'completed') {
+      bgColor = 'bg-green-50 border-green-200';
+      textColor = 'text-green-900';
+      progressColor = 'bg-green-600';
+      icon = <CheckCircle2 className="h-5 w-5 text-green-600" />;
+    } else if (phase === 'failed' || phase === 'cancelled') {
+      bgColor = 'bg-red-50 border-red-200';
+      textColor = 'text-red-900';
+      progressColor = 'bg-red-600';
+      icon = <XCircle className="h-5 w-5 text-red-600" />;
+    }
+
+    return (
+      <div className={`${bgColor} border rounded-lg p-4 mb-4`}>
+        <div className="flex items-start gap-3">
+          {icon}
+          <div className="flex-1">
+            <div className="flex items-center justify-between">
+              <p className={`text-sm font-medium ${textColor}`}>
+                {phase === 'uploading' && 'Uploading Documents'}
+                {phase === 'extracting' && 'Extracting Financial Data'}
+                {phase === 'valuating' && 'Generating Valuation Report'}
+                {phase === 'completed' && 'Analysis Complete'}
+                {phase === 'failed' && 'Analysis Failed'}
+                {phase === 'cancelled' && 'Analysis Cancelled'}
+              </p>
+              {progress > 0 && (
+                <span className={`text-sm font-medium ${textColor}`}>{progress}%</span>
+              )}
+            </div>
+
+            <p className={`text-sm ${textColor} opacity-80 mt-1`}>{message}</p>
+
+            {/* Extraction details */}
+            {extractionDetails && phase === 'extracting' && (
+              <p className={`text-sm ${textColor} opacity-80 mt-1`}>
+                Documents: {extractionDetails.completed} of {extractionDetails.total} extracted
+                {extractionDetails.failed > 0 && ` (${extractionDetails.failed} failed)`}
+              </p>
+            )}
+
+            {/* Progress bar */}
+            {phase !== 'failed' && phase !== 'cancelled' && (
+              <div className="w-full bg-white/50 rounded-full h-2 mt-3">
+                <div
+                  className={`${progressColor} h-2 rounded-full transition-all duration-500`}
+                  style={{ width: `${Math.max(progress, phase === 'completed' ? 100 : 5)}%` }}
+                />
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Cancel button */}
+        {isProcessing && phase !== 'completed' && phase !== 'failed' && phase !== 'cancelled' && (
+          <div className="mt-4 flex justify-end">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleCancel}
+              className="text-red-600 border-red-300 hover:bg-red-50"
+            >
+              <XCircle className="h-4 w-4 mr-2" />
+              Cancel Analysis
+            </Button>
+          </div>
+        )}
+      </div>
+    );
   };
 
   return (
@@ -353,7 +668,7 @@ export default function UploadPage() {
                     value={companyName}
                     onChange={(e) => setCompanyName(e.target.value)}
                     required
-                    disabled={isUploading}
+                    disabled={isProcessing}
                   />
                 </div>
               </CardContent>
@@ -378,7 +693,7 @@ export default function UploadPage() {
                     isDragging
                       ? 'border-blue-500 bg-blue-50'
                       : 'border-slate-300 hover:border-slate-400'
-                  }`}
+                  } ${isProcessing ? 'opacity-50 pointer-events-none' : ''}`}
                 >
                   <input
                     type="file"
@@ -387,7 +702,7 @@ export default function UploadPage() {
                     accept=".pdf"
                     multiple
                     onChange={handleFileSelect}
-                    disabled={isUploading}
+                    disabled={isProcessing}
                   />
                   <Upload
                     className={`h-12 w-12 mx-auto mb-4 ${
@@ -404,7 +719,7 @@ export default function UploadPage() {
                     type="button"
                     variant="outline"
                     onClick={() => document.getElementById('file-upload')?.click()}
-                    disabled={isUploading}
+                    disabled={isProcessing}
                   >
                     Browse Files
                   </Button>
@@ -434,7 +749,7 @@ export default function UploadPage() {
                           <button
                             type="button"
                             onClick={() => removeFile(index)}
-                            disabled={isUploading}
+                            disabled={isProcessing}
                             className="ml-2 p-1 hover:bg-slate-200 rounded transition-colors disabled:opacity-50"
                           >
                             <X className="h-4 w-4 text-slate-600" />
@@ -452,34 +767,35 @@ export default function UploadPage() {
               <CardContent className="pt-6">
                 <div className="space-y-4">
 
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <p className="text-sm text-slate-700">
-                      <strong>Note:</strong> When you submit, your documents will be securely uploaded and then analyzed by our AI assistant to generate a comprehensive valuation report.
-                    </p>
-                    <p className="text-sm text-slate-700 mt-2">
-                      <strong>Upload:</strong> 1-5 minutes (depending on file sizes)<br />
-                      <strong>AI Analysis:</strong> 10-15 minutes<br />
-                      <strong>Total time:</strong> ~15-20 minutes
-                    </p>
-                  </div>
-                  {isUploading && uploadProgress && (
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-                      <div className="flex items-center gap-3">
-                        <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
-                        <div className="flex-1">
-                          <p className="text-sm font-medium text-blue-900">{uploadProgress}</p>
-                          <div className="w-full bg-blue-200 rounded-full h-2 mt-2">
-                            <div className="bg-blue-600 h-2 rounded-full animate-pulse" style={{ width: '70%' }} />
-                          </div>
-                        </div>
-                      </div>
+                  {!isProcessing && (
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                      <p className="text-sm text-slate-700">
+                        <strong>Note:</strong> When you submit, your documents will be securely uploaded and then analyzed by our AI assistant to generate a comprehensive valuation report.
+                      </p>
+                      <p className="text-sm text-slate-700 mt-2">
+                        <strong>Upload:</strong> 1-5 minutes (depending on file sizes)<br />
+                        <strong>AI Analysis:</strong> 10-15 minutes<br />
+                        <strong>Total time:</strong> ~15-20 minutes
+                      </p>
                     </div>
                   )}
-                  <Button type="submit" className="w-full" size="lg" disabled={isUploading}>
-                    {isUploading ? (
+
+                  {/* Progress display */}
+                  {renderProgress()}
+
+                  <Button
+                    type="submit"
+                    className="w-full"
+                    size="lg"
+                    disabled={isProcessing}
+                  >
+                    {isProcessing ? (
                       <>
                         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                        {uploadProgress || 'Uploading...'}
+                        {analysisProgress?.phase === 'uploading' && 'Uploading...'}
+                        {analysisProgress?.phase === 'extracting' && 'Extracting...'}
+                        {analysisProgress?.phase === 'valuating' && 'Generating Report...'}
+                        {!analysisProgress && 'Processing...'}
                       </>
                     ) : (
                       <>

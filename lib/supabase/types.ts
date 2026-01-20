@@ -85,7 +85,7 @@ export interface Database {
           user_id: string
           document_id: string | null
           company_name: string
-          report_status: 'pending' | 'processing' | 'extracting' | 'extraction_complete' | 'extraction_partial' | 'extraction_failed' | 'valuating' | 'valuation_failed' | 'completed' | 'failed' | 'error'
+          report_status: 'pending' | 'processing' | 'extracting' | 'extraction_complete' | 'extraction_partial' | 'extraction_failed' | 'valuating' | 'valuation_failed' | 'completed' | 'failed' | 'error' | 'cancelled'
           report_data: Json | null
           executive_summary: string | null
           valuation_amount: number | null
@@ -101,7 +101,7 @@ export interface Database {
           user_id: string
           document_id?: string | null
           company_name: string
-          report_status?: 'pending' | 'processing' | 'extracting' | 'extraction_complete' | 'extraction_partial' | 'extraction_failed' | 'valuating' | 'valuation_failed' | 'completed' | 'failed' | 'error'
+          report_status?: 'pending' | 'processing' | 'extracting' | 'extraction_complete' | 'extraction_partial' | 'extraction_failed' | 'valuating' | 'valuation_failed' | 'completed' | 'failed' | 'error' | 'cancelled'
           report_data?: Json | null
           executive_summary?: string | null
           valuation_amount?: number | null
@@ -117,7 +117,7 @@ export interface Database {
           user_id?: string
           document_id?: string | null
           company_name?: string
-          report_status?: 'pending' | 'processing' | 'extracting' | 'extraction_complete' | 'extraction_partial' | 'extraction_failed' | 'valuating' | 'valuation_failed' | 'completed' | 'failed' | 'error'
+          report_status?: 'pending' | 'processing' | 'extracting' | 'extraction_complete' | 'extraction_partial' | 'extraction_failed' | 'valuating' | 'valuation_failed' | 'completed' | 'failed' | 'error' | 'cancelled'
           report_data?: Json | null
           executive_summary?: string | null
           valuation_amount?: number | null

@@ -158,6 +158,7 @@ export default function ReportDetailPage() {
       completed: { variant: 'outline', icon: <CheckCircle className="h-4 w-4 mr-1.5 text-green-600" /> },
       failed: { variant: 'destructive', icon: <XCircle className="h-4 w-4 mr-1.5" /> },
       error: { variant: 'destructive', icon: <XCircle className="h-4 w-4 mr-1.5" /> },
+      cancelled: { variant: 'secondary', icon: <XCircle className="h-4 w-4 mr-1.5" /> },
     };
 
     const { variant, icon } = variants[status] || variants.pending;
