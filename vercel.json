@@ -24,7 +24,7 @@
       "memory": 1024,
       "maxDuration": 300
     },
-    "app/api/reports/[reportId]/extract-documents/route.ts": {
+    "app/api/reports/[id]/extract-documents/route.ts": {
       "memory": 1024,
       "maxDuration": 300
     }

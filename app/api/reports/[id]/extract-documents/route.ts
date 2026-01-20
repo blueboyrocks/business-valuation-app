@@ -134,9 +134,9 @@ interface ExtractionResult {
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { reportId: string } }
+  { params }: { params: { id: string } }
 ) {
-  const reportId = params.reportId;
+  const reportId = params.id;
   console.log(`[EXTRACT] Starting document extraction for report ${reportId}`);
 
   try {
@@ -523,9 +523,9 @@ function sleep(ms: number): Promise<void> {
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { reportId: string } }
+  { params }: { params: { id: string } }
 ) {
-  const reportId = params.reportId;
+  const reportId = params.id;
 
   // Get extraction records for this report
   const { data: extractions, error } = await supabase
