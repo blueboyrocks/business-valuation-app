@@ -131,67 +131,88 @@ export async function processValuation(reportId: string): Promise<ProcessValuati
     console.log(`[VALUATION] Built financial context: ${combinedContext.length} characters`);
 
     // ========================================================================
-    // 5. Build Skills API request
+    // 5. Build Standard Messages API request
     // ========================================================================
     await updateProgress(reportId, 30, 'Initializing valuation model...');
 
-    // Get the skill/container ID
-    const skillId = process.env.BUSINESS_VALUATION_SKILL_ID;
-    if (!skillId) {
-      console.error('[VALUATION] BUSINESS_VALUATION_SKILL_ID not configured');
-      throw new Error('Business valuation skill not configured. Please set BUSINESS_VALUATION_SKILL_ID in environment variables.');
-    }
-    console.log('[VALUATION] Using business-valuation-expert skill:', skillId);
-
-    const systemPrompt = `You are an expert business valuation analyst using your business-valuation-expert skill knowledge.
+    const systemPrompt = `You are an expert business valuation analyst with deep expertise in small business valuations, financial analysis, and the application of standard valuation methodologies.
 
 You have been provided with PRE-EXTRACTED financial data from tax returns. The data has already been extracted and validated - you do NOT need to read PDFs.
 
 Your task is to perform a comprehensive business valuation analysis using the extracted data.
 
-Your analysis must include:
-1. **Company Overview**: Synthesize entity info from all documents
-2. **Financial Summary**: Compile multi-year revenue trends, profitability metrics, balance sheet summary
-3. **Normalized Earnings**: Calculate SDE and EBITDA with appropriate add-backs based on the extracted expense data
-4. **Industry Analysis**: Determine industry context based on NAICS code and business activity
-5. **Risk Assessment**: Score 10 risk factors (1-5 scale) based on the financial data patterns
-6. **Valuation Approaches**:
-   - Asset Approach: Calculate adjusted net asset value from balance sheet data
-   - Income Approach: Capitalize normalized earnings with built-up discount rate
-   - Market Approach: Apply industry-appropriate multiples to benefit stream
-7. **Valuation Conclusion**: Weight the approaches, apply DLOM, determine fair market value range
-8. **Narratives**: Generate detailed narrative sections (200-500 words each)
+## VALUATION METHODOLOGY
+
+You will apply three standard valuation approaches:
+
+### 1. Asset Approach (Adjusted Net Asset Value)
+- Start with book value of assets from the balance sheet
+- Adjust assets to fair market value (receivables, inventory, fixed assets)
+- Subtract liabilities at face value
+- Result: Adjusted Net Asset Value
+
+### 2. Income Approach (Capitalization of Earnings)
+- Calculate Seller's Discretionary Earnings (SDE):
+  SDE = Net Income + Owner Compensation + Depreciation + Interest + One-time expenses
+- Apply a capitalization rate based on risk (typically 20-33% for small businesses)
+- Result: SDE / Cap Rate = Indicated Value
+
+### 3. Market Approach (Comparable Transaction Method)
+- Apply industry-appropriate SDE multiples (typically 1.5x - 3.5x for small businesses)
+- Adjust multiple based on company-specific risk factors
+- Result: SDE × Multiple = Indicated Value
+
+### Risk Assessment Framework
+Score each factor 1-5 (1=low risk, 5=high risk):
+1. Revenue concentration (customer dependency)
+2. Owner dependency
+3. Industry outlook
+4. Revenue trend/stability
+5. Profitability margins
+6. Working capital adequacy
+7. Asset condition/age
+8. Competition level
+9. Economic sensitivity
+10. Geographic risk
+
+### Final Value Determination
+- Weight the three approaches (typically: Asset 15%, Income 40%, Market 45%)
+- Apply Discount for Lack of Marketability (DLOM) of 15-25%
+- Determine value range (typically +/- 15% of concluded value)
+
+## OUTPUT FORMAT
 
 Output your complete analysis as a single JSON object with this structure:
 {
-  "valuation_summary": { valuation_date, business_name, concluded_fair_market_value, value_range: {low, high}, confidence_level, primary_valuation_method },
-  "company_overview": { business_name, legal_entity_type, naics_code, industry, location, years_in_business, number_of_employees, business_description },
-  "financial_summary": { years_analyzed, revenue_trend: {amounts, growth_rates, cagr}, profitability: {gross_margin_avg, operating_margin_avg, net_margin_avg}, balance_sheet_summary },
-  "normalized_earnings": { sde_analysis, ebitda_analysis, benefit_stream_selection },
-  "industry_analysis": { industry_name, sector, naics_code, market_size, growth_outlook, competitive_landscape, key_success_factors, industry_multiples },
-  "risk_assessment": { overall_risk_score, risk_category, risk_factors: [{factor_name, weight, score, rationale}], multiple_adjustment },
-  "valuation_approaches": { asset_approach, income_approach, market_approach },
-  "valuation_conclusion": { approach_values, preliminary_value, discounts_applied, concluded_fair_market_value, value_range },
-  "narratives": { executive_summary, company_overview, financial_analysis, industry_analysis, risk_assessment, asset_approach_narrative, income_approach_narrative, market_approach_narrative, valuation_synthesis, assumptions_and_limiting_conditions, value_enhancement_recommendations },
-  "metadata": { analysis_timestamp, document_types_analyzed, years_of_data, data_quality_score, confidence_metrics }
+  "valuation_summary": { "valuation_date": "YYYY-MM-DD", "business_name": "", "concluded_fair_market_value": 0, "value_range": {"low": 0, "high": 0}, "confidence_level": "High/Medium/Low", "primary_valuation_method": "" },
+  "company_overview": { "business_name": "", "legal_entity_type": "", "naics_code": "", "industry": "", "location": "", "years_in_business": 0, "number_of_employees": 0, "business_description": "" },
+  "financial_summary": { "years_analyzed": [], "revenue_trend": {"amounts": [], "growth_rates": [], "cagr": 0}, "profitability": {"gross_margin_avg": 0, "operating_margin_avg": 0, "net_margin_avg": 0}, "balance_sheet_summary": {"total_assets": 0, "total_liabilities": 0, "book_value_equity": 0} },
+  "normalized_earnings": { "sde_analysis": {"years": [], "reported_net_income": [], "add_backs": {}, "total_add_backs": [], "annual_sde": [], "weighted_average_sde": 0}, "ebitda_analysis": {"years": [], "annual_ebitda": [], "weighted_average_ebitda": 0}, "benefit_stream_selection": {"selected_metric": "SDE", "selected_amount": 0, "rationale": ""} },
+  "industry_analysis": { "industry_name": "", "sector": "", "naics_code": "", "market_size": "", "growth_outlook": "", "competitive_landscape": "", "key_success_factors": [], "industry_multiples": {"sde_multiple_range": {"low": 0, "high": 0}, "revenue_multiple_range": {"low": 0, "high": 0}} },
+  "risk_assessment": { "overall_risk_score": 0, "risk_category": "Low/Below Average/Average/Above Average/High", "risk_factors": [{"factor_name": "", "weight": 0, "score": 0, "rationale": ""}], "multiple_adjustment": {"base_adjustment": 0, "rationale": ""} },
+  "valuation_approaches": { "asset_approach": {"methodology": "Adjusted Net Asset Value", "total_assets": 0, "asset_adjustments": [], "adjusted_assets": 0, "total_liabilities": 0, "adjusted_net_asset_value": 0}, "income_approach": {"methodology": "Capitalization of Earnings", "benefit_stream": "SDE", "benefit_stream_amount": 0, "capitalization_rate": {"risk_free_rate": 0, "equity_risk_premium": 0, "size_premium": 0, "company_specific_risk": 0, "capitalization_rate": 0}, "implied_multiple": 0, "indicated_value": 0}, "market_approach": {"methodology": "Guideline Transaction Method", "benefit_stream": "SDE", "benefit_stream_amount": 0, "base_multiple": 0, "risk_adjusted_multiple": 0, "selected_multiple": 0, "indicated_value": 0, "multiple_source": ""} },
+  "valuation_conclusion": { "approach_values": {"asset_approach": {"value": 0, "weight": 0.15, "weighted_value": 0}, "income_approach": {"value": 0, "weight": 0.40, "weighted_value": 0}, "market_approach": {"value": 0, "weight": 0.45, "weighted_value": 0}}, "preliminary_value": 0, "discounts_applied": [{"discount_type": "DLOM", "discount_percentage": 0, "discount_amount": 0, "rationale": ""}], "concluded_fair_market_value": 0, "value_range": {"low": 0, "high": 0, "range_rationale": ""} },
+  "narratives": { "executive_summary": "", "company_overview": "", "financial_analysis": "", "industry_analysis": "", "risk_assessment": "", "asset_approach_narrative": "", "income_approach_narrative": "", "market_approach_narrative": "", "valuation_synthesis": "", "assumptions_and_limiting_conditions": "", "value_enhancement_recommendations": "" },
+  "metadata": { "analysis_timestamp": "", "document_types_analyzed": [], "years_of_data": 0, "data_quality_score": "High/Medium/Low", "confidence_metrics": {"data_quality": "", "comparable_quality": "", "overall_confidence": ""} }
 }
 
-All monetary values should be whole numbers (no cents). Percentages as decimals (0.15 not 15%).`;
+IMPORTANT RULES:
+1. All monetary values should be whole numbers (no cents)
+2. Percentages as decimals (0.15 not 15%)
+3. Generate detailed narratives (200-500 words each section)
+4. Output ONLY the JSON object - no text before or after
+5. Ensure all calculations are mathematically consistent`;
 
     // ========================================================================
-    // 6. Call Claude Skills API
+    // 6. Call Claude Standard Messages API
     // ========================================================================
     await updateProgress(reportId, 40, 'Performing valuation analysis...');
-    console.log('[VALUATION] Calling Claude API with Skills...');
+    console.log('[VALUATION] Calling Claude Standard Messages API...');
     const startTime = Date.now();
 
-    const response = await anthropic.beta.messages.create({
+    const response = await anthropic.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 16000,
-      betas: [
-        'skills-2025-10-02'
-      ],
-      // Note: container field removed - Skills API doesn't need it
       system: systemPrompt,
       messages: [
         {
@@ -206,12 +227,12 @@ ${combinedContext}
 
 Based on this extracted financial data, please:
 1. Synthesize the financial information across all documents/years
-2. Calculate normalized SDE and EBITDA with appropriate add-backs
-3. Conduct risk assessment using the 10-factor framework
-4. Apply appropriate industry multiples based on the NAICS code
+2. Calculate normalized SDE (Seller's Discretionary Earnings) and EBITDA with appropriate add-backs
+3. Conduct risk assessment using the 10-factor framework (score each 1-5)
+4. Apply appropriate industry multiples based on the NAICS code and business type
 5. Calculate Asset, Income, and Market approach values
-6. Weight the approaches and apply appropriate discounts (DLOM)
-7. Generate complete valuation report with all narratives
+6. Weight the approaches (Asset 15%, Income 40%, Market 45%) and apply DLOM discount
+7. Generate complete valuation report with all detailed narratives
 
 Output as a single valid JSON object. Do not include any text before or after the JSON.`
         }
@@ -272,15 +293,14 @@ Output as a single valid JSON object. Do not include any text before or after th
 
     // Add pipeline metadata
     mappedOutput.pipeline_metadata = {
-      method: 'two-phase-skills-api',
+      method: 'two-phase-standard-api',
       phase: 2,
       model: 'claude-sonnet-4-20250514',
       processing_time_ms: processingTime,
       input_tokens: response.usage?.input_tokens || 0,
       output_tokens: response.usage?.output_tokens || 0,
       documents_analyzed: extractions.length,
-      skills_used: ['business-valuation-expert'],
-      pipeline_version: '4.0',
+      pipeline_version: '5.0',
     };
 
     // Store extraction references
