@@ -135,21 +135,12 @@ export async function processValuation(reportId: string): Promise<ProcessValuati
     // ========================================================================
     await updateProgress(reportId, 30, 'Initializing valuation model...');
 
-    // Build skills array - only need the valuation skill, no PDF skill
-    const skills: Array<{ type: 'anthropic' | 'custom'; skill_id: string; version: string }> = [];
-
-    // Require custom skill ID
+    // Get the skill/container ID
     const skillId = process.env.BUSINESS_VALUATION_SKILL_ID;
     if (!skillId) {
       console.error('[VALUATION] BUSINESS_VALUATION_SKILL_ID not configured');
       throw new Error('Business valuation skill not configured. Please set BUSINESS_VALUATION_SKILL_ID in environment variables.');
     }
-
-    skills.push({
-      type: 'custom',
-      skill_id: skillId,
-      version: 'latest'
-    });
     console.log('[VALUATION] Using business-valuation-expert skill:', skillId);
 
     const systemPrompt = `You are an expert business valuation analyst using your business-valuation-expert skill knowledge.
@@ -200,9 +191,7 @@ All monetary values should be whole numbers (no cents). Percentages as decimals 
       betas: [
         'skills-2025-10-02'
       ],
-      container: {
-        skills: skills as any
-      },
+      container: skillId,
       system: systemPrompt,
       messages: [
         {
