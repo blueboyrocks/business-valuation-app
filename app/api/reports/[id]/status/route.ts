@@ -7,14 +7,20 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// Lazy-initialize Supabase client to avoid build-time errors
+let supabase: SupabaseClient | null = null;
 
-// Initialize service role client for database access
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+function getSupabaseClient(): SupabaseClient {
+  if (!supabase) {
+    supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+  }
+  return supabase;
+}
 
 type ExtractionStatus = 'pending' | 'processing' | 'completed' | 'failed';
 type ValuationStatus = 'pending' | 'processing' | 'completed' | 'failed';
@@ -53,13 +59,17 @@ export async function GET(
     }
 
     const token = authHeader.replace('Bearer ', '');
-    const authSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
+    const authSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         },
-      },
-    });
+      }
+    );
 
     const { data: { user }, error: authError } = await authSupabase.auth.getUser();
 
@@ -75,7 +85,7 @@ export async function GET(
     // ========================================================================
     // 2. Fetch report data
     // ========================================================================
-    const { data: report, error: reportError } = await supabase
+    const { data: report, error: reportError } = await getSupabaseClient()
       .from('reports')
       .select('*')
       .eq('id', reportId)
@@ -92,7 +102,7 @@ export async function GET(
     // ========================================================================
     // 3. Fetch document count
     // ========================================================================
-    const { data: documents, error: docsError } = await supabase
+    const { data: documents, error: docsError } = await getSupabaseClient()
       .from('documents')
       .select('id')
       .eq('report_id', reportId);
@@ -102,7 +112,7 @@ export async function GET(
     // ========================================================================
     // 4. Fetch extraction status from document_extractions table
     // ========================================================================
-    const { data: extractions, error: extractError } = await supabase
+    const { data: extractions, error: extractError } = await getSupabaseClient()
       .from('document_extractions')
       .select('id, extraction_status')
       .eq('report_id', reportId);

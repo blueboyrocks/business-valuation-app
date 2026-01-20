@@ -5,19 +5,31 @@
  * from both the API route and directly from the orchestrator.
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 
-// Initialize Supabase client
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy-initialize clients to avoid build-time errors
+let supabase: SupabaseClient | null = null;
+let anthropic: Anthropic | null = null;
 
-// Initialize Anthropic client
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+function getSupabaseClient(): SupabaseClient {
+  if (!supabase) {
+    supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+  }
+  return supabase;
+}
+
+function getAnthropicClient(): Anthropic {
+  if (!anthropic) {
+    anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY!,
+    });
+  }
+  return anthropic;
+}
 
 // Retry configuration
 const MAX_RETRIES = 3;
@@ -147,7 +159,7 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
     // ========================================================================
     // 1. Validate report exists
     // ========================================================================
-    const { data: report, error: reportError } = await supabase
+    const { data: report, error: reportError } = await getSupabaseClient()
       .from('reports')
       .select('id, report_status, user_id')
       .eq('id', reportId)
@@ -161,7 +173,7 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
     // ========================================================================
     // 2. Fetch all documents for this report
     // ========================================================================
-    const { data: documents, error: docsError } = await supabase
+    const { data: documents, error: docsError } = await getSupabaseClient()
       .from('documents')
       .select('id, file_path, file_name, mime_type')
       .eq('report_id', reportId);
@@ -180,7 +192,7 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
     // ========================================================================
     // 3. Update report status
     // ========================================================================
-    await supabase
+    await getSupabaseClient()
       .from('reports')
       .update({
         report_status: 'extracting',
@@ -205,7 +217,7 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
       console.log(`[EXTRACT] Processing document ${docNumber}/${documents.length}: ${doc.file_name || doc.file_path}`);
 
       // Update progress
-      await supabase
+      await getSupabaseClient()
         .from('reports')
         .update({
           processing_progress: progressPercent - 10,
@@ -214,7 +226,7 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
         .eq('id', reportId);
 
       // Check if extraction already exists
-      const { data: existingExtraction } = await supabase
+      const { data: existingExtraction } = await getSupabaseClient()
         .from('document_extractions')
         .select('id, extraction_status')
         .eq('document_id', doc.id)
@@ -235,7 +247,7 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
       // Create or update extraction record as processing
       const extractionId = existingExtraction?.id;
       if (extractionId) {
-        await supabase
+        await getSupabaseClient()
           .from('document_extractions')
           .update({
             extraction_status: 'processing',
@@ -243,7 +255,7 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
           })
           .eq('id', extractionId);
       } else {
-        await supabase
+        await getSupabaseClient()
           .from('document_extractions')
           .insert({
             document_id: doc.id,
@@ -259,7 +271,7 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
       if (result.success) {
         successCount++;
         // Update extraction record with data
-        await supabase
+        await getSupabaseClient()
           .from('document_extractions')
           .update({
             extracted_data: result.extractedData,
@@ -271,7 +283,7 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
       } else {
         failCount++;
         // Update extraction record with error
-        await supabase
+        await getSupabaseClient()
           .from('document_extractions')
           .update({
             extraction_status: 'failed',
@@ -282,7 +294,7 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
       }
 
       // Update progress
-      await supabase
+      await getSupabaseClient()
         .from('reports')
         .update({
           processing_progress: progressPercent,
@@ -305,7 +317,7 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
       ? `Successfully extracted ${successCount} document(s)`
       : `Extracted ${successCount} of ${documents.length} documents (${failCount} failed)`;
 
-    await supabase
+    await getSupabaseClient()
       .from('reports')
       .update({
         report_status: finalStatus,
@@ -340,7 +352,7 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
     const errorMessage = error instanceof Error ? error.message : 'Unknown error during extraction';
     console.error('[EXTRACT] Error:', errorMessage);
 
-    await supabase
+    await getSupabaseClient()
       .from('reports')
       .update({
         report_status: 'extraction_failed',
@@ -377,7 +389,7 @@ async function extractDocumentWithRetry(
       console.log(`[EXTRACT] Loaded PDF: ${pdfBuffer.length} bytes`);
 
       // Call Claude API
-      const response = await anthropic.messages.create({
+      const response = await getAnthropicClient().messages.create({
         model: 'claude-sonnet-4-20250514',
         max_tokens: 4096,
         system: EXTRACTION_SYSTEM_PROMPT,
@@ -460,13 +472,13 @@ async function extractDocumentWithRetry(
 async function downloadDocument(filePath: string): Promise<Buffer> {
   const cleanPath = filePath.replace(/^documents\//, '');
 
-  const { data, error } = await supabase.storage
+  const { data, error } = await getSupabaseClient().storage
     .from('documents')
     .download(cleanPath);
 
   if (error) {
     // Try with original path
-    const { data: data2, error: error2 } = await supabase.storage
+    const { data: data2, error: error2 } = await getSupabaseClient().storage
       .from('documents')
       .download(filePath);
 

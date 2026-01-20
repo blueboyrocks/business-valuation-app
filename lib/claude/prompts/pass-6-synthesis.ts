@@ -1,1134 +1,766 @@
-// Pass 6: Final Synthesis and Report Generation
-// Combines all passes into complete valuation report with narratives
+/**
+ * Pass 6: Final Synthesis Prompt
+ *
+ * This is the final pass that synthesizes all previous outputs into
+ * the complete valuation report with full narratives for PDF generation.
+ */
 
-import {
-  PassOutput,
-  Pass6Analysis,
-  Pass1Analysis,
-  Pass2Analysis,
-  Pass3Analysis,
-  Pass4Analysis,
-  Pass5Analysis,
-  FinalValuationOutput,
-  PASS_CONFIGS
-} from '../types';
+export const pass6Prompt = `You are a Certified Valuation Analyst completing the FINAL synthesis of a comprehensive business valuation report. Your output will be used to generate the official PDF report.
 
-// ============================================================================
-// OUTPUT SCHEMA (Matches PDF generation requirements)
-// ============================================================================
+## YOUR MISSION
 
-export const OUTPUT_SCHEMA = `
-## COMPLETE OUTPUT SCHEMA
+Synthesize all previous pass analysis into a complete, professional valuation report. This is the FINAL deliverable - every field must be populated with substantive content.
 
-Your output must exactly match this JSON structure for PDF generation:
+---
 
-\`\`\`json
-{
-  "valuation_summary": {
-    "company_name": "string",
-    "valuation_date": "YYYY-MM-DD",
-    "report_date": "YYYY-MM-DD",
-    "prepared_by": "AI-Assisted Valuation Analysis",
-    "standard_of_value": "Fair Market Value",
-    "premise_of_value": "Going Concern",
-    "concluded_value": 0,
-    "value_range_low": 0,
-    "value_range_high": 0,
-    "confidence_level": "High | Medium | Low"
-  },
+## STEP 1: CALCULATE WEIGHTED AVERAGE VALUE
 
-  "company_overview": {
-    "business_name": "string",
-    "legal_entity_type": "string (S-Corp, C-Corp, LLC, Partnership, Sole Proprietorship)",
-    "industry": "string",
-    "naics_code": "string",
-    "years_in_business": 0,
-    "location": "string (City, State)",
-    "number_of_employees": 0,
-    "business_description": "string (2-3 sentences)",
-    "products_services": ["string"],
-    "key_customers": "string (description, not names)",
-    "competitive_advantages": ["string"],
-    "ownership_structure": "string"
-  },
+Combine the three valuation approaches:
 
-  "financial_summary": {
-    "fiscal_year_end": "string (e.g., December 31)",
-    "years_analyzed": [2021, 2022, 2023],
-    "revenue_trend": {
-      "amounts": [0, 0, 0],
-      "growth_rates": [0, 0],
-      "trend_description": "Increasing | Stable | Decreasing | Volatile"
-    },
-    "profitability": {
-      "gross_margin_avg": 0,
-      "operating_margin_avg": 0,
-      "net_margin_avg": 0
-    },
-    "balance_sheet_summary": {
-      "total_assets": 0,
-      "total_liabilities": 0,
-      "book_value_equity": 0,
-      "working_capital": 0,
-      "debt_to_equity_ratio": 0
-    },
-    "cash_flow_indicators": {
-      "operating_cash_flow_estimate": 0,
-      "capex_requirements": "Low | Moderate | High",
-      "working_capital_needs": "Low | Moderate | High"
-    }
-  },
-
-  "normalized_earnings": {
-    "sde_analysis": {
-      "years": [2021, 2022, 2023],
-      "reported_net_income": [0, 0, 0],
-      "total_add_backs": [0, 0, 0],
-      "annual_sde": [0, 0, 0],
-      "weighted_average_sde": 0,
-      "add_back_categories": [
-        {
-          "category": "string",
-          "description": "string",
-          "amount": 0,
-          "justification": "string"
-        }
-      ]
-    },
-    "ebitda_analysis": {
-      "years": [2021, 2022, 2023],
-      "annual_ebitda": [0, 0, 0],
-      "weighted_average_ebitda": 0,
-      "ebitda_margin_avg": 0
-    },
-    "benefit_stream_selection": {
-      "selected_metric": "SDE | EBITDA",
-      "selected_amount": 0,
-      "selection_rationale": "string"
-    }
-  },
-
-  "industry_analysis": {
-    "industry_name": "string",
-    "sector": "string",
-    "market_size": "string (e.g., '$50B nationally')",
-    "growth_outlook": "Strong Growth | Moderate Growth | Stable | Declining",
-    "competitive_landscape": "Fragmented | Moderately Concentrated | Highly Concentrated",
-    "key_success_factors": ["string"],
-    "industry_risks": ["string"],
-    "industry_multiples": {
-      "sde_multiple_range": { "low": 0, "median": 0, "high": 0 },
-      "ebitda_multiple_range": { "low": 0, "median": 0, "high": 0 },
-      "revenue_multiple_range": { "low": 0, "median": 0, "high": 0 }
-    },
-    "comparable_transactions_summary": "string"
-  },
-
-  "risk_assessment": {
-    "overall_risk_score": 0,
-    "risk_category": "Low | Below Average | Average | Above Average | Elevated | High | Very High",
-    "risk_factors": [
-      {
-        "factor": "string",
-        "weight": 0,
-        "score": 0,
-        "weighted_score": 0,
-        "assessment": "string"
-      }
-    ],
-    "key_risks": ["string"],
-    "risk_mitigants": ["string"],
-    "multiple_adjustment": {
-      "base_adjustment": 0,
-      "rationale": "string"
-    }
-  },
-
-  "valuation_approaches": {
-    "asset_approach": {
-      "methodology": "Adjusted Net Asset Value",
-      "book_value_equity": 0,
-      "asset_adjustments": 0,
-      "liability_adjustments": 0,
-      "adjusted_net_asset_value": 0,
-      "weight_in_conclusion": 0,
-      "applicability_assessment": "string"
-    },
-    "income_approach": {
-      "methodology": "Capitalization of Earnings",
-      "benefit_stream": "SDE | EBITDA",
-      "benefit_stream_amount": 0,
-      "capitalization_rate": {
-        "risk_free_rate": 0,
-        "equity_risk_premium": 0,
-        "size_premium": 0,
-        "industry_premium": 0,
-        "company_specific_premium": 0,
-        "total_discount_rate": 0,
-        "long_term_growth_rate": 0,
-        "capitalization_rate": 0
-      },
-      "indicated_value": 0,
-      "implied_multiple": 0,
-      "weight_in_conclusion": 0
-    },
-    "market_approach": {
-      "methodology": "Guideline Transaction Method",
-      "multiple_type": "SDE Multiple | EBITDA Multiple",
-      "benefit_stream_amount": 0,
-      "selected_multiple": 0,
-      "multiple_source": "string",
-      "adjustments_applied": [
-        {
-          "adjustment_type": "string",
-          "adjustment_amount": 0,
-          "rationale": "string"
-        }
-      ],
-      "adjusted_multiple": 0,
-      "indicated_value": 0,
-      "weight_in_conclusion": 0
-    }
-  },
-
-  "valuation_conclusion": {
-    "approach_values": {
-      "asset_approach": { "value": 0, "weight": 0, "weighted_value": 0 },
-      "income_approach": { "value": 0, "weight": 0, "weighted_value": 0 },
-      "market_approach": { "value": 0, "weight": 0, "weighted_value": 0 }
-    },
-    "preliminary_value": 0,
-    "discounts_applied": [
-      {
-        "discount_type": "Discount for Lack of Marketability (DLOM)",
-        "discount_percentage": 0,
-        "discount_amount": 0,
-        "rationale": "string"
-      }
-    ],
-    "total_discounts": 0,
-    "concluded_fair_market_value": 0,
-    "value_range": {
-      "low": 0,
-      "mid": 0,
-      "high": 0,
-      "range_rationale": "string"
-    },
-    "per_share_value": null,
-    "valuation_date": "YYYY-MM-DD"
-  },
-
-  "narratives": {
-    "executive_summary": "string (800-1,200 words)",
-    "company_overview": "string (500-800 words)",
-    "financial_analysis": "string (1,000-1,500 words)",
-    "industry_analysis": "string (600-800 words)",
-    "risk_assessment": "string (700-1,000 words)",
-    "asset_approach_narrative": "string (400-500 words)",
-    "income_approach_narrative": "string (400-500 words)",
-    "market_approach_narrative": "string (400-500 words)",
-    "valuation_synthesis": "string (600-800 words)",
-    "assumptions_and_limiting_conditions": "string (400-600 words)",
-    "value_enhancement_recommendations": "string (500-700 words)"
-  },
-
-  "supporting_schedules": {
-    "add_back_schedule": [
-      {
-        "year": 0,
-        "category": "string",
-        "description": "string",
-        "amount": 0,
-        "tax_return_line": "string",
-        "justification": "string"
-      }
-    ],
-    "capitalization_rate_buildup": {
-      "component": "string",
-      "rate": 0,
-      "source": "string"
-    }[],
-    "multiple_comparison": {
-      "source": "string",
-      "multiple_type": "string",
-      "multiple": 0,
-      "relevance": "string"
-    }[]
-  },
-
-  "appendices": {
-    "data_sources": ["string"],
-    "documents_reviewed": ["string"],
-    "valuation_standards_applied": ["string"],
-    "limiting_conditions": ["string"],
-    "certification": "string"
-  },
-
-  "metadata": {
-    "report_version": "1.0",
-    "generation_date": "YYYY-MM-DD",
-    "model_version": "claude-3-opus",
-    "pass_count": 6,
-    "confidence_metrics": {
-      "data_quality": "High | Medium | Low",
-      "comparable_quality": "High | Medium | Low",
-      "overall_confidence": "High | Medium | Low"
-    }
-  }
-}
 \`\`\`
-`;
+Preliminary Value = (Asset Approach × Asset Weight)
+                  + (Income Approach × Income Weight)
+                  + (Market Approach × Market Weight)
 
-// ============================================================================
-// DISCOUNT GUIDANCE
-// ============================================================================
+Example:
+Asset Approach:   $200,000 × 0.20 = $40,000
+Income Approach:  $850,000 × 0.40 = $340,000
+Market Approach:  $625,000 × 0.40 = $250,000
+Preliminary Value: $630,000
+\`\`\`
 
-export const DISCOUNT_GUIDANCE = `
-## DISCOUNT FOR LACK OF MARKETABILITY (DLOM)
+Verify weights sum to 100%.
 
-DLOM applies to privately-held business interests that cannot be readily sold on a public market.
+---
 
-### DLOM Guidelines by Business Type:
+## STEP 2: APPLY DISCOUNTS AND PREMIUMS
 
-| Business Characteristics | Typical DLOM Range |
-|-------------------------|-------------------|
-| Strong earnings, good records, low risk | 15-20% |
-| Average business, moderate risk | 20-25% |
-| Weak earnings, higher risk, key person dependent | 25-35% |
-| Very small, limited marketability | 30-40% |
+### DLOM (Discount for Lack of Marketability)
 
-### Factors Increasing DLOM:
-- Smaller transaction size
-- Limited buyer pool
-- Key person dependence
-- Weak financial records
-- Industry in decline
-- Geographic limitations
-- Customer concentration
+Applies to privately-held business interests that cannot be readily sold.
 
-### Factors Decreasing DLOM:
-- Strong cash flow
-- Transferable business model
-- Multiple potential buyers
-- Clean financial records
-- Growing industry
-- Franchise or proven concept
-- Diverse customer base
+| Business Characteristics | DLOM Range |
+|-------------------------|------------|
+| Strong earnings, good records, low risk | 10-15% |
+| Average business, moderate risk | 15-20% |
+| Higher risk, key person dependent | 20-25% |
+| Very small, limited marketability | 25-35% |
+
+**Standard: Use 15% unless specific factors warrant adjustment.**
+
+### DLOC (Discount for Lack of Control)
+
+- Only applies when valuing a MINORITY interest
+- NOT applicable for 100% ownership (which is what we're valuing)
+- Typical range: 15-30% when applicable
 
 ### Application:
 
 \`\`\`
-Preliminary Value (before discounts): $1,000,000
-DLOM (20%): -$200,000
-Concluded Fair Market Value: $800,000
+Preliminary Value:     $630,000
+Less: DLOM (15%):      ($94,500)
+Concluded FMV:         $535,500 → Round to $535,000
 \`\`\`
 
-**Important**: DLOM is applied AFTER the weighted average of approaches, not to each approach individually.
-`;
+---
 
-// ============================================================================
-// VALUE RANGE GUIDANCE
-// ============================================================================
+## STEP 3: WORKING CAPITAL ADJUSTMENT
 
-export const VALUE_RANGE_GUIDANCE = `
-## VALUE RANGE DETERMINATION
-
-A concluded value should include a reasonable range to reflect inherent uncertainty.
-
-### Standard Range Guidelines:
-
-| Confidence Level | Typical Range |
-|-----------------|---------------|
-| High confidence (strong data, clear comparables) | ±10-15% |
-| Medium confidence (adequate data, some uncertainty) | ±15-20% |
-| Low confidence (limited data, significant uncertainty) | ±20-30% |
-
-### Calculating the Range:
+Compare actual working capital to normal operating requirements:
 
 \`\`\`
-Concluded Mid Value: $850,000
-Range Factor: ±18%
+Normal Working Capital = 1-2 months of revenue (industry dependent)
+Actual Working Capital = Current Assets - Current Liabilities
+Adjustment = Actual - Normal
 
-Value Range Low: $850,000 × (1 - 0.18) = $697,000 → Round to $700,000
-Value Range High: $850,000 × (1 + 0.18) = $1,003,000 → Round to $1,000,000
-
-Final Range: $700,000 to $1,000,000
+Example:
+- Annual Revenue: $1,200,000
+- Normal WC (1.5 months): $150,000
+- Actual WC: $180,000
+- Adjustment: +$30,000 (excess working capital adds to value)
 \`\`\`
 
-### Factors Affecting Range Width:
-- Quality and completeness of financial data
-- Availability of comparable transactions
-- Stability of earnings
-- Industry volatility
-- Company-specific risks
-- Economic conditions
-`;
-
-// ============================================================================
-// MAIN PROMPT
-// ============================================================================
-
-export const pass6Prompt = `You are a Certified Valuation Analyst (CVA) completing the final synthesis of a comprehensive business valuation report. Your task is to combine all previous analysis into a cohesive, professional valuation report with complete narratives.
-
-## YOUR ROLE
-
-You are producing the final deliverable: a complete Fair Market Value determination with supporting narratives suitable for a $3,000-$5,000 professional valuation report. This output will be used to generate a PDF report.
-
-Your output must be:
-- **Consistent**: All numbers must match across sections
-- **Traceable**: Every conclusion must link to supporting analysis
-- **Professional**: Objective, third-person language throughout
-- **Complete**: All required sections populated with substantive content
-- **Defensible**: Conclusions supported by evidence and methodology
+If actual working capital significantly exceeds or falls short of normal operating needs, adjust the concluded value accordingly.
 
 ---
 
-${DISCOUNT_GUIDANCE}
+## STEP 4: DETERMINE FINAL VALUE AND RANGE
+
+### Final Value Calculation:
+
+\`\`\`
+Final Value = (Preliminary Value × (1 - DLOM)) + WC Adjustment
+\`\`\`
+
+### Value Range:
+
+| Confidence Level | Range |
+|-----------------|-------|
+| High (strong data, clear comparables) | ±10-15% |
+| Moderate (adequate data, some uncertainty) | ±15-20% |
+| Low (limited data, significant uncertainty) | ±20-25% |
+
+### Sanity Checks:
+
+1. Concluded Value ≥ Adjusted Net Asset Value (floor)
+2. Value Range: Low < Concluded < High
+3. Value-to-Revenue ratio: typically 0.3x to 1.5x
+4. Implied payback: typically 3-5 years
 
 ---
 
-${VALUE_RANGE_GUIDANCE}
+## STEP 5: WRITE ALL NARRATIVES
+
+Generate comprehensive narratives totaling 7,000-12,000 words.
+
+### Required Narratives with Word Targets:
+
+| Section | Words | Content Focus |
+|---------|-------|---------------|
+| **Executive Summary** | 800-1,200 | Complete overview: purpose, company, value conclusion, methodology summary, key drivers, risks |
+| **Company Overview** | 500-800 | Business description, history, operations, products/services, market position |
+| **Financial Analysis** | 1,000-1,500 | Deep dive: revenue trends, margins, balance sheet, cash flow, earnings normalization, benchmarks |
+| **Industry Analysis** | 600-800 | Market context, growth trends, competition, success factors (leverage Pass 2) |
+| **Risk Assessment** | 700-1,000 | Risk factors, scores, mitigants, impact on value (leverage Pass 4) |
+| **Asset Approach** | 400-500 | Methodology, book value, adjustments, weight rationale |
+| **Income Approach** | 400-500 | Methodology, benefit stream, cap rate buildup, weight rationale |
+| **Market Approach** | 400-500 | Methodology, multiples, adjustments, weight rationale |
+| **Valuation Synthesis** | 600-800 | Reconciliation, weighting rationale, DLOM application, final value |
+| **Assumptions & Limitations** | 400-600 | Standard caveats, FMV definition, reliance statements, purpose restrictions |
+| **Value Enhancement** | 500-700 | Actionable recommendations to improve value |
+
+### Narrative Quality Requirements:
+
+- Professional, third-person language
+- Specific numbers and percentages
+- Cite data sources (e.g., "As shown in the 2023 tax return...")
+- Connect analysis to value conclusions
+- No placeholder text - every sentence must be substantive
 
 ---
 
-# NARRATIVE REQUIREMENTS
+## STEP 6: QUALITY CHECKS
 
-You must generate the following narratives. Each must be substantive, professional, and consistent with the numerical analysis.
+Before finalizing, verify:
 
-## 1. Executive Summary (800-1,200 words)
-
-The executive summary should:
-- State the purpose and scope of the valuation
-- Identify the subject company and valuation date
-- Summarize the business profile and industry context
-- Present key financial metrics (revenue, SDE/EBITDA)
-- State the concluded Fair Market Value and range
-- Highlight the primary value drivers
-- Note key risks and considerations
-- Provide a brief methodology overview
-- State key assumptions and limiting conditions
-
-Structure:
-1. Opening paragraph: Purpose, company, and concluded value
-2. Business overview: What the company does, its market position
-3. Financial highlights: Revenue, earnings trends, key metrics
-4. Valuation summary: Three approaches and weighting rationale
-5. Value drivers: What supports the value
-6. Risk factors: What could impact value
-7. Conclusion: Final value statement with range
-
-## 2. Company Overview (500-800 words)
-
-Cover:
-- Business history and development
-- Products/services offered
-- Target market and customer base
-- Competitive advantages
-- Operational highlights
-- Management and workforce
-- Facilities and equipment
-- Growth trajectory
-
-## 3. Financial Analysis (1,000-1,500 words)
-
-Cover:
-- Revenue analysis (trends, drivers, sustainability)
-- Profitability analysis (gross margin, operating margin, net margin)
-- Balance sheet analysis (assets, liabilities, working capital)
-- Cash flow assessment
-- Earnings normalization summary (key add-backs)
-- Comparison to industry benchmarks
-- Financial strengths and weaknesses
-- Quality of earnings assessment
-
-Include specific numbers with year-over-year comparisons.
-
-## 4. Industry Analysis (600-800 words)
-
-Cover:
-- Industry definition and scope
-- Market size and growth trends
-- Competitive landscape
-- Key success factors
-- Industry risks and challenges
-- Regulatory environment
-- Technology and disruption factors
-- Outlook and future prospects
-- How the subject company compares to industry
-
-## 5. Risk Assessment (700-1,000 words)
-
-Cover:
-- Risk assessment methodology
-- Analysis of each major risk factor
-- Quantification of overall risk score
-- Key risk factors identified
-- Risk mitigants present
-- Impact on valuation multiples
-- Deal structure considerations
-- Comparison to typical industry risks
-
-## 6. Asset Approach Narrative (400-500 words)
-
-Cover:
-- Methodology description (Adjusted Net Asset Value)
-- Starting point: book value
-- Key asset adjustments with rationale
-- Key liability adjustments if any
-- Calculated adjusted net asset value
-- Applicability to this business
-- Weight assigned and why
-- Limitations of this approach for the subject
-
-## 7. Income Approach Narrative (400-500 words)
-
-Cover:
-- Methodology description (Capitalization of Earnings)
-- Benefit stream selected (SDE vs EBITDA) and why
-- Capitalization rate buildup explanation
-- Discussion of each rate component
-- Calculation of indicated value
-- Implied multiple and reasonableness check
-- Weight assigned and why
-
-## 8. Market Approach Narrative (400-500 words)
-
-Cover:
-- Methodology description (Guideline Transaction Method)
-- Comparable transaction data sources
-- Selected multiple and basis
-- Adjustments applied for company-specific factors
-- Calculation of indicated value
-- Comparison to other approaches
-- Weight assigned and why
-- Market conditions affecting multiples
-
-## 9. Valuation Synthesis (600-800 words)
-
-Cover:
-- Summary of values from each approach
-- Weighting rationale
-- Reconciliation to preliminary value
-- Application of DLOM
-- Final concluded value
-- Value range determination
-- Sanity checks performed
-- Comparison to rules of thumb
-- Final value statement
-
-## 10. Assumptions and Limiting Conditions (400-600 words)
-
-Must include:
-- Definition of Fair Market Value used
-- Going concern assumption
-- Reliance on provided information
-- No audit or verification performed
-- Effective date limitations
-- Purpose and use restrictions
-- Hypothetical conditions if any
-- Limiting conditions standard for valuations
-
-## 11. Value Enhancement Recommendations (500-700 words)
-
-Provide actionable recommendations:
-- Operational improvements
-- Financial record improvements
-- Risk reduction strategies
-- Growth opportunities
-- Marketability improvements
-- Timeline for implementing changes
-- Potential value impact of improvements
+✓ All numbers are mathematically consistent
+✓ Weights sum to exactly 100%
+✓ DLOM calculation is correct
+✓ Value range brackets the concluded value
+✓ All narratives meet minimum word counts
+✓ Cap rate components sum correctly
+✓ Implied multiple = 1 / Cap rate
+✓ Same earnings figure used in Income and Market approaches
+✓ Concluded value appears consistently throughout
 
 ---
 
-# CONSISTENCY REQUIREMENTS
-
-**Critical**: The following must be mathematically consistent:
-
-1. **Earnings figures** must match across:
-   - Normalized earnings section
-   - Income approach benefit stream
-   - Market approach benefit stream
-   - Executive summary
-
-2. **Approach values and weights**:
-   - Weights must sum to 100%
-   - Weighted values must equal value × weight
-   - Sum of weighted values = preliminary value
-
-3. **Final value calculation**:
-   - Preliminary value - DLOM = Concluded FMV
-   - Value range calculated from concluded FMV
-   - All value mentions must match
-
-4. **Capitalization rate**:
-   - Components must sum correctly
-   - Cap rate in narrative must match calculation
-   - Implied multiple = 1 / cap rate
-
-5. **Risk score**:
-   - Weighted scores must sum correctly
-   - Risk category must match score range
-   - Multiple adjustment must align with risk
-
----
-
-# OUTPUT REQUIREMENTS
-
-${OUTPUT_SCHEMA}
-
----
-
-# IMPORTANT GUIDELINES
-
-1. **No placeholder text**: Every field must have real, specific content
-2. **No inconsistencies**: Triple-check all numbers match
-3. **Professional tone**: Third-person, objective language
-4. **Specific details**: Use actual numbers, not vague statements
-5. **Cite sources**: Reference where data came from
-6. **Round appropriately**: Final values to nearest $5,000 or $10,000
-7. **Complete narratives**: Meet minimum word counts
-8. **Logical flow**: Each section should build on previous
-
----
-
-Synthesize all previous pass analysis into the complete valuation report output. Ensure all sections are populated with substantive, consistent content.`;
-
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
-/**
- * Create comprehensive summary of all previous passes
- */
-export function createFinalSynthesisSummary(
-  pass1: Pass1Analysis,
-  pass2: Pass2Analysis,
-  pass3: Pass3Analysis,
-  pass4: Pass4Analysis,
-  pass5: Pass5Analysis
-): string {
-  // Extract key data points from Pass 1
-  const companyName = pass1.company_info.legal_name || 'Subject Company';
-  const industry = pass1.industry_classification.detected_industry;
-  const naicsCode = pass1.industry_classification.naics_code;
-  const entityType = pass1.company_info.entity_type;
-
-  // Get financial data from Pass 1
-  const years = Object.keys(pass1.financial_data).sort();
-  const mostRecentYear = years[years.length - 1] || 'Unknown';
-  const mostRecentData = pass1.financial_data[mostRecentYear];
-  const mostRecentRevenue = mostRecentData?.revenue?.net_revenue || 0;
-  const totalAssets = mostRecentData?.balance_sheet?.assets?.total_assets || 0;
-  const totalLiabilities = mostRecentData?.balance_sheet?.liabilities?.total_liabilities || 0;
-  const bookEquity = totalAssets - totalLiabilities;
-  const grossProfit = mostRecentData?.gross_profit || 0;
-  const grossMargin = mostRecentRevenue > 0 ? (grossProfit / mostRecentRevenue) : 0;
-
-  // Extract earnings data from Pass 3
-  const weightedSDE = pass3.sde_calculation.weighted_average_sde.weighted_sde;
-  const weightedEBITDA = pass3.ebitda_calculation.weighted_average_ebitda;
-  const recommendedStream = pass3.earnings_quality_assessment.adjustments_confidence === 'High' ? 'SDE' : 'EBITDA';
-
-  // Extract risk data from Pass 4
-  const riskScore = pass4.overall_risk_score;
-  const riskCategory = pass4.risk_category;
-
-  // Extract valuation data from Pass 5
-  const assetValue = pass5.asset_approach.adjusted_net_asset_value;
-  const incomeValue = pass5.income_approach.income_approach_value;
-  const marketValue = pass5.market_approach.market_approach_value;
-  const concludedValue = pass5.valuation_synthesis.final_valuation.concluded_value;
-
-  return `
-# COMPLETE VALUATION DATA FOR FINAL SYNTHESIS
-
-## COMPANY PROFILE (Pass 1)
-
-| Field | Value |
-|-------|-------|
-| Company Name | ${companyName} |
-| Entity Type | ${entityType} |
-| Industry | ${industry} |
-| NAICS Code | ${naicsCode} |
-| Document Type | ${pass1.document_info.document_type} |
-| State | ${pass1.company_info.address.state || 'Not specified'} |
-
-## FINANCIAL DATA (Pass 1)
-
-### Revenue History
-${years.map(year => {
-  const data = pass1.financial_data[year];
-  return `- ${year}: $${(data?.revenue?.net_revenue || 0).toLocaleString()}`;
-}).join('\n')}
-
-### Most Recent Year Financial Summary (${mostRecentYear})
-- Revenue: $${mostRecentRevenue.toLocaleString()}
-- Gross Profit Margin: ${(grossMargin * 100).toFixed(1)}%
-- Total Assets: $${totalAssets.toLocaleString()}
-- Total Liabilities: $${totalLiabilities.toLocaleString()}
-- Book Value of Equity: $${bookEquity.toLocaleString()}
-
----
-
-## INDUSTRY ANALYSIS (Pass 2)
-
-### Industry Overview
-- Industry: ${pass2.industry_overview.industry_name}
-- Market Size: ${pass2.industry_overview.market_size}
-- Growth Outlook: ${pass2.industry_overview.growth_outlook}
-
-### Industry Multiples
-- SDE Multiple Range: ${pass2.industry_benchmarks.sde_multiple_range.low}x - ${pass2.industry_benchmarks.sde_multiple_range.high}x (median: ${pass2.industry_benchmarks.sde_multiple_range.median}x)
-- EBITDA Multiple Range: ${pass2.industry_benchmarks.ebitda_multiple_range.low}x - ${pass2.industry_benchmarks.ebitda_multiple_range.high}x (median: ${pass2.industry_benchmarks.ebitda_multiple_range.median}x)
-
-### Competitive Position
-- Relative Performance: ${pass2.company_positioning.relative_performance}
-- Competitive Advantages: ${pass2.company_positioning.competitive_advantages.join(', ') || 'None identified'}
-
-### Industry Narrative (from Pass 2)
-${pass2.industry_narrative}
-
----
-
-## NORMALIZED EARNINGS (Pass 3)
-
-### SDE Analysis
-${pass3.sde_calculation.periods.map(p =>
-  `- ${p.period}: $${p.sde.toLocaleString()} (${(p.sde_margin * 100).toFixed(1)}% margin)`
-).join('\n')}
-- **Weighted Average SDE: $${weightedSDE.toLocaleString()}**
-
-### EBITDA Analysis
-${pass3.ebitda_calculation.periods.map(p =>
-  `- ${p.period}: $${p.adjusted_ebitda.toLocaleString()} (${(p.ebitda_margin * 100).toFixed(1)}% margin)`
-).join('\n')}
-- **Weighted Average EBITDA: $${weightedEBITDA.toLocaleString()}**
-
-### Key Add-backs
-${pass3.sde_calculation.periods[0]?.adjustments.slice(0, 8).map(ab =>
-  `- ${ab.category}: $${ab.amount.toLocaleString()} - ${ab.justification}`
-).join('\n') || 'None identified'}
-
-### Recommended Benefit Stream: ${recommendedStream}
-Amount: $${(recommendedStream === 'SDE' ? weightedSDE : weightedEBITDA).toLocaleString()}
-Earnings Quality: ${pass3.earnings_quality_assessment.consistency} consistency, ${pass3.earnings_quality_assessment.trend} trend
-
-### Earnings Narrative (from Pass 3)
-${pass3.earnings_narrative}
-
----
-
-## RISK ASSESSMENT (Pass 4)
-
-### Overall Risk Score: ${riskScore.toFixed(2)} (${riskCategory})
-
-### Risk Factor Scores
-| Factor | Weight | Score | Rating |
-|--------|--------|-------|--------|
-${pass4.risk_factors.map(rf =>
-  `| ${rf.factor_name} | ${(rf.weight * 100).toFixed(0)}% | ${rf.score}/5 | ${rf.rating} |`
-).join('\n')}
-
-### Multiple Adjustment
-- Base Industry Multiple: ${pass4.risk_adjusted_multiple.base_industry_multiple.toFixed(2)}x
-- Total Risk Adjustment: ${pass4.risk_adjusted_multiple.total_risk_adjustment > 0 ? '+' : ''}${pass4.risk_adjusted_multiple.total_risk_adjustment.toFixed(2)}x
-- Adjusted Multiple: ${pass4.risk_adjusted_multiple.adjusted_multiple.toFixed(2)}x
-- Rationale: ${pass4.risk_adjusted_multiple.adjustment_rationale}
-
-### Risk Narrative (from Pass 4)
-${pass4.risk_narrative}
-
-### Key Risks
-${pass4.company_specific_risks.slice(0, 5).map(r => `- ${r.risk} (${r.severity})`).join('\n')}
-
-### Key Strengths
-${pass4.company_specific_strengths.slice(0, 5).map(s => `- ${s.strength} (${s.impact})`).join('\n')}
-
----
-
-## VALUATION APPROACHES (Pass 5)
-
-### Asset Approach
-- Methodology: ${pass5.asset_approach.methodology}
-- Applicable: ${pass5.asset_approach.applicable ? 'Yes' : 'Limited applicability'}
-- Book Value of Equity: $${pass5.asset_approach.book_value_of_equity.toLocaleString()}
-- Total Asset Adjustments: $${pass5.asset_approach.total_asset_adjustments.toLocaleString()}
-- Total Liability Adjustments: $${pass5.asset_approach.total_liability_adjustments.toLocaleString()}
-- Adjusted Net Asset Value: $${assetValue.toLocaleString()}
-- Weight: ${(pass5.asset_approach.weight_assigned * 100).toFixed(0)}%
-
-#### Asset Approach Narrative (from Pass 5)
-${pass5.asset_approach.narrative}
-
-### Income Approach
-- Methodology: ${pass5.income_approach.methodology}
-- Benefit Stream: ${pass5.income_approach.benefit_stream_used}
-- Benefit Stream Amount: $${pass5.income_approach.benefit_stream_value.toLocaleString()}
-- Capitalization Rate: ${(pass5.income_approach.capitalization_rate.capitalization_rate * 100).toFixed(2)}%
-- Income Approach Value: $${incomeValue.toLocaleString()}
-- Implied Multiple: ${pass5.income_approach.multiple_derivation.final_multiple.toFixed(2)}x
-- Weight: ${(pass5.income_approach.weight_assigned * 100).toFixed(0)}%
-
-#### Capitalization Rate Buildup
-| Component | Rate |
-|-----------|------|
-| Risk-Free Rate | ${(pass5.income_approach.capitalization_rate.risk_free_rate * 100).toFixed(2)}% |
-| Equity Risk Premium | ${(pass5.income_approach.capitalization_rate.equity_risk_premium * 100).toFixed(2)}% |
-| Size Premium | ${(pass5.income_approach.capitalization_rate.size_premium * 100).toFixed(2)}% |
-| Industry Premium | ${(pass5.income_approach.capitalization_rate.industry_risk_premium * 100).toFixed(2)}% |
-| Company-Specific Premium | ${(pass5.income_approach.capitalization_rate.company_specific_risk_premium * 100).toFixed(2)}% |
-| Total Discount Rate | ${(pass5.income_approach.capitalization_rate.total_discount_rate * 100).toFixed(2)}% |
-| Less: Growth Rate | (${(pass5.income_approach.capitalization_rate.long_term_growth_rate * 100).toFixed(2)}%) |
-| **Capitalization Rate** | **${(pass5.income_approach.capitalization_rate.capitalization_rate * 100).toFixed(2)}%** |
-
-#### Income Approach Narrative (from Pass 5)
-${pass5.income_approach.narrative}
-
-### Market Approach
-- Methodology: ${pass5.market_approach.methodology}
-- Multiple Type: ${pass5.market_approach.multiple_applied.type}
-- Benefit Stream Amount: $${pass5.market_approach.benefit_stream_value.toLocaleString()}
-- Base Multiple: ${pass5.market_approach.multiple_applied.base_multiple.toFixed(2)}x
-- Adjusted Multiple: ${pass5.market_approach.multiple_applied.adjusted_multiple.toFixed(2)}x
-- Market Approach Value: $${marketValue.toLocaleString()}
-- Weight: ${(pass5.market_approach.weight_assigned * 100).toFixed(0)}%
-
-#### Market Approach Narrative (from Pass 5)
-${pass5.market_approach.narrative}
-
----
-
-## VALUE RECONCILIATION (Pass 5)
-
-| Approach | Indicated Value | Weight | Weighted Value |
-|----------|----------------|--------|----------------|
-${pass5.valuation_synthesis.approach_summary.map(a =>
-  `| ${a.approach} | $${a.indicated_value.toLocaleString()} | ${(a.weight * 100).toFixed(0)}% | $${a.weighted_value.toLocaleString()} |`
-).join('\n')}
-| **Total** | | **100%** | **$${pass5.valuation_synthesis.preliminary_value.toLocaleString()}** |
-
-### Discounts and Premiums
-- DLOM: ${pass5.valuation_synthesis.discounts_and_premiums.dlom.applicable ? `${(pass5.valuation_synthesis.discounts_and_premiums.dlom.percentage * 100).toFixed(0)}%` : 'Not applied'}
-- Control Premium: ${pass5.valuation_synthesis.discounts_and_premiums.control_premium.applicable ? `${(pass5.valuation_synthesis.discounts_and_premiums.control_premium.percentage * 100).toFixed(0)}%` : 'Not applied'}
-- Key Person Discount: ${pass5.valuation_synthesis.discounts_and_premiums.key_person_discount.applicable ? `${(pass5.valuation_synthesis.discounts_and_premiums.key_person_discount.percentage * 100).toFixed(0)}%` : 'Not applied'}
-
-### Concluded Value: $${concludedValue.toLocaleString()}
-### Value Range: $${pass5.valuation_synthesis.final_valuation.valuation_range_low.toLocaleString()} to $${pass5.valuation_synthesis.final_valuation.valuation_range_high.toLocaleString()}
-### Confidence Level: ${pass5.valuation_synthesis.final_valuation.confidence_level}
-
-### Sanity Checks (from Pass 5)
-- Revenue Multiple Implied: ${pass5.valuation_synthesis.value_sanity_checks.revenue_multiple_implied.toFixed(2)}x
-- SDE Multiple Implied: ${pass5.valuation_synthesis.value_sanity_checks.sde_multiple_implied.toFixed(2)}x
-- Within Industry Range: ${pass5.valuation_synthesis.value_sanity_checks.within_industry_range ? 'Yes' : 'No'}
-
----
-
-## KEY VALUE DRIVERS
-${pass5.valuation_synthesis.final_valuation.value_drivers.map(d => `- ${d}`).join('\n')}
-
-## VALUE DETRACTORS
-${pass5.valuation_synthesis.final_valuation.value_detractors.map(d => `- ${d}`).join('\n')}
-
----
-
-# DLOM CALCULATION GUIDANCE
-
-Based on the risk assessment and business characteristics:
-- Risk Score: ${riskScore.toFixed(2)} (${riskCategory})
-- Revenue Size: $${mostRecentRevenue.toLocaleString()}
-- Industry: ${industry}
-
-Suggested DLOM range: ${riskScore <= 2.5 ? '15-20%' : riskScore <= 3.5 ? '20-25%' : '25-35%'}
-
----
-
-## SYNTHESIS NARRATIVE (from Pass 5)
-${pass5.valuation_synthesis.synthesis_narrative}
-
----
-
-Use this data to generate the complete final valuation report with all required narratives.
-`;
-}
-
-/**
- * Calculate appropriate DLOM based on business characteristics
- */
-export function calculateSuggestedDLOM(
-  riskScore: number,
-  revenue: number,
-  hasGoodRecords: boolean
-): { rate: number; rationale: string } {
-  let baseDLOM = 0.20; // 20% base
-
-  // Adjust for risk
-  if (riskScore <= 2.0) {
-    baseDLOM -= 0.03; // Lower risk = lower DLOM
-  } else if (riskScore >= 3.5) {
-    baseDLOM += 0.05; // Higher risk = higher DLOM
-  } else if (riskScore >= 3.0) {
-    baseDLOM += 0.02;
-  }
-
-  // Adjust for size
-  if (revenue < 500000) {
-    baseDLOM += 0.05; // Very small = less marketable
-  } else if (revenue < 1000000) {
-    baseDLOM += 0.02;
-  } else if (revenue > 5000000) {
-    baseDLOM -= 0.03; // Larger = more marketable
-  }
-
-  // Adjust for record quality
-  if (!hasGoodRecords) {
-    baseDLOM += 0.03;
-  }
-
-  // Cap DLOM at reasonable range
-  baseDLOM = Math.max(0.15, Math.min(0.35, baseDLOM));
-
-  const rationale = `DLOM of ${(baseDLOM * 100).toFixed(0)}% applied based on: ` +
-    `risk level (${riskScore.toFixed(2)}), ` +
-    `business size ($${revenue.toLocaleString()} revenue), ` +
-    `and record quality.`;
-
-  return { rate: baseDLOM, rationale };
-}
-
-/**
- * Calculate value range based on confidence
- */
-export function calculateValueRange(
-  concludedValue: number,
-  confidence: 'High' | 'Medium' | 'Low'
-): { low: number; mid: number; high: number; factor: number } {
-  let rangeFactor: number;
-
-  switch (confidence) {
-    case 'High':
-      rangeFactor = 0.12; // ±12%
-      break;
-    case 'Medium':
-      rangeFactor = 0.18; // ±18%
-      break;
-    case 'Low':
-      rangeFactor = 0.25; // ±25%
-      break;
-    default:
-      rangeFactor = 0.18;
-  }
-
-  const low = roundToNearestThousand(concludedValue * (1 - rangeFactor));
-  const high = roundToNearestThousand(concludedValue * (1 + rangeFactor));
-
-  return {
-    low,
-    mid: concludedValue,
-    high,
-    factor: rangeFactor,
-  };
-}
-
-/**
- * Round to nearest appropriate thousand
- */
-function roundToNearestThousand(value: number): number {
-  if (value < 100000) {
-    return Math.round(value / 1000) * 1000;
-  } else if (value < 1000000) {
-    return Math.round(value / 5000) * 5000;
-  } else {
-    return Math.round(value / 10000) * 10000;
+## OUTPUT FORMAT
+
+Respond with ONLY valid JSON matching this exact structure:
+
+{
+  "schema_version": "2.0",
+  "valuation_date": "2024-01-15",
+  "generated_at": "2024-01-15T14:30:00Z",
+
+  "company_profile": {
+    "legal_name": "ABC Company, Inc.",
+    "entity_type": "S-Corporation",
+    "tax_form_type": "Form 1120-S",
+    "ein": "12-3456789",
+    "address": {
+      "street": "123 Main Street",
+      "city": "Anytown",
+      "state": "CA",
+      "zip": "90210"
+    },
+    "industry": {
+      "naics_code": "238220",
+      "naics_description": "Plumbing, Heating, and Air-Conditioning Contractors",
+      "industry_sector": "Construction - Specialty Trades"
+    },
+    "business_description": "ABC Company is a full-service HVAC contractor providing residential and commercial heating, cooling, and ventilation services in the greater metropolitan area..."
+  },
+
+  "financial_data": {
+    "periods_analyzed": ["2021", "2022", "2023"],
+    "income_statements": [
+      {
+        "period": "2023",
+        "revenue": 1485000,
+        "cost_of_goods_sold": 742500,
+        "gross_profit": 742500,
+        "operating_expenses": 520000,
+        "net_income": 148500
+      }
+    ],
+    "balance_sheets": [
+      {
+        "period": "2023",
+        "total_assets": 425000,
+        "total_liabilities": 185000,
+        "total_equity": 240000
+      }
+    ]
+  },
+
+  "normalized_earnings": {
+    "sde_calculation": {
+      "periods": [
+        {
+          "period": "2023",
+          "starting_net_income": 148500,
+          "adjustments": [
+            {
+              "category": "Owner Compensation",
+              "description": "Officer salary - sole owner",
+              "amount": 120000,
+              "source_line": "Form 1120-S, Line 7",
+              "justification": "Owner's W-2 salary added back as SDE represents total owner benefit"
+            }
+          ],
+          "total_adjustments": 156000,
+          "sde": 304500
+        }
+      ],
+      "weighted_average_sde": 285000,
+      "weighting_method": "3x/2x/1x weighting (most recent year weighted 3x)"
+    },
+    "ebitda_calculation": {
+      "periods": [
+        {
+          "period": "2023",
+          "starting_net_income": 148500,
+          "add_interest": 12000,
+          "add_taxes": 0,
+          "add_depreciation": 35000,
+          "add_amortization": 0,
+          "owner_comp_adjustment": 40000,
+          "adjusted_ebitda": 235500
+        }
+      ],
+      "weighted_average_ebitda": 220000
+    },
+    "earnings_quality_assessment": {
+      "quality_score": "Medium",
+      "factors": [
+        "Consistent revenue growth over 3 years",
+        "Owner compensation clearly documented",
+        "Some discretionary expenses identified"
+      ]
+    }
+  },
+
+  "industry_analysis": {
+    "industry_overview": {
+      "sector": "Construction - Specialty Trades",
+      "subsector": "HVAC Contractors",
+      "market_size": "$150 billion annually in the US",
+      "growth_rate": "4-5% annually",
+      "growth_outlook": "Growing",
+      "key_trends": ["Energy efficiency demand", "Smart home integration", "Technician shortage"]
+    },
+    "competitive_landscape": "Highly fragmented industry with thousands of local operators...",
+    "industry_benchmarks": {
+      "gross_margin": { "low": 0.35, "median": 0.45, "high": 0.55 },
+      "operating_margin": { "low": 0.08, "median": 0.12, "high": 0.18 },
+      "sde_margin": { "low": 0.12, "median": 0.18, "high": 0.25 }
+    },
+    "valuation_multiples": {
+      "sde_multiple": { "low": 2.0, "typical": 2.8, "high": 3.5 },
+      "revenue_multiple": { "low": 0.4, "typical": 0.6, "high": 0.8 },
+      "source": "BizBuySell 2024 data, industry broker surveys"
+    },
+    "rules_of_thumb": ["2.5-3.5x SDE for owner-operated HVAC companies"],
+    "due_diligence_questions": ["What percentage of revenue is from maintenance agreements?"],
+    "industry_narrative": "The HVAC contracting industry represents a substantial segment..."
+  },
+
+  "risk_assessment": {
+    "overall_risk_rating": "Above Average",
+    "overall_risk_score": 2.65,
+    "risk_factors": [
+      {
+        "factor": "Size Risk",
+        "weight": 0.15,
+        "score": 3,
+        "description": "Revenue of $1.5M is typical small business size",
+        "mitigation": "Document systems to demonstrate scalability",
+        "impact_on_value": "Neutral"
+      }
+    ],
+    "company_specific_risks": ["Owner handles most customer relationships", "Single location"],
+    "company_specific_strengths": ["Strong online reputation", "Experienced team"],
+    "risk_adjusted_multiple_adjustment": -0.25,
+    "risk_narrative": "The risk assessment yields an overall weighted score of 2.65..."
+  },
+
+  "valuation_approaches": {
+    "asset_approach": {
+      "book_value": 240000,
+      "adjustments": [
+        { "item": "Equipment appreciation", "adjustment": 25000, "reason": "Vehicles worth more than depreciated value" },
+        { "item": "Inventory obsolescence", "adjustment": -5000, "reason": "Slow-moving parts" }
+      ],
+      "adjusted_net_asset_value": 260000,
+      "weight": 0.20,
+      "narrative": "The Asset Approach begins with the book value of equity..."
+    },
+    "income_approach": {
+      "normalized_earnings": 285000,
+      "earnings_type": "SDE",
+      "cap_rate_buildup": {
+        "risk_free_rate": 0.045,
+        "equity_risk_premium": 0.06,
+        "size_premium": 0.05,
+        "company_specific_risk": 0.06,
+        "total_cap_rate": 0.215
+      },
+      "capitalized_value": 1325581,
+      "weight": 0.40,
+      "narrative": "The Income Approach values the business based on its earnings power..."
+    },
+    "market_approach": {
+      "comparable_multiple": 2.55,
+      "multiple_type": "SDE",
+      "multiple_source": "BizBuySell HVAC transactions, industry surveys",
+      "applied_earnings": 285000,
+      "market_value": 726750,
+      "weight": 0.40,
+      "narrative": "The Market Approach applies multiples from comparable transactions..."
+    }
+  },
+
+  "valuation_synthesis": {
+    "approach_summary": [
+      { "approach": "Asset Approach", "value": 260000, "weight": 0.20, "weighted_value": 52000 },
+      { "approach": "Income Approach", "value": 1325581, "weight": 0.40, "weighted_value": 530232 },
+      { "approach": "Market Approach", "value": 726750, "weight": 0.40, "weighted_value": 290700 }
+    ],
+    "preliminary_value": 872932,
+    "discounts_and_premiums": {
+      "dlom": { "applicable": true, "percentage": 0.15, "rationale": "Standard DLOM for private company with moderate risk" },
+      "dloc": { "applicable": false, "percentage": 0, "rationale": "Not applicable - valuing 100% interest" }
+    },
+    "final_valuation": {
+      "concluded_value": 742000,
+      "valuation_range_low": 630000,
+      "valuation_range_high": 855000,
+      "confidence_level": "Moderate",
+      "confidence_rationale": "Adequate financial data with some uncertainty in earnings normalization"
+    }
+  },
+
+  "narratives": {
+    "executive_summary": { "word_count_target": 1000, "content": "This valuation report presents a Fair Market Value determination for ABC Company, Inc. as of January 15, 2024..." },
+    "company_overview": { "word_count_target": 650, "content": "ABC Company, Inc. is a full-service HVAC contractor established in 2008..." },
+    "financial_analysis": { "word_count_target": 1250, "content": "The financial analysis examines three years of historical performance from 2021 through 2023..." },
+    "industry_analysis": { "word_count_target": 700, "content": "The HVAC contracting industry represents a significant segment of the construction services sector..." },
+    "risk_assessment": { "word_count_target": 850, "content": "This risk assessment evaluates ten key factors that impact the company's valuation..." },
+    "asset_approach_narrative": { "word_count_target": 450, "content": "The Asset Approach values a business based on the fair market value of its underlying assets..." },
+    "income_approach_narrative": { "word_count_target": 450, "content": "The Income Approach values a business based on its ability to generate future economic benefits..." },
+    "market_approach_narrative": { "word_count_target": 450, "content": "The Market Approach derives value from pricing multiples observed in sales of comparable businesses..." },
+    "valuation_synthesis_narrative": { "word_count_target": 700, "content": "The valuation synthesis combines the three approaches into a concluded Fair Market Value..." },
+    "assumptions_and_limiting_conditions": { "word_count_target": 500, "content": "This valuation is subject to the following assumptions and limiting conditions..." },
+    "value_enhancement_recommendations": { "word_count_target": 600, "content": "Based on our analysis, we have identified several opportunities to enhance business value..." }
+  },
+
+  "data_quality": {
+    "extraction_confidence": "Moderate",
+    "data_completeness_score": 0.85,
+    "missing_data_flags": [
+      { "field": "Customer concentration data", "impact": "Moderate", "assumption_made": "Assumed diversified based on industry" }
+    ]
+  },
+
+  "metadata": {
+    "documents_analyzed": [
+      { "filename": "2023_1120S.pdf", "document_type": "Form 1120-S", "tax_year": "2023" }
+    ],
+    "processing_notes": "Analysis completed using 6-pass orchestrated approach"
   }
 }
 
+---
+
+## IMPORTANT INSTRUCTIONS
+
+1. Output ONLY the JSON object - no markdown code fences, no explanation
+2. ALL narrative fields must contain SUBSTANTIVE content meeting word count targets
+3. Numbers must be MATHEMATICALLY CONSISTENT throughout
+4. Use actual data from previous passes - no placeholders
+5. Round final values appropriately ($5,000 or $10,000 increments)
+6. Ensure concluded value appears consistently across all sections
+7. DLOM is applied to preliminary value, not individual approaches
+8. Value range must bracket the concluded value (low < concluded < high)
+9. Professional, third-person tone throughout all narratives
+10. This output generates the PDF - quality must be publication-ready
+
+Now synthesize all previous analysis into the complete valuation report.`;
+
 /**
- * Build the complete Pass 6 prompt with all context
+ * System context for Pass 6
+ */
+export const pass6SystemContext = `You are a Certified Valuation Analyst (CVA) completing a comprehensive business valuation report. Your role is to synthesize all analysis into a professional, publication-ready deliverable.
+
+Key priorities:
+1. CONSISTENCY: All numbers must match across sections
+2. COMPLETENESS: Every field must have substantive content
+3. PROFESSIONALISM: Third-person, objective language throughout
+4. DEFENSIBILITY: Every conclusion supported by evidence
+5. QUALITY: Output must be publication-ready for PDF generation
+
+You have expertise in:
+- Business valuation report writing
+- Fair Market Value determination
+- Valuation methodology synthesis
+- Professional appraisal standards
+- Narrative development`;
+
+/**
+ * Build Pass 6 prompt with context from all previous passes
  */
 export function buildPass6Prompt(
-  pass1: Pass1Analysis,
-  pass2: Pass2Analysis,
-  pass3: Pass3Analysis,
-  pass4: Pass4Analysis,
-  pass5: Pass5Analysis,
-  knowledgeInjection?: string
+  pass1Summary: string,
+  pass2Summary: string,
+  pass3Summary: string,
+  pass4Summary: string,
+  pass5Summary: string,
+  injectedKnowledge: string
 ): string {
-  const synthesisSummary = createFinalSynthesisSummary(pass1, pass2, pass3, pass4, pass5);
+  return `${pass6Prompt}
 
-  let prompt = pass6Prompt;
+## CONTEXT FROM PASS 1 (DOCUMENT EXTRACTION)
 
-  // Add knowledge injection if provided
-  if (knowledgeInjection) {
-    prompt += `\n\n---\n\n# ADDITIONAL KNOWLEDGE\n\n${knowledgeInjection}`;
+${pass1Summary}
+
+## CONTEXT FROM PASS 2 (INDUSTRY ANALYSIS)
+
+${pass2Summary}
+
+## CONTEXT FROM PASS 3 (EARNINGS NORMALIZATION)
+
+${pass3Summary}
+
+## CONTEXT FROM PASS 4 (RISK ASSESSMENT)
+
+${pass4Summary}
+
+## CONTEXT FROM PASS 5 (VALUATION CALCULATION)
+
+${pass5Summary}
+
+## INJECTED KNOWLEDGE
+
+${injectedKnowledge || 'No additional knowledge provided.'}
+
+Synthesize all analysis into the complete final valuation report.`;
+}
+
+/**
+ * Create a comprehensive summary of Pass 1-5 outputs for Pass 6
+ */
+export function createComprehensiveSummary(
+  pass1Output: unknown,
+  pass2Output: unknown,
+  pass3Output: unknown,
+  pass4Output: unknown,
+  pass5Output: unknown
+): string {
+  const sections: string[] = [];
+
+  // Pass 1 Summary
+  if (pass1Output && typeof pass1Output === 'object') {
+    const p1 = (pass1Output as Record<string, unknown>).analysis as Record<string, unknown> | undefined;
+    if (p1) {
+      const companyInfo = p1.company_info as Record<string, unknown> | undefined;
+      const financialData = p1.financial_data as Record<string, unknown> | undefined;
+
+      sections.push(`### PASS 1: DOCUMENT EXTRACTION
+- Company: ${companyInfo?.name || 'Unknown'}
+- Entity Type: ${companyInfo?.entity_type || 'Unknown'}
+- Financial periods available: ${financialData ? Object.keys(financialData).join(', ') : 'None'}`);
+    }
   }
 
-  // Add the complete data summary
-  prompt += `\n\n---\n\n${synthesisSummary}`;
+  // Pass 2 Summary
+  if (pass2Output && typeof pass2Output === 'object') {
+    const p2 = (pass2Output as Record<string, unknown>).analysis as Record<string, unknown> | undefined;
+    if (p2) {
+      const overview = p2.industry_overview as Record<string, unknown> | undefined;
+      const multiples = p2.valuation_multiples as Record<string, unknown> | undefined;
+      const sdeMultiple = multiples?.sde_multiple as Record<string, number> | undefined;
 
-  // Add specific guidance - get most recent year's revenue
-  const years = Object.keys(pass1.financial_data).sort().reverse();
-  const mostRecentData = pass1.financial_data[years[0]];
-  const revenue = mostRecentData?.revenue?.net_revenue || 0;
-  const riskScore = pass4.overall_risk_score;
-  const hasGoodRecords = pass4.risk_factors.find(rf =>
-    rf.factor_name.toLowerCase().includes('financial') || rf.factor_name.toLowerCase().includes('record')
-  )?.score !== undefined && (pass4.risk_factors.find(rf =>
-    rf.factor_name.toLowerCase().includes('financial') || rf.factor_name.toLowerCase().includes('record')
-  )?.score || 5) <= 2;
+      sections.push(`### PASS 2: INDUSTRY ANALYSIS
+- Sector: ${overview?.sector || 'Unknown'}
+- Growth Outlook: ${overview?.growth_outlook || 'Unknown'}
+- SDE Multiple: ${sdeMultiple?.low || '?'}x - ${sdeMultiple?.high || '?'}x (typical: ${sdeMultiple?.typical || '?'}x)`);
+    }
+  }
 
-  const dlomSuggestion = calculateSuggestedDLOM(riskScore, revenue, hasGoodRecords || false);
+  // Pass 3 Summary
+  if (pass3Output && typeof pass3Output === 'object') {
+    const p3 = (pass3Output as Record<string, unknown>).analysis as Record<string, unknown> | undefined;
+    if (p3) {
+      const sdeCalc = p3.sde_calculation as Record<string, unknown> | undefined;
+      const ebitdaCalc = p3.ebitda_calculation as Record<string, unknown> | undefined;
 
-  prompt += `\n\n---\n\n# DLOM GUIDANCE FOR THIS VALUATION\n\n`;
-  prompt += `Based on analysis, suggested DLOM: **${(dlomSuggestion.rate * 100).toFixed(0)}%**\n\n`;
-  prompt += `${dlomSuggestion.rationale}\n\n`;
-  prompt += `You may adjust within a reasonable range (15-35%) based on your professional judgment.`;
+      sections.push(`### PASS 3: EARNINGS NORMALIZATION
+- Weighted Average SDE: $${((sdeCalc?.weighted_average_sde as number) || 0).toLocaleString()}
+- Weighted Average EBITDA: $${((ebitdaCalc?.weighted_average_ebitda as number) || 0).toLocaleString()}`);
+    }
+  }
 
-  return prompt;
+  // Pass 4 Summary
+  if (pass4Output && typeof pass4Output === 'object') {
+    const p4 = (pass4Output as Record<string, unknown>).analysis as Record<string, unknown> | undefined;
+    if (p4) {
+      sections.push(`### PASS 4: RISK ASSESSMENT
+- Overall Risk Score: ${((p4.overall_risk_score as number) || 0).toFixed(2)}
+- Risk Rating: ${p4.overall_risk_rating || 'Unknown'}
+- Multiple Adjustment: ${(p4.risk_adjusted_multiple_adjustment as number) || 0}x`);
+    }
+  }
+
+  // Pass 5 Summary
+  if (pass5Output && typeof pass5Output === 'object') {
+    const p5 = (pass5Output as Record<string, unknown>).analysis as Record<string, unknown> | undefined;
+    if (p5) {
+      const asset = p5.asset_approach as Record<string, unknown> | undefined;
+      const income = p5.income_approach as Record<string, unknown> | undefined;
+      const market = p5.market_approach as Record<string, unknown> | undefined;
+
+      sections.push(`### PASS 5: VALUATION CALCULATION
+- Asset Approach: $${((asset?.adjusted_net_asset_value as number) || 0).toLocaleString()} (${((asset?.weight as number) || 0) * 100}% weight)
+- Income Approach: $${((income?.capitalized_value as number) || 0).toLocaleString()} (${((income?.weight as number) || 0) * 100}% weight)
+- Market Approach: $${((market?.market_value as number) || 0).toLocaleString()} (${((market?.weight as number) || 0) * 100}% weight)`);
+    }
+  }
+
+  return sections.join('\n\n');
 }
 
 /**
  * Validate Pass 6 output structure
  */
-export function validatePass6Output(output: unknown): output is FinalValuationOutput {
-  if (!output || typeof output !== 'object') return false;
+export function validatePass6Output(output: unknown): { valid: boolean; errors: string[] } {
+  const errors: string[] = [];
 
-  const o = output as Record<string, unknown>;
+  if (!output || typeof output !== 'object') {
+    errors.push('Output is not an object');
+    return { valid: false, errors };
+  }
 
-  // Check required top-level sections
-  const requiredSections = [
-    'valuation_summary',
-    'company_overview',
-    'financial_summary',
+  const data = output as Record<string, unknown>;
+
+  // Check required top-level fields
+  const requiredFields = [
+    'schema_version',
+    'valuation_date',
+    'company_profile',
+    'financial_data',
     'normalized_earnings',
     'industry_analysis',
     'risk_assessment',
     'valuation_approaches',
-    'valuation_conclusion',
+    'valuation_synthesis',
     'narratives',
+    'data_quality',
     'metadata'
   ];
 
-  for (const section of requiredSections) {
-    if (!o[section] || typeof o[section] !== 'object') {
-      console.warn(`Missing or invalid section: ${section}`);
-      return false;
+  for (const field of requiredFields) {
+    if (!data[field]) {
+      errors.push(`Missing required field: ${field}`);
     }
   }
 
-  // Check narratives are present and have content
-  const narratives = o.narratives as Record<string, unknown>;
-  const requiredNarratives = [
-    'executive_summary',
-    'company_overview',
-    'financial_analysis',
-    'industry_analysis',
-    'risk_assessment',
-    'asset_approach_narrative',
-    'income_approach_narrative',
-    'market_approach_narrative',
-    'valuation_synthesis',
-    'assumptions_and_limiting_conditions',
-    'value_enhancement_recommendations'
-  ];
+  // Check company_profile
+  if (data.company_profile) {
+    const profile = data.company_profile as Record<string, unknown>;
+    if (!profile.legal_name) errors.push('Missing company_profile.legal_name');
+    if (!profile.entity_type) errors.push('Missing company_profile.entity_type');
+  }
 
-  for (const narrative of requiredNarratives) {
-    if (!narratives[narrative] || typeof narratives[narrative] !== 'string') {
-      console.warn(`Missing narrative: ${narrative}`);
-      return false;
+  // Check valuation_synthesis
+  if (data.valuation_synthesis) {
+    const synthesis = data.valuation_synthesis as Record<string, unknown>;
+
+    // Check approach_summary
+    if (!Array.isArray(synthesis.approach_summary)) {
+      errors.push('Missing valuation_synthesis.approach_summary array');
+    } else {
+      // Verify weights sum to 1.0
+      const totalWeight = (synthesis.approach_summary as Array<Record<string, unknown>>)
+        .reduce((sum, a) => sum + ((a.weight as number) || 0), 0);
+      if (Math.abs(totalWeight - 1.0) > 0.01) {
+        errors.push(`Approach weights must sum to 1.0, got ${totalWeight.toFixed(2)}`);
+      }
     }
-    // Check minimum length (rough word count check)
-    const text = narratives[narrative] as string;
-    if (text.split(/\s+/).length < 100) {
-      console.warn(`Narrative too short: ${narrative}`);
-      return false;
+
+    // Check final_valuation
+    if (synthesis.final_valuation) {
+      const fv = synthesis.final_valuation as Record<string, unknown>;
+      if (typeof fv.concluded_value !== 'number') {
+        errors.push('Missing valuation_synthesis.final_valuation.concluded_value');
+      }
+      if (typeof fv.valuation_range_low !== 'number') {
+        errors.push('Missing valuation_synthesis.final_valuation.valuation_range_low');
+      }
+      if (typeof fv.valuation_range_high !== 'number') {
+        errors.push('Missing valuation_synthesis.final_valuation.valuation_range_high');
+      }
+
+      // Check range brackets concluded value
+      const low = fv.valuation_range_low as number;
+      const concluded = fv.concluded_value as number;
+      const high = fv.valuation_range_high as number;
+      if (low && concluded && high) {
+        if (low >= concluded) errors.push('valuation_range_low must be less than concluded_value');
+        if (concluded >= high) errors.push('concluded_value must be less than valuation_range_high');
+      }
     }
   }
 
-  // Check valuation summary has concluded value
-  const summary = o.valuation_summary as Record<string, unknown>;
-  if (typeof summary.concluded_value !== 'number' || summary.concluded_value <= 0) {
-    console.warn('Invalid concluded value');
-    return false;
+  // Check narratives
+  if (data.narratives) {
+    const narratives = data.narratives as Record<string, unknown>;
+    const requiredNarratives = [
+      { key: 'executive_summary', minWords: 600 },
+      { key: 'company_overview', minWords: 400 },
+      { key: 'financial_analysis', minWords: 800 },
+      { key: 'industry_analysis', minWords: 500 },
+      { key: 'risk_assessment', minWords: 500 },
+      { key: 'asset_approach_narrative', minWords: 300 },
+      { key: 'income_approach_narrative', minWords: 300 },
+      { key: 'market_approach_narrative', minWords: 300 },
+      { key: 'valuation_synthesis_narrative', minWords: 400 },
+      { key: 'assumptions_and_limiting_conditions', minWords: 300 },
+      { key: 'value_enhancement_recommendations', minWords: 400 }
+    ];
+
+    for (const { key, minWords } of requiredNarratives) {
+      const narrative = narratives[key] as Record<string, unknown> | undefined;
+      if (!narrative) {
+        errors.push(`Missing narrative: ${key}`);
+      } else if (!narrative.content || typeof narrative.content !== 'string') {
+        errors.push(`Missing narrative content: ${key}`);
+      } else {
+        const wordCount = (narrative.content as string).split(/\s+/).length;
+        if (wordCount < minWords) {
+          errors.push(`Narrative ${key} too short: ${wordCount} words (need ${minWords}+)`);
+        }
+      }
+    }
   }
 
-  // Check valuation conclusion
-  const conclusion = o.valuation_conclusion as Record<string, unknown>;
-  if (typeof conclusion.concluded_fair_market_value !== 'number') {
-    console.warn('Invalid concluded fair market value');
-    return false;
-  }
-
-  // Consistency check: summary and conclusion values should match
-  if (summary.concluded_value !== conclusion.concluded_fair_market_value) {
-    console.warn('Inconsistent concluded values between summary and conclusion');
-    return false;
-  }
-
-  return true;
+  return {
+    valid: errors.length === 0,
+    errors,
+  };
 }
 
 /**
  * Perform consistency checks on final output
  */
-export function performConsistencyChecks(output: FinalValuationOutput): {
-  passed: boolean;
-  errors: string[];
-  warnings: string[];
-} {
+export function performConsistencyChecks(output: unknown): { passed: boolean; errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  // Check 1: Weights sum to 100%
-  const approaches = output.valuation_approaches;
-  const totalWeight =
-    approaches.asset_approach.weight_in_conclusion +
-    approaches.income_approach.weight_in_conclusion +
-    approaches.market_approach.weight_in_conclusion;
+  if (!output || typeof output !== 'object') {
+    errors.push('Output is not a valid object');
+    return { passed: false, errors, warnings };
+  }
 
-  if (Math.abs(totalWeight - 1.0) > 0.01) {
-    errors.push(`Approach weights sum to ${(totalWeight * 100).toFixed(1)}%, should be 100%`);
+  const data = output as Record<string, unknown>;
+  const synthesis = data.valuation_synthesis as Record<string, unknown> | undefined;
+  const approaches = data.valuation_approaches as Record<string, unknown> | undefined;
+
+  if (!synthesis || !approaches) {
+    errors.push('Missing valuation_synthesis or valuation_approaches');
+    return { passed: false, errors, warnings };
+  }
+
+  // Check 1: Weights sum to 100%
+  const approachSummary = synthesis.approach_summary as Array<Record<string, unknown>> | undefined;
+  if (approachSummary) {
+    const totalWeight = approachSummary.reduce((sum, a) => sum + ((a.weight as number) || 0), 0);
+    if (Math.abs(totalWeight - 1.0) > 0.01) {
+      errors.push(`Weights sum to ${(totalWeight * 100).toFixed(1)}%, must be 100%`);
+    }
   }
 
   // Check 2: Weighted values calculated correctly
-  const conclusion = output.valuation_conclusion;
-  const expectedWeightedAsset = conclusion.approach_values.asset_approach.value * conclusion.approach_values.asset_approach.weight;
-  if (Math.abs(expectedWeightedAsset - conclusion.approach_values.asset_approach.weighted_value) > 100) {
-    warnings.push('Asset approach weighted value may be miscalculated');
+  if (approachSummary) {
+    for (const approach of approachSummary) {
+      const value = approach.value as number;
+      const weight = approach.weight as number;
+      const weightedValue = approach.weighted_value as number;
+      const expected = value * weight;
+      if (Math.abs(expected - weightedValue) > 100) {
+        warnings.push(`${approach.approach} weighted value may be incorrect: ${weightedValue} vs expected ${expected.toFixed(0)}`);
+      }
+    }
   }
 
-  // Check 3: DLOM applied correctly
-  const prelimValue = conclusion.preliminary_value;
-  const dlom = conclusion.total_discounts;
-  const concludedFMV = conclusion.concluded_fair_market_value;
-
-  if (Math.abs((prelimValue - dlom) - concludedFMV) > 1000) {
-    errors.push('DLOM calculation inconsistency: Preliminary - Discounts ≠ Concluded FMV');
+  // Check 3: Preliminary value = sum of weighted values
+  if (approachSummary) {
+    const sumWeighted = approachSummary.reduce((sum, a) => sum + ((a.weighted_value as number) || 0), 0);
+    const preliminary = synthesis.preliminary_value as number;
+    if (Math.abs(sumWeighted - preliminary) > 100) {
+      errors.push(`Preliminary value (${preliminary}) doesn't match sum of weighted values (${sumWeighted.toFixed(0)})`);
+    }
   }
 
-  // Check 4: Value range reasonable
-  const range = conclusion.value_range;
-  const midValue = range.mid;
-  const rangePct = (range.high - range.low) / (2 * midValue);
+  // Check 4: DLOM applied correctly
+  const discounts = synthesis.discounts_and_premiums as Record<string, unknown> | undefined;
+  const finalVal = synthesis.final_valuation as Record<string, unknown> | undefined;
+  if (discounts && finalVal) {
+    const dlom = discounts.dlom as Record<string, unknown> | undefined;
+    const preliminary = synthesis.preliminary_value as number;
+    const concluded = finalVal.concluded_value as number;
 
-  if (rangePct < 0.10) {
-    warnings.push('Value range may be too narrow (<10%)');
-  } else if (rangePct > 0.35) {
-    warnings.push('Value range may be too wide (>35%)');
+    if (dlom?.applicable && dlom?.percentage) {
+      const dlomPct = dlom.percentage as number;
+      const expectedConcluded = preliminary * (1 - dlomPct);
+      // Allow for rounding
+      if (Math.abs(expectedConcluded - concluded) > 5000) {
+        warnings.push(`Concluded value may not reflect DLOM correctly: ${concluded} vs expected ${expectedConcluded.toFixed(0)}`);
+      }
+    }
   }
 
-  // Check 5: Values in summary match conclusion
-  if (output.valuation_summary.concluded_value !== concludedFMV) {
-    errors.push('Concluded value mismatch between summary and conclusion sections');
+  // Check 5: Value range brackets concluded value
+  if (finalVal) {
+    const low = finalVal.valuation_range_low as number;
+    const concluded = finalVal.concluded_value as number;
+    const high = finalVal.valuation_range_high as number;
+
+    if (low >= concluded) {
+      errors.push('Value range low must be less than concluded value');
+    }
+    if (concluded >= high) {
+      errors.push('Concluded value must be less than value range high');
+    }
   }
 
   // Check 6: Cap rate and implied multiple consistency
-  const capRate = approaches.income_approach.capitalization_rate.capitalization_rate;
-  const impliedMultiple = approaches.income_approach.implied_multiple;
-  const expectedMultiple = 1 / capRate;
+  const income = approaches.income_approach as Record<string, unknown> | undefined;
+  if (income) {
+    const capRateBuildup = income.cap_rate_buildup as Record<string, unknown> | undefined;
+    if (capRateBuildup) {
+      const capRate = capRateBuildup.total_cap_rate as number;
+      const earnings = income.normalized_earnings as number;
+      const capitalizedValue = income.capitalized_value as number;
 
-  if (Math.abs(impliedMultiple - expectedMultiple) > 0.1) {
-    warnings.push(`Implied multiple (${impliedMultiple.toFixed(2)}x) doesn't match 1/cap rate (${expectedMultiple.toFixed(2)}x)`);
+      if (capRate > 0 && earnings > 0) {
+        const expectedValue = earnings / capRate;
+        if (Math.abs(expectedValue - capitalizedValue) > 1000) {
+          warnings.push(`Income approach value may be incorrect: ${capitalizedValue} vs expected ${expectedValue.toFixed(0)}`);
+        }
+      }
+    }
   }
 
   return {
@@ -1139,21 +771,53 @@ export function performConsistencyChecks(output: FinalValuationOutput): {
 }
 
 /**
- * Format the final output for PDF generation
+ * Calculate DLOM based on business characteristics
  */
-export function formatForPdfGeneration(output: FinalValuationOutput): FinalValuationOutput {
-  // Round all currency values appropriately
-  const rounded = JSON.parse(JSON.stringify(output)) as FinalValuationOutput;
+export function calculateSuggestedDLOM(
+  riskScore: number,
+  revenue: number,
+  hasGoodRecords: boolean
+): { rate: number; rationale: string } {
+  let dlom = 0.15; // Base 15%
 
-  // Round concluded values
-  rounded.valuation_summary.concluded_value = roundToNearestThousand(rounded.valuation_summary.concluded_value);
-  rounded.valuation_summary.value_range_low = roundToNearestThousand(rounded.valuation_summary.value_range_low);
-  rounded.valuation_summary.value_range_high = roundToNearestThousand(rounded.valuation_summary.value_range_high);
+  // Adjust for risk
+  if (riskScore <= 2.0) dlom -= 0.02;
+  else if (riskScore >= 3.5) dlom += 0.05;
+  else if (riskScore >= 3.0) dlom += 0.03;
 
-  rounded.valuation_conclusion.concluded_fair_market_value = roundToNearestThousand(rounded.valuation_conclusion.concluded_fair_market_value);
-  rounded.valuation_conclusion.value_range.low = roundToNearestThousand(rounded.valuation_conclusion.value_range.low);
-  rounded.valuation_conclusion.value_range.mid = roundToNearestThousand(rounded.valuation_conclusion.value_range.mid);
-  rounded.valuation_conclusion.value_range.high = roundToNearestThousand(rounded.valuation_conclusion.value_range.high);
+  // Adjust for size
+  if (revenue < 500000) dlom += 0.05;
+  else if (revenue < 1000000) dlom += 0.02;
+  else if (revenue > 5000000) dlom -= 0.03;
 
-  return rounded;
+  // Adjust for record quality
+  if (!hasGoodRecords) dlom += 0.03;
+
+  // Cap at reasonable range
+  dlom = Math.max(0.10, Math.min(0.35, dlom));
+
+  const rationale = `DLOM of ${(dlom * 100).toFixed(0)}% based on risk score (${riskScore.toFixed(2)}), ` +
+    `business size ($${revenue.toLocaleString()} revenue), and financial record quality.`;
+
+  return { rate: dlom, rationale };
 }
+
+/**
+ * Round value to appropriate precision
+ */
+export function roundValue(value: number): number {
+  if (value < 100000) return Math.round(value / 1000) * 1000;
+  if (value < 1000000) return Math.round(value / 5000) * 5000;
+  return Math.round(value / 10000) * 10000;
+}
+
+export default {
+  prompt: pass6Prompt,
+  systemContext: pass6SystemContext,
+  buildPrompt: buildPass6Prompt,
+  createComprehensiveSummary,
+  validate: validatePass6Output,
+  performConsistencyChecks,
+  calculateSuggestedDLOM,
+  roundValue,
+};

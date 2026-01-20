@@ -9,14 +9,21 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { extractDocuments } from '@/lib/extraction';
 
-// Initialize Supabase client for status checks
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy-initialize Supabase client to avoid build-time errors
+let supabase: SupabaseClient | null = null;
+
+function getSupabaseClient(): SupabaseClient {
+  if (!supabase) {
+    supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+  }
+  return supabase;
+}
 
 // Vercel Pro timeout
 export const maxDuration = 300;
@@ -47,7 +54,7 @@ export async function GET(
   const reportId = params.id;
 
   // Get extraction records for this report
-  const { data: extractions, error } = await supabase
+  const { data: extractions, error } = await getSupabaseClient()
     .from('document_extractions')
     .select('id, document_id, extraction_status, error_message, created_at, updated_at')
     .eq('report_id', reportId);

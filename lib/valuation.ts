@@ -5,19 +5,31 @@
  * from both the API route and directly from the orchestrator.
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 
-// Initialize Supabase client with service role for backend operations
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy-initialize clients to avoid build-time errors
+let supabase: SupabaseClient | null = null;
+let anthropic: Anthropic | null = null;
 
-// Initialize Anthropic client
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+function getSupabaseClient(): SupabaseClient {
+  if (!supabase) {
+    supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+  }
+  return supabase;
+}
+
+function getAnthropicClient(): Anthropic {
+  if (!anthropic) {
+    anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY!,
+    });
+  }
+  return anthropic;
+}
 
 // Extraction data interface
 interface DocumentExtraction {
@@ -58,7 +70,7 @@ export async function processValuation(reportId: string): Promise<ProcessValuati
     // ========================================================================
     // 1. Fetch report from database
     // ========================================================================
-    const { data: report, error: reportError } = await supabase
+    const { data: report, error: reportError } = await getSupabaseClient()
       .from('reports')
       .select('*')
       .eq('id', reportId)
@@ -88,7 +100,7 @@ export async function processValuation(reportId: string): Promise<ProcessValuati
     // ========================================================================
     // 2. Fetch all extracted document data
     // ========================================================================
-    const { data: extractions, error: extractError } = await supabase
+    const { data: extractions, error: extractError } = await getSupabaseClient()
       .from('document_extractions')
       .select('*')
       .eq('report_id', reportId)
@@ -112,7 +124,7 @@ export async function processValuation(reportId: string): Promise<ProcessValuati
     // ========================================================================
     // 3. Update status to processing
     // ========================================================================
-    await supabase
+    await getSupabaseClient()
       .from('reports')
       .update({
         report_status: 'valuating',
@@ -210,7 +222,7 @@ IMPORTANT RULES:
     console.log('[VALUATION] Calling Claude Standard Messages API...');
     const startTime = Date.now();
 
-    const response = await anthropic.messages.create({
+    const response = await getAnthropicClient().messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 16000,
       system: systemPrompt,
@@ -309,7 +321,7 @@ Output as a single valid JSON object. Do not include any text before or after th
     // ========================================================================
     // 9. Save complete report to database
     // ========================================================================
-    const { error: updateError } = await supabase
+    const { error: updateError } = await getSupabaseClient()
       .from('reports')
       .update({
         report_status: 'completed',
@@ -357,7 +369,7 @@ Output as a single valid JSON object. Do not include any text before or after th
     console.error('[VALUATION] Error:', errorMessage);
 
     // Update report status to error
-    await supabase
+    await getSupabaseClient()
       .from('reports')
       .update({
         report_status: 'error',
@@ -524,7 +536,7 @@ function formatNumber(value: unknown): string {
 async function updateProgress(reportId: string, progress: number, message: string) {
   console.log(`[VALUATION] Progress ${progress}%: ${message}`);
 
-  await supabase
+  await getSupabaseClient()
     .from('reports')
     .update({
       processing_progress: progress,

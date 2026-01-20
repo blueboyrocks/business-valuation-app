@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { User, Session, SupabaseClient } from '@supabase/supabase-js';
 import { createBrowserClient } from '@/lib/supabase/client';
 import type { Database } from '@/lib/supabase/types';
@@ -20,8 +20,15 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// Create supabase client once outside the component to prevent infinite loops
-const supabase = createBrowserClient();
+// Lazy-initialized supabase client (only created on first access in browser)
+let supabaseClient: ReturnType<typeof createBrowserClient> | null = null;
+
+function getSupabase() {
+  if (!supabaseClient) {
+    supabaseClient = createBrowserClient();
+  }
+  return supabaseClient;
+}
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -33,7 +40,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const initializeAuth = async () => {
       console.log('[AuthContext] Initializing authentication...');
       try {
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
+        const { data: { session: initialSession } } = await getSupabase().auth.getSession();
         console.log('[AuthContext] Session retrieved:', {
           hasSession: !!initialSession,
           userId: initialSession?.user?.id,
@@ -60,7 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     initializeAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, currentSession) => {
+    const { data: { subscription } } = getSupabase().auth.onAuthStateChange((_event, currentSession) => {
       console.log('[AuthContext] Auth state changed:', {
         event: _event,
         hasSession: !!currentSession,
@@ -89,7 +96,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const fetchProfile = async (userId: string) => {
     console.log(`[AuthContext] Fetching profile for user: ${userId}`);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await getSupabase()
         .from('profiles')
         .select('*')
         .eq('id', userId)
@@ -114,7 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signUp = async (email: string, password: string, fullName: string) => {
     try {
-      const { error } = await supabase.auth.signUp({
+      const { error } = await getSupabase().auth.signUp({
         email,
         password,
         options: {
@@ -135,7 +142,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signIn = async (email: string, password: string) => {
     console.log('[AuthContext] Attempting sign in:', { email });
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { error } = await getSupabase().auth.signInWithPassword({
         email,
         password,
       });
@@ -155,7 +162,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signOut = async () => {
     console.log('[AuthContext] Signing out...');
-    await supabase.auth.signOut();
+    await getSupabase().auth.signOut();
     setUser(null);
     setSession(null);
     setProfile(null);
@@ -164,7 +171,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const resetPassword = async (email: string) => {
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      const { error } = await getSupabase().auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/auth/reset-password`,
       });
 
@@ -178,7 +185,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updatePassword = async (newPassword: string) => {
     try {
-      const { error } = await supabase.auth.updateUser({
+      const { error } = await getSupabase().auth.updateUser({
         password: newPassword,
       });
 
@@ -196,7 +203,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     try {
-      const result = await supabase
+      const result = await getSupabase()
         .from('profiles')
         // @ts-expect-error - Type mismatch with Supabase generated types
         .update(updateData)

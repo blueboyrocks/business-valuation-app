@@ -16,16 +16,22 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { extractDocuments } from '@/lib/extraction';
 import { processValuation } from '@/lib/valuation';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// Lazy-initialize Supabase client to avoid build-time errors
+let supabase: SupabaseClient | null = null;
 
-// Initialize Supabase client with service role for backend operations
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+function getSupabaseClient(): SupabaseClient {
+  if (!supabase) {
+    supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+  }
+  return supabase;
+}
 
 interface AnalysisRequest {
   reportId: string;
@@ -52,13 +58,17 @@ export async function POST(request: NextRequest) {
     }
 
     const token = authHeader.replace('Bearer ', '');
-    const authSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: {
-        headers: {
-          Authorization: `Bearer ${token}`,
+    const authSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
         },
-      },
-    });
+      }
+    );
 
     const { data: { user }, error: authError } = await authSupabase.auth.getUser();
 
@@ -85,7 +95,7 @@ export async function POST(request: NextRequest) {
     // ========================================================================
     // 3. Verify report and documents exist
     // ========================================================================
-    const { data: report, error: reportError } = await supabase
+    const { data: report, error: reportError } = await getSupabaseClient()
       .from('reports')
       .select('*')
       .eq('id', reportId)
@@ -99,7 +109,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { data: documents, error: documentsError } = await supabase
+    const { data: documents, error: documentsError } = await getSupabaseClient()
       .from('documents')
       .select('*')
       .eq('report_id', reportId)
@@ -117,7 +127,7 @@ export async function POST(request: NextRequest) {
     // ========================================================================
     // 4. Update report status to processing
     // ========================================================================
-    await supabase
+    await getSupabaseClient()
       .from('reports')
       .update({
         report_status: 'processing',
@@ -135,7 +145,7 @@ export async function POST(request: NextRequest) {
     // ========================================================================
     console.log('📄 [ORCHESTRATOR] Starting Phase 1: Document Extraction');
 
-    await supabase
+    await getSupabaseClient()
       .from('reports')
       .update({
         processing_progress: 5,
@@ -150,7 +160,7 @@ export async function POST(request: NextRequest) {
     if (!extractResult.success) {
       console.error('❌ [ORCHESTRATOR] Phase 1 failed:', extractResult.error);
 
-      await supabase
+      await getSupabaseClient()
         .from('reports')
         .update({
           report_status: 'extraction_failed',
@@ -173,7 +183,7 @@ export async function POST(request: NextRequest) {
 
       // If ALL documents failed, abort
       if (extractResult.summary.success === 0) {
-        await supabase
+        await getSupabaseClient()
           .from('reports')
           .update({
             report_status: 'extraction_failed',
@@ -201,7 +211,7 @@ export async function POST(request: NextRequest) {
     // ========================================================================
     console.log('📊 [ORCHESTRATOR] Starting Phase 2: Valuation Report');
 
-    await supabase
+    await getSupabaseClient()
       .from('reports')
       .update({
         processing_progress: 50,
@@ -216,7 +226,7 @@ export async function POST(request: NextRequest) {
     if (!valuationResult.success) {
       console.error('❌ [ORCHESTRATOR] Phase 2 failed:', valuationResult.error);
 
-      await supabase
+      await getSupabaseClient()
         .from('reports')
         .update({
           report_status: 'valuation_failed',
@@ -271,7 +281,7 @@ export async function POST(request: NextRequest) {
     // Try to update report status
     if (reportId) {
       try {
-        await supabase
+        await getSupabaseClient()
           .from('reports')
           .update({
             report_status: 'error',
@@ -303,7 +313,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'reportId is required' }, { status: 400 });
   }
 
-  const { data: report, error } = await supabase
+  const { data: report, error } = await getSupabaseClient()
     .from('reports')
     .select('report_status, processing_progress, processing_message, error_message')
     .eq('id', reportId)
@@ -314,7 +324,7 @@ export async function GET(request: NextRequest) {
   }
 
   // Also get extraction status
-  const { data: extractions } = await supabase
+  const { data: extractions } = await getSupabaseClient()
     .from('document_extractions')
     .select('extraction_status')
     .eq('report_id', reportId);

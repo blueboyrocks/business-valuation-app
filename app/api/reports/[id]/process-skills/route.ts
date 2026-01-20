@@ -14,18 +14,31 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 
-// Initialize clients
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Lazy-initialize clients to avoid build-time errors
+let supabase: SupabaseClient | null = null;
+let anthropic: Anthropic | null = null;
 
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
-});
+function getSupabaseClient(): SupabaseClient {
+  if (!supabase) {
+    supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+  }
+  return supabase;
+}
+
+function getAnthropicClient(): Anthropic {
+  if (!anthropic) {
+    anthropic = new Anthropic({
+      apiKey: process.env.ANTHROPIC_API_KEY!,
+    });
+  }
+  return anthropic;
+}
 
 // Vercel Pro allows up to 5 minutes for serverless functions
 export const maxDuration = 300;
@@ -46,7 +59,7 @@ export async function POST(
     // ========================================================================
     // 1. Fetch report from database
     // ========================================================================
-    const { data: report, error: reportError } = await supabase
+    const { data: report, error: reportError } = await getSupabaseClient()
       .from('reports')
       .select('*')
       .eq('id', reportId)
@@ -68,7 +81,7 @@ export async function POST(
     // ========================================================================
     // 2. Update status to processing
     // ========================================================================
-    await supabase
+    await getSupabaseClient()
       .from('reports')
       .update({
         report_status: 'processing',
@@ -133,7 +146,7 @@ export async function POST(
 
     console.log(`[SKILLS-API] Calling Claude with ${skills.length} skill(s)...`);
 
-    const response = await anthropic.beta.messages.create({
+    const response = await getAnthropicClient().beta.messages.create({
       model: 'claude-sonnet-4-5-20250929',
       max_tokens: 16000,
       betas: ['code-execution-2025-08-25', 'skills-2025-10-02'],
@@ -209,7 +222,7 @@ export async function POST(
       const containerResponse = finalResponse as any;
       const containerId = containerResponse.container?.id;
 
-      finalResponse = await anthropic.beta.messages.create({
+      finalResponse = await getAnthropicClient().beta.messages.create({
         model: 'claude-sonnet-4-5-20250929',
         max_tokens: 16000,
         betas: ['code-execution-2025-08-25', 'skills-2025-10-02'],
@@ -288,7 +301,7 @@ export async function POST(
     // ========================================================================
     await updateProgress(reportId, 95, 'Saving valuation report...');
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await getSupabaseClient()
       .from('reports')
       .update({
         report_status: 'completed',
@@ -320,7 +333,7 @@ export async function POST(
     const errorMessage = error instanceof Error ? error.message : 'Unknown error during processing';
     console.error('[SKILLS-API] Error:', errorMessage);
 
-    await supabase
+    await getSupabaseClient()
       .from('reports')
       .update({
         report_status: 'error',
@@ -475,7 +488,7 @@ Be thorough, accurate, and ensure all numbers are mathematically consistent. Thi
  * Get documents for a report
  */
 async function getDocuments(reportId: string, report: Record<string, unknown>): Promise<Array<{ file_path: string; filename?: string }>> {
-  const { data: documents, error } = await supabase
+  const { data: documents, error } = await getSupabaseClient()
     .from('documents')
     .select('*')
     .eq('report_id', reportId);
@@ -504,12 +517,12 @@ async function getDocuments(reportId: string, report: Record<string, unknown>): 
 async function downloadDocument(filePath: string): Promise<Buffer> {
   const cleanPath = filePath.replace(/^documents\//, '');
 
-  const { data, error } = await supabase.storage
+  const { data, error } = await getSupabaseClient().storage
     .from('documents')
     .download(cleanPath);
 
   if (error) {
-    const { data: data2, error: error2 } = await supabase.storage
+    const { data: data2, error: error2 } = await getSupabaseClient().storage
       .from('documents')
       .download(filePath);
 
@@ -531,7 +544,7 @@ async function downloadDocument(filePath: string): Promise<Buffer> {
 async function updateProgress(reportId: string, progress: number, message: string) {
   console.log(`[SKILLS-API] Progress ${progress}%: ${message}`);
 
-  await supabase
+  await getSupabaseClient()
     .from('reports')
     .update({
       processing_progress: progress,
@@ -628,7 +641,7 @@ export async function GET(
 ) {
   const reportId = params.id;
 
-  const { data: report, error } = await supabase
+  const { data: report, error } = await getSupabaseClient()
     .from('reports')
     .select('report_status, processing_progress, processing_message, error_message')
     .eq('id', reportId)

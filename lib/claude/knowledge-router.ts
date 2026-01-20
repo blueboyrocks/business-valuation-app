@@ -13,9 +13,6 @@
 
 import {
   KnowledgeRequests,
-  InjectedKnowledge,
-  ValuationMultiples,
-  IndustryBenchmarks,
   PassNumber,
 } from './types';
 
