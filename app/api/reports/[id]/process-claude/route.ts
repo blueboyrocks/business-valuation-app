@@ -1,8 +1,17 @@
 /**
- * Claude Business Valuation Processing Route (Skills API)
+ * Claude Business Valuation Processing Route - Phase 2: Final Valuation
  *
- * This API route processes uploaded documents using the Anthropic Skills API.
- * It makes a single API call with the PDF skill and custom business-valuation-expert skill.
+ * This API route generates the final valuation report using pre-extracted document data.
+ * It uses the Anthropic Skills API with the business-valuation-expert skill.
+ *
+ * IMPORTANT: This endpoint expects documents to be pre-extracted via the
+ * /api/reports/[reportId]/extract-documents endpoint (Phase 1).
+ *
+ * Flow:
+ * 1. Fetch all extracted data from document_extractions table
+ * 2. Combine extractions into a single context string
+ * 3. Call Claude with the full valuation skill (no PDF attachments needed)
+ * 4. Generate and save the final valuation report
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -23,12 +32,21 @@ const anthropic = new Anthropic({
 // Vercel Pro allows up to 5 minutes for serverless functions
 export const maxDuration = 300;
 
+// Extraction data interface
+interface DocumentExtraction {
+  id: string;
+  document_id: string;
+  extracted_data: Record<string, unknown>;
+  extraction_status: string;
+  created_at: string;
+}
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const reportId = params.id;
-  console.log(`[SKILLS-API] Starting valuation for report ${reportId}`);
+  console.log(`[VALUATION] Starting Phase 2 valuation for report ${reportId}`);
 
   try {
     // ========================================================================
@@ -41,7 +59,7 @@ export async function POST(
       .single();
 
     if (reportError || !report) {
-      console.error('[SKILLS-API] Report not found:', reportError);
+      console.error('[VALUATION] Report not found:', reportError);
       return NextResponse.json({ error: 'Report not found' }, { status: 404 });
     }
 
@@ -55,58 +73,62 @@ export async function POST(
     }
 
     // ========================================================================
-    // 2. Update status to processing
+    // 2. Fetch all extracted document data
+    // ========================================================================
+    const { data: extractions, error: extractError } = await supabase
+      .from('document_extractions')
+      .select('*')
+      .eq('report_id', reportId)
+      .eq('extraction_status', 'completed');
+
+    if (extractError) {
+      console.error('[VALUATION] Error fetching extractions:', extractError);
+      return NextResponse.json({ error: 'Failed to fetch document extractions' }, { status: 500 });
+    }
+
+    if (!extractions || extractions.length === 0) {
+      console.error('[VALUATION] No completed extractions found');
+      return NextResponse.json({
+        error: 'No extracted document data found. Please run document extraction first (Phase 1).',
+        hint: 'Call POST /api/reports/{reportId}/extract-documents before this endpoint.'
+      }, { status: 400 });
+    }
+
+    console.log(`[VALUATION] Found ${extractions.length} extracted document(s)`);
+
+    // ========================================================================
+    // 3. Update status to processing
     // ========================================================================
     await supabase
       .from('reports')
       .update({
-        report_status: 'processing',
+        report_status: 'valuating',
         processing_progress: 10,
-        processing_message: 'Initializing AI analysis...',
+        processing_message: 'Preparing valuation analysis...',
         error_message: null,
       })
       .eq('id', reportId);
 
     // ========================================================================
-    // 3. Get uploaded documents
+    // 4. Combine all extracted data into context
     // ========================================================================
-    const documents = await getDocuments(reportId, report);
+    await updateProgress(reportId, 20, 'Combining extracted financial data...');
 
-    if (documents.length === 0) {
-      throw new Error('No documents found for this report');
-    }
-
-    console.log(`[SKILLS-API] Found ${documents.length} document(s) to analyze`);
-
-    // ========================================================================
-    // 4. Download and convert PDF to base64
-    // ========================================================================
-    await updateProgress(reportId, 20, 'Loading documents...');
-
-    const primaryDocument = documents[0];
-    const pdfBuffer = await downloadDocument(primaryDocument.file_path);
-    const pdfBase64 = pdfBuffer.toString('base64');
-
-    console.log(`[SKILLS-API] Loaded document: ${primaryDocument.filename || primaryDocument.file_path} (${pdfBuffer.length} bytes)`);
+    const combinedContext = buildFinancialContext(extractions as DocumentExtraction[]);
+    console.log(`[VALUATION] Built financial context: ${combinedContext.length} characters`);
 
     // ========================================================================
     // 5. Build Skills API request
     // ========================================================================
-    await updateProgress(reportId, 30, 'Analyzing with Claude Skills API...');
+    await updateProgress(reportId, 30, 'Initializing valuation model...');
 
-    // Build skills array
-    const skills: Array<{ type: 'anthropic' | 'custom'; skill_id: string; version: string }> = [
-      {
-        type: 'anthropic',
-        skill_id: 'pdf',
-        version: 'latest'
-      }
-    ];
+    // Build skills array - only need the valuation skill, no PDF skill
+    const skills: Array<{ type: 'anthropic' | 'custom'; skill_id: string; version: string }> = [];
 
     // Require custom skill ID
     const skillId = process.env.BUSINESS_VALUATION_SKILL_ID;
     if (!skillId) {
-      console.error('[SKILLS-API] BUSINESS_VALUATION_SKILL_ID not configured');
+      console.error('[VALUATION] BUSINESS_VALUATION_SKILL_ID not configured');
       throw new Error('Business valuation skill not configured. Please set BUSINESS_VALUATION_SKILL_ID in environment variables.');
     }
 
@@ -115,23 +137,26 @@ export async function POST(
       skill_id: skillId,
       version: 'latest'
     });
-    console.log('[SKILLS-API] Using custom business-valuation-expert skill:', skillId);
+    console.log('[VALUATION] Using business-valuation-expert skill:', skillId);
 
-    const systemPrompt = `You are an expert business valuation analyst. Analyze the provided tax return document and generate a comprehensive business valuation report.
+    const systemPrompt = `You are an expert business valuation analyst using your business-valuation-expert skill knowledge.
+
+You have been provided with PRE-EXTRACTED financial data from tax returns. The data has already been extracted and validated - you do NOT need to read PDFs.
+
+Your task is to perform a comprehensive business valuation analysis using the extracted data.
 
 Your analysis must include:
-1. **Document Extraction**: Extract all financial data from the tax return (revenue, expenses, assets, liabilities, owner compensation)
-2. **Company Overview**: Business name, entity type, industry, NAICS code, location, years in business
-3. **Financial Summary**: Revenue trends, profitability metrics, balance sheet summary
-4. **Normalized Earnings**: Calculate SDE (Seller's Discretionary Earnings) and EBITDA with appropriate add-backs
-5. **Industry Analysis**: Industry context, growth outlook, typical multiples
-6. **Risk Assessment**: Score 10 risk factors (1-5 scale), calculate overall risk score
-7. **Valuation Approaches**:
-   - Asset Approach: Adjusted net asset value
-   - Income Approach: Capitalization of earnings with built-up discount rate
-   - Market Approach: Apply industry multiples to benefit stream
-8. **Valuation Conclusion**: Weight the approaches, apply DLOM, determine fair market value range
-9. **Narratives**: Generate detailed narrative sections for each part of the report
+1. **Company Overview**: Synthesize entity info from all documents
+2. **Financial Summary**: Compile multi-year revenue trends, profitability metrics, balance sheet summary
+3. **Normalized Earnings**: Calculate SDE and EBITDA with appropriate add-backs based on the extracted expense data
+4. **Industry Analysis**: Determine industry context based on NAICS code and business activity
+5. **Risk Assessment**: Score 10 risk factors (1-5 scale) based on the financial data patterns
+6. **Valuation Approaches**:
+   - Asset Approach: Calculate adjusted net asset value from balance sheet data
+   - Income Approach: Capitalize normalized earnings with built-up discount rate
+   - Market Approach: Apply industry-appropriate multiples to benefit stream
+7. **Valuation Conclusion**: Weight the approaches, apply DLOM, determine fair market value range
+8. **Narratives**: Generate detailed narrative sections (200-500 words each)
 
 Output your complete analysis as a single JSON object with this structure:
 {
@@ -147,21 +172,20 @@ Output your complete analysis as a single JSON object with this structure:
   "metadata": { analysis_timestamp, document_types_analyzed, years_of_data, data_quality_score, confidence_metrics }
 }
 
-All monetary values should be whole numbers (no cents). Percentages as decimals (0.15 not 15%). Generate detailed narratives (200-500 words each).`;
+All monetary values should be whole numbers (no cents). Percentages as decimals (0.15 not 15%).`;
 
     // ========================================================================
     // 6. Call Claude Skills API
     // ========================================================================
-    console.log('[SKILLS-API] Calling Claude API with Skills...');
+    await updateProgress(reportId, 40, 'Performing valuation analysis...');
+    console.log('[VALUATION] Calling Claude API with Skills...');
     const startTime = Date.now();
 
     const response = await anthropic.beta.messages.create({
       model: 'claude-sonnet-4-20250514',
       max_tokens: 16000,
       betas: [
-        'code-execution-2025-08-25',
-        'skills-2025-10-02',
-        'pdfs-2024-09-25'
+        'skills-2025-10-02'
       ],
       container: {
         skills: skills as any
@@ -170,42 +194,30 @@ All monetary values should be whole numbers (no cents). Percentages as decimals 
       messages: [
         {
           role: 'user',
-          content: [
-            {
-              type: 'document',
-              source: {
-                type: 'base64',
-                media_type: 'application/pdf',
-                data: pdfBase64
-              }
-            } as any,
-            {
-              type: 'text',
-              text: `Analyze this business tax return and generate a comprehensive valuation report.
+          content: `Here is the pre-extracted financial data from ${extractions.length} document(s). Analyze this data and generate a comprehensive business valuation report.
 
-Use your business valuation expertise to:
-1. Extract all financial data from every page
-2. Identify the business entity type and fiscal year(s)
-3. Calculate normalized SDE and EBITDA with all appropriate add-backs
-4. Conduct thorough risk assessment using the 10-factor framework
-5. Apply appropriate industry multiples based on NAICS code
-6. Calculate Asset, Income, and Market approach values
-7. Weight the approaches and apply appropriate discounts
-8. Generate complete valuation report with all narratives
+=== EXTRACTED FINANCIAL DATA ===
+
+${combinedContext}
+
+=== END OF EXTRACTED DATA ===
+
+Based on this extracted financial data, please:
+1. Synthesize the financial information across all documents/years
+2. Calculate normalized SDE and EBITDA with appropriate add-backs
+3. Conduct risk assessment using the 10-factor framework
+4. Apply appropriate industry multiples based on the NAICS code
+5. Calculate Asset, Income, and Market approach values
+6. Weight the approaches and apply appropriate discounts (DLOM)
+7. Generate complete valuation report with all narratives
 
 Output as a single valid JSON object. Do not include any text before or after the JSON.`
-            }
-          ]
         }
-      ],
-      tools: [{
-        type: 'code_execution_20250825' as any,
-        name: 'code_execution'
-      }]
+      ]
     });
 
     const processingTime = Date.now() - startTime;
-    console.log(`[SKILLS-API] API call completed in ${processingTime}ms`);
+    console.log(`[VALUATION] API call completed in ${processingTime}ms`);
 
     // ========================================================================
     // 7. Extract JSON from response
@@ -242,12 +254,12 @@ Output as a single valid JSON object. Do not include any text before or after th
     }
 
     if (!valuationJson) {
-      console.error('[SKILLS-API] Failed to parse JSON from response');
-      console.error('[SKILLS-API] Raw response:', rawTextContent.substring(0, 1000));
+      console.error('[VALUATION] Failed to parse JSON from response');
+      console.error('[VALUATION] Raw response:', rawTextContent.substring(0, 1000));
       throw new Error('Failed to parse valuation JSON from Claude response');
     }
 
-    console.log('[SKILLS-API] Successfully parsed valuation JSON');
+    console.log('[VALUATION] Successfully parsed valuation JSON');
 
     // ========================================================================
     // 8. Map output to database format
@@ -258,14 +270,19 @@ Output as a single valid JSON object. Do not include any text before or after th
 
     // Add pipeline metadata
     mappedOutput.pipeline_metadata = {
-      method: 'skills-api',
+      method: 'two-phase-skills-api',
+      phase: 2,
       model: 'claude-sonnet-4-20250514',
       processing_time_ms: processingTime,
       input_tokens: response.usage?.input_tokens || 0,
       output_tokens: response.usage?.output_tokens || 0,
-      skills_used: skills.map(s => s.skill_id),
-      pipeline_version: '3.0',
+      documents_analyzed: extractions.length,
+      skills_used: ['business-valuation-expert'],
+      pipeline_version: '4.0',
     };
+
+    // Store extraction references
+    mappedOutput.extraction_ids = extractions.map((e: DocumentExtraction) => e.id);
 
     // ========================================================================
     // 9. Save complete report to database
@@ -282,15 +299,15 @@ Output as a single valid JSON object. Do not include any text before or after th
       .eq('id', reportId);
 
     if (updateError) {
-      console.error('[SKILLS-API] Failed to save report:', updateError);
+      console.error('[VALUATION] Failed to save report:', updateError);
       throw new Error('Failed to save report data');
     }
 
     const concludedValue = valuationJson.valuation_conclusion?.concluded_fair_market_value ||
       valuationJson.valuation_summary?.concluded_fair_market_value || 0;
 
-    console.log('[SKILLS-API] Report completed successfully!');
-    console.log(`[SKILLS-API] Concluded value: $${concludedValue.toLocaleString()}`);
+    console.log('[VALUATION] Report completed successfully!');
+    console.log(`[VALUATION] Concluded value: $${concludedValue.toLocaleString()}`);
 
     // ========================================================================
     // 10. Return success response
@@ -308,12 +325,13 @@ Output as a single valid JSON object. Do not include any text before or after th
         processing_time_ms: processingTime,
         input_tokens: response.usage?.input_tokens || 0,
         output_tokens: response.usage?.output_tokens || 0,
+        documents_analyzed: extractions.length,
       },
     });
 
   } catch (error: unknown) {
     const errorMessage = error instanceof Error ? error.message : 'Unknown error during processing';
-    console.error('[SKILLS-API] Error:', errorMessage);
+    console.error('[VALUATION] Error:', errorMessage);
 
     // Update report status to error
     await supabase
@@ -337,82 +355,150 @@ Output as a single valid JSON object. Do not include any text before or after th
 // ============================================================================
 
 /**
- * Get documents for a report from various sources
+ * Build a combined financial context string from all extractions
  */
-async function getDocuments(reportId: string, report: Record<string, unknown>): Promise<Array<{ file_path: string; filename?: string }>> {
-  // Try to get documents from the documents table
-  const { data: documents, error } = await supabase
-    .from('documents')
-    .select('*')
-    .eq('report_id', reportId);
+function buildFinancialContext(extractions: DocumentExtraction[]): string {
+  const sections: string[] = [];
 
-  if (!error && documents && documents.length > 0) {
-    return documents;
+  // Sort extractions by tax year if available
+  const sortedExtractions = [...extractions].sort((a, b) => {
+    const yearA = (a.extracted_data?.tax_year as number) || 0;
+    const yearB = (b.extracted_data?.tax_year as number) || 0;
+    return yearA - yearB;
+  });
+
+  for (let i = 0; i < sortedExtractions.length; i++) {
+    const extraction = sortedExtractions[i];
+    const data = extraction.extracted_data;
+
+    if (!data) continue;
+
+    const docType = data.document_type || 'Unknown Document';
+    const taxYear = data.tax_year || 'Unknown Year';
+
+    sections.push(`--- Document ${i + 1}: ${docType} (Tax Year ${taxYear}) ---`);
+    sections.push('');
+
+    // Entity Information
+    const entity = data.entity_info as Record<string, unknown> | undefined;
+    if (entity) {
+      sections.push('ENTITY INFORMATION:');
+      sections.push(`  Business Name: ${entity.business_name || 'N/A'}`);
+      sections.push(`  EIN: ${entity.ein || 'N/A'}`);
+      sections.push(`  Entity Type: ${entity.entity_type || 'N/A'}`);
+      sections.push(`  Address: ${entity.address || 'N/A'}`);
+      sections.push(`  Fiscal Year End: ${entity.fiscal_year_end || 'N/A'}`);
+      sections.push('');
+    }
+
+    // Income Statement
+    const income = data.income_statement as Record<string, unknown> | undefined;
+    if (income) {
+      sections.push('INCOME STATEMENT:');
+      sections.push(`  Gross Receipts/Sales: $${formatNumber(income.gross_receipts_sales)}`);
+      sections.push(`  Returns & Allowances: $${formatNumber(income.returns_allowances)}`);
+      sections.push(`  Cost of Goods Sold: $${formatNumber(income.cost_of_goods_sold)}`);
+      sections.push(`  Gross Profit: $${formatNumber(income.gross_profit)}`);
+      sections.push(`  Total Income: $${formatNumber(income.total_income)}`);
+      sections.push(`  Total Deductions: $${formatNumber(income.total_deductions)}`);
+      sections.push(`  Taxable Income: $${formatNumber(income.taxable_income)}`);
+      sections.push(`  Net Income: $${formatNumber(income.net_income)}`);
+      sections.push('');
+    }
+
+    // Expenses
+    const expenses = data.expenses as Record<string, unknown> | undefined;
+    if (expenses) {
+      sections.push('EXPENSES BREAKDOWN:');
+      sections.push(`  Officer Compensation: $${formatNumber(expenses.compensation_of_officers)}`);
+      sections.push(`  Salaries & Wages: $${formatNumber(expenses.salaries_wages)}`);
+      sections.push(`  Repairs & Maintenance: $${formatNumber(expenses.repairs_maintenance)}`);
+      sections.push(`  Bad Debts: $${formatNumber(expenses.bad_debts)}`);
+      sections.push(`  Rents: $${formatNumber(expenses.rents)}`);
+      sections.push(`  Taxes & Licenses: $${formatNumber(expenses.taxes_licenses)}`);
+      sections.push(`  Interest: $${formatNumber(expenses.interest)}`);
+      sections.push(`  Depreciation: $${formatNumber(expenses.depreciation)}`);
+      sections.push(`  Advertising: $${formatNumber(expenses.advertising)}`);
+      sections.push(`  Pension/Profit Sharing: $${formatNumber(expenses.pension_profit_sharing)}`);
+      sections.push(`  Employee Benefits: $${formatNumber(expenses.employee_benefits)}`);
+      sections.push(`  Other Deductions: $${formatNumber(expenses.other_deductions)}`);
+      sections.push('');
+    }
+
+    // Balance Sheet
+    const balance = data.balance_sheet as Record<string, unknown> | undefined;
+    if (balance) {
+      sections.push('BALANCE SHEET:');
+      sections.push('  Assets:');
+      sections.push(`    Cash: $${formatNumber(balance.cash)}`);
+      sections.push(`    Accounts Receivable: $${formatNumber(balance.accounts_receivable)}`);
+      sections.push(`    Inventory: $${formatNumber(balance.inventory)}`);
+      sections.push(`    Fixed Assets: $${formatNumber(balance.fixed_assets)}`);
+      sections.push(`    Accumulated Depreciation: $${formatNumber(balance.accumulated_depreciation)}`);
+      sections.push(`    Other Assets: $${formatNumber(balance.other_assets)}`);
+      sections.push(`    TOTAL ASSETS: $${formatNumber(balance.total_assets)}`);
+      sections.push('  Liabilities:');
+      sections.push(`    Accounts Payable: $${formatNumber(balance.accounts_payable)}`);
+      sections.push(`    Loans Payable: $${formatNumber(balance.loans_payable)}`);
+      sections.push(`    Other Liabilities: $${formatNumber(balance.other_liabilities)}`);
+      sections.push(`    TOTAL LIABILITIES: $${formatNumber(balance.total_liabilities)}`);
+      sections.push('  Equity:');
+      sections.push(`    Retained Earnings: $${formatNumber(balance.retained_earnings)}`);
+      sections.push(`    TOTAL EQUITY: $${formatNumber(balance.total_equity)}`);
+      sections.push('');
+    }
+
+    // Owner Information
+    const owner = data.owner_info as Record<string, unknown> | undefined;
+    if (owner) {
+      sections.push('OWNER INFORMATION:');
+      sections.push(`  Owner Compensation: $${formatNumber(owner.owner_compensation)}`);
+      sections.push(`  Distributions: $${formatNumber(owner.distributions)}`);
+      sections.push(`  Loans to Shareholders: $${formatNumber(owner.loans_to_shareholders)}`);
+      sections.push(`  Loans from Shareholders: $${formatNumber(owner.loans_from_shareholders)}`);
+      sections.push('');
+    }
+
+    // Additional Data
+    const additional = data.additional_data as Record<string, unknown> | undefined;
+    if (additional) {
+      sections.push('ADDITIONAL INFORMATION:');
+      sections.push(`  Number of Employees: ${additional.number_of_employees || 'N/A'}`);
+      sections.push(`  Accounting Method: ${additional.accounting_method || 'N/A'}`);
+      sections.push(`  Business Activity: ${additional.business_activity || 'N/A'}`);
+      sections.push(`  NAICS Code: ${additional.naics_code || 'N/A'}`);
+      sections.push('');
+    }
+
+    // Extraction Notes
+    const notes = data.extraction_notes as string[] | undefined;
+    if (notes && notes.length > 0) {
+      sections.push('EXTRACTION NOTES:');
+      notes.forEach(note => sections.push(`  - ${note}`));
+      sections.push('');
+    }
+
+    sections.push('');
   }
 
-  // Fallback: check if document paths are stored in report
-  if (report.document_paths) {
-    const paths = typeof report.document_paths === 'string'
-      ? JSON.parse(report.document_paths)
-      : report.document_paths;
-
-    return (paths as string[]).map((path: string) => ({
-      file_path: path,
-      filename: path.split('/').pop(),
-    }));
-  }
-
-  // Check document_ids
-  if (report.document_ids) {
-    const ids = typeof report.document_ids === 'string'
-      ? JSON.parse(report.document_ids)
-      : report.document_ids;
-
-    const { data: docs } = await supabase
-      .from('documents')
-      .select('*')
-      .in('id', ids);
-
-    return docs || [];
-  }
-
-  return [];
+  return sections.join('\n');
 }
 
 /**
- * Download a document from Supabase Storage
+ * Format a number for display
  */
-async function downloadDocument(filePath: string): Promise<Buffer> {
-  // Handle different path formats
-  const cleanPath = filePath.replace(/^documents\//, '');
-
-  const { data, error } = await supabase.storage
-    .from('documents')
-    .download(cleanPath);
-
-  if (error) {
-    // Try with original path
-    const { data: data2, error: error2 } = await supabase.storage
-      .from('documents')
-      .download(filePath);
-
-    if (error2) {
-      throw new Error(`Failed to download document: ${error.message}`);
-    }
-
-    const arrayBuffer = await data2.arrayBuffer();
-    return Buffer.from(arrayBuffer);
-  }
-
-  const arrayBuffer = await data.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+function formatNumber(value: unknown): string {
+  if (value === null || value === undefined) return '0';
+  const num = Number(value);
+  if (isNaN(num)) return '0';
+  return num.toLocaleString();
 }
 
 /**
  * Update processing progress in database
  */
 async function updateProgress(reportId: string, progress: number, message: string) {
-  console.log(`[SKILLS-API] Progress ${progress}%: ${message}`);
+  console.log(`[VALUATION] Progress ${progress}%: ${message}`);
 
   await supabase
     .from('reports')
@@ -439,7 +525,7 @@ function mapValuationToDbFormat(output: any, report: Record<string, unknown>): R
 
   return {
     // Schema info
-    schema_version: '3.0',
+    schema_version: '4.0',
     valuation_date: vs.valuation_date || new Date().toISOString().split('T')[0],
     generated_at: new Date().toISOString(),
 
