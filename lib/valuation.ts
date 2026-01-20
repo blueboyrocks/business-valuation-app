@@ -191,7 +191,7 @@ All monetary values should be whole numbers (no cents). Percentages as decimals 
       betas: [
         'skills-2025-10-02'
       ],
-      container: skillId,
+      // Note: container field removed - Skills API doesn't need it
       system: systemPrompt,
       messages: [
         {
