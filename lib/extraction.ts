@@ -107,7 +107,7 @@ interface DocumentRecord {
   id: string;
   file_path: string;
   file_name?: string;
-  file_type?: string;
+  mime_type?: string;
 }
 
 interface ExtractionResult {
@@ -163,7 +163,7 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
     // ========================================================================
     const { data: documents, error: docsError } = await supabase
       .from('documents')
-      .select('id, file_path, file_name, file_type')
+      .select('id, file_path, file_name, mime_type')
       .eq('report_id', reportId);
 
     if (docsError) {
