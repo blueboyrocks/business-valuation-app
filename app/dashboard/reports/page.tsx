@@ -64,11 +64,18 @@ export default function ReportsPage() {
     const variants: Record<Report['report_status'], { variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: React.ReactNode }> = {
       pending: { variant: 'secondary', icon: <Clock className="h-3 w-3 mr-1" /> },
       processing: { variant: 'default', icon: <TrendingUp className="h-3 w-3 mr-1" /> },
+      extracting: { variant: 'default', icon: <TrendingUp className="h-3 w-3 mr-1" /> },
+      extraction_complete: { variant: 'default', icon: <TrendingUp className="h-3 w-3 mr-1" /> },
+      extraction_partial: { variant: 'default', icon: <TrendingUp className="h-3 w-3 mr-1" /> },
+      extraction_failed: { variant: 'destructive', icon: <XCircle className="h-3 w-3 mr-1" /> },
+      valuating: { variant: 'default', icon: <TrendingUp className="h-3 w-3 mr-1" /> },
+      valuation_failed: { variant: 'destructive', icon: <XCircle className="h-3 w-3 mr-1" /> },
       completed: { variant: 'outline', icon: <CheckCircle className="h-3 w-3 mr-1 text-green-600" /> },
       failed: { variant: 'destructive', icon: <XCircle className="h-3 w-3 mr-1" /> },
+      error: { variant: 'destructive', icon: <XCircle className="h-3 w-3 mr-1" /> },
     };
 
-    const { variant, icon } = variants[status];
+    const { variant, icon } = variants[status] || variants.pending;
 
     return (
       <Badge variant={variant} className="flex items-center w-fit">

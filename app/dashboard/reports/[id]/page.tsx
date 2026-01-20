@@ -149,11 +149,18 @@ export default function ReportDetailPage() {
     const variants: Record<Report['report_status'], { variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: React.ReactNode }> = {
       pending: { variant: 'secondary', icon: <Clock className="h-4 w-4 mr-1.5" /> },
       processing: { variant: 'default', icon: <TrendingUp className="h-4 w-4 mr-1.5" /> },
+      extracting: { variant: 'default', icon: <TrendingUp className="h-4 w-4 mr-1.5" /> },
+      extraction_complete: { variant: 'default', icon: <TrendingUp className="h-4 w-4 mr-1.5" /> },
+      extraction_partial: { variant: 'default', icon: <TrendingUp className="h-4 w-4 mr-1.5" /> },
+      extraction_failed: { variant: 'destructive', icon: <XCircle className="h-4 w-4 mr-1.5" /> },
+      valuating: { variant: 'default', icon: <TrendingUp className="h-4 w-4 mr-1.5" /> },
+      valuation_failed: { variant: 'destructive', icon: <XCircle className="h-4 w-4 mr-1.5" /> },
       completed: { variant: 'outline', icon: <CheckCircle className="h-4 w-4 mr-1.5 text-green-600" /> },
       failed: { variant: 'destructive', icon: <XCircle className="h-4 w-4 mr-1.5" /> },
+      error: { variant: 'destructive', icon: <XCircle className="h-4 w-4 mr-1.5" /> },
     };
 
-    const { variant, icon } = variants[status];
+    const { variant, icon } = variants[status] || variants.pending;
 
     return (
       <Badge variant={variant} className="flex items-center w-fit text-sm">
