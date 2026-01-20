@@ -106,13 +106,13 @@ const EXTRACTION_USER_PROMPT = `Extract all financial data from this tax return 
 interface DocumentRecord {
   id: string;
   file_path: string;
-  filename?: string;
+  file_name?: string;
   file_type?: string;
 }
 
 interface ExtractionResult {
   documentId: string;
-  filename: string;
+  file_name: string;
   success: boolean;
   error?: string;
   extractedData?: Record<string, unknown>;
@@ -131,7 +131,7 @@ export interface ExtractDocumentsResult {
   };
   results?: Array<{
     documentId: string;
-    filename: string;
+    file_name: string;
     success: boolean;
     error?: string;
   }>;
@@ -163,7 +163,7 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
     // ========================================================================
     const { data: documents, error: docsError } = await supabase
       .from('documents')
-      .select('id, file_path, filename, file_type')
+      .select('id, file_path, file_name, file_type')
       .eq('report_id', reportId);
 
     if (docsError) {
@@ -202,7 +202,7 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
       const docNumber = i + 1;
       const progressPercent = Math.round(5 + (90 * docNumber / documents.length));
 
-      console.log(`[EXTRACT] Processing document ${docNumber}/${documents.length}: ${doc.filename || doc.file_path}`);
+      console.log(`[EXTRACT] Processing document ${docNumber}/${documents.length}: ${doc.file_name || doc.file_path}`);
 
       // Update progress
       await supabase
@@ -225,7 +225,7 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
         console.log(`[EXTRACT] Document ${doc.id} already extracted, skipping`);
         results.push({
           documentId: doc.id,
-          filename: doc.filename || doc.file_path,
+          file_name: doc.file_name || doc.file_path,
           success: true,
         });
         successCount++;
@@ -330,7 +330,7 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
       },
       results: results.map(r => ({
         documentId: r.documentId,
-        filename: r.filename,
+        file_name: r.file_name,
         success: r.success,
         error: r.error,
       })),
@@ -422,12 +422,12 @@ async function extractDocumentWithRetry(
         throw new Error('Missing document_type in extracted data');
       }
 
-      console.log(`[EXTRACT] Successfully extracted data from ${doc.filename || doc.file_path}`);
+      console.log(`[EXTRACT] Successfully extracted data from ${doc.file_name || doc.file_path}`);
       console.log(`[EXTRACT] Document type: ${extractedData.document_type}, Tax year: ${extractedData.tax_year}`);
 
       return {
         documentId: doc.id,
-        filename: doc.filename || doc.file_path,
+        file_name: doc.file_name || doc.file_path,
         success: true,
         extractedData,
       };
@@ -448,7 +448,7 @@ async function extractDocumentWithRetry(
   // All retries failed
   return {
     documentId: doc.id,
-    filename: doc.filename || doc.file_path,
+    file_name: doc.file_name || doc.file_path,
     success: false,
     error: `Failed after ${MAX_RETRIES} attempts: ${lastError}`,
   };
