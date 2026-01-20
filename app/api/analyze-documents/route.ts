@@ -150,7 +150,9 @@ export async function POST(request: NextRequest) {
     const baseUrl = getBaseUrl();
     const extractUrl = `${baseUrl}/api/reports/${reportId}/extract-documents`;
 
+    console.log(`📄 [ORCHESTRATOR] Base URL: ${baseUrl}`);
     console.log(`📄 [ORCHESTRATOR] Calling: ${extractUrl}`);
+    console.log(`📄 [ORCHESTRATOR] VERCEL_URL env: ${process.env.VERCEL_URL || 'not set'}`);
 
     const extractResponse = await fetch(extractUrl, {
       method: 'POST',
@@ -158,6 +160,40 @@ export async function POST(request: NextRequest) {
         'Content-Type': 'application/json',
       },
     });
+
+    console.log(`📄 [ORCHESTRATOR] Response status: ${extractResponse.status}`);
+    console.log(`📄 [ORCHESTRATOR] Response content-type: ${extractResponse.headers.get('content-type')}`);
+
+    // Check if response is JSON before parsing
+    const contentType = extractResponse.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+      const textResponse = await extractResponse.text();
+      console.error(`❌ [ORCHESTRATOR] Non-JSON response from extract endpoint:`);
+      console.error(`   Status: ${extractResponse.status}`);
+      console.error(`   Content-Type: ${contentType}`);
+      console.error(`   Body (first 500 chars): ${textResponse.substring(0, 500)}`);
+
+      await supabase
+        .from('reports')
+        .update({
+          report_status: 'extraction_failed',
+          error_message: `Extract endpoint returned non-JSON response (status ${extractResponse.status})`,
+          processing_progress: 0,
+        })
+        .eq('id', reportId);
+
+      return NextResponse.json({
+        status: 'error',
+        phase: 1,
+        error: `Extract endpoint returned ${extractResponse.status} with non-JSON response`,
+        details: {
+          url: extractUrl,
+          status: extractResponse.status,
+          contentType,
+          bodyPreview: textResponse.substring(0, 200)
+        },
+      }, { status: 500 });
+    }
 
     const extractResult = await extractResponse.json();
 
