@@ -7,14 +7,18 @@
  *
  * Flow:
  * 1. Validate request and check documents exist
- * 2. Call /api/reports/{reportId}/extract-documents (Phase 1)
- * 3. Wait for extraction to complete
- * 4. Call /api/reports/{id}/process-claude (Phase 2)
- * 5. Return final result
+ * 2. Call extractDocuments function directly (Phase 1)
+ * 3. Call processValuation function directly (Phase 2)
+ * 4. Return final result
+ *
+ * NOTE: We use direct function imports instead of HTTP calls to avoid
+ * authentication issues between serverless functions on Vercel.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { extractDocuments } from '@/lib/extraction';
+import { processValuation } from '@/lib/valuation';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
@@ -22,14 +26,6 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 // Initialize Supabase client with service role for backend operations
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-// Get the base URL for internal API calls
-const getBaseUrl = () => {
-  if (process.env.VERCEL_URL) {
-    return `https://${process.env.VERCEL_URL}`;
-  }
-  return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-};
 
 interface AnalysisRequest {
   reportId: string;
@@ -135,7 +131,7 @@ export async function POST(request: NextRequest) {
     console.log(`✓ [ORCHESTRATOR] Report ${reportId} marked as processing`);
 
     // ========================================================================
-    // 5. PHASE 1: Extract documents
+    // 5. PHASE 1: Extract documents (direct function call)
     // ========================================================================
     console.log('📄 [ORCHESTRATOR] Starting Phase 1: Document Extraction');
 
@@ -147,58 +143,12 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', reportId);
 
-    const baseUrl = getBaseUrl();
-    const extractUrl = `${baseUrl}/api/reports/${reportId}/extract-documents`;
+    // Call extraction function directly (no HTTP overhead)
+    console.log(`📄 [ORCHESTRATOR] Calling extractDocuments function directly`);
+    const extractResult = await extractDocuments(reportId);
 
-    console.log(`📄 [ORCHESTRATOR] Base URL: ${baseUrl}`);
-    console.log(`📄 [ORCHESTRATOR] Calling: ${extractUrl}`);
-    console.log(`📄 [ORCHESTRATOR] VERCEL_URL env: ${process.env.VERCEL_URL || 'not set'}`);
-
-    const extractResponse = await fetch(extractUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    console.log(`📄 [ORCHESTRATOR] Response status: ${extractResponse.status}`);
-    console.log(`📄 [ORCHESTRATOR] Response content-type: ${extractResponse.headers.get('content-type')}`);
-
-    // Check if response is JSON before parsing
-    const contentType = extractResponse.headers.get('content-type') || '';
-    if (!contentType.includes('application/json')) {
-      const textResponse = await extractResponse.text();
-      console.error(`❌ [ORCHESTRATOR] Non-JSON response from extract endpoint:`);
-      console.error(`   Status: ${extractResponse.status}`);
-      console.error(`   Content-Type: ${contentType}`);
-      console.error(`   Body (first 500 chars): ${textResponse.substring(0, 500)}`);
-
-      await supabase
-        .from('reports')
-        .update({
-          report_status: 'extraction_failed',
-          error_message: `Extract endpoint returned non-JSON response (status ${extractResponse.status})`,
-          processing_progress: 0,
-        })
-        .eq('id', reportId);
-
-      return NextResponse.json({
-        status: 'error',
-        phase: 1,
-        error: `Extract endpoint returned ${extractResponse.status} with non-JSON response`,
-        details: {
-          url: extractUrl,
-          status: extractResponse.status,
-          contentType,
-          bodyPreview: textResponse.substring(0, 200)
-        },
-      }, { status: 500 });
-    }
-
-    const extractResult = await extractResponse.json();
-
-    if (!extractResponse.ok) {
-      console.error('❌ [ORCHESTRATOR] Phase 1 failed:', extractResult);
+    if (!extractResult.success) {
+      console.error('❌ [ORCHESTRATOR] Phase 1 failed:', extractResult.error);
 
       await supabase
         .from('reports')
@@ -218,7 +168,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Check if any extractions failed
-    if (extractResult.summary?.failed > 0) {
+    if (extractResult.summary && extractResult.summary.failed > 0) {
       console.warn(`⚠️ [ORCHESTRATOR] ${extractResult.summary.failed} document(s) failed extraction`);
 
       // If ALL documents failed, abort
@@ -247,7 +197,7 @@ export async function POST(request: NextRequest) {
     console.log(`✓ [ORCHESTRATOR] Phase 1 complete: ${extractResult.summary?.success || 0} document(s) extracted`);
 
     // ========================================================================
-    // 6. PHASE 2: Generate valuation report
+    // 6. PHASE 2: Generate valuation report (direct function call)
     // ========================================================================
     console.log('📊 [ORCHESTRATOR] Starting Phase 2: Valuation Report');
 
@@ -259,21 +209,12 @@ export async function POST(request: NextRequest) {
       })
       .eq('id', reportId);
 
-    const valuationUrl = `${baseUrl}/api/reports/${reportId}/process-claude`;
+    // Call valuation function directly (no HTTP overhead)
+    console.log(`📊 [ORCHESTRATOR] Calling processValuation function directly`);
+    const valuationResult = await processValuation(reportId);
 
-    console.log(`📊 [ORCHESTRATOR] Calling: ${valuationUrl}`);
-
-    const valuationResponse = await fetch(valuationUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    });
-
-    const valuationResult = await valuationResponse.json();
-
-    if (!valuationResponse.ok) {
-      console.error('❌ [ORCHESTRATOR] Phase 2 failed:', valuationResult);
+    if (!valuationResult.success) {
+      console.error('❌ [ORCHESTRATOR] Phase 2 failed:', valuationResult.error);
 
       await supabase
         .from('reports')
