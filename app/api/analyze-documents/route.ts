@@ -1,21 +1,52 @@
+/**
+ * Document Analysis Orchestrator - Two-Phase Workflow
+ *
+ * This endpoint orchestrates the complete valuation workflow:
+ * Phase 1: Extract financial data from each document (sequential)
+ * Phase 2: Generate comprehensive valuation report from extracted data
+ *
+ * Flow:
+ * 1. Validate request and check documents exist
+ * 2. Call /api/reports/{reportId}/extract-documents (Phase 1)
+ * 3. Wait for extraction to complete
+ * 4. Call /api/reports/{id}/process-claude (Phase 2)
+ * 5. Return final result
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { Database } from '@/lib/supabase/types';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-type Report = Database['public']['Tables']['reports']['Row'];
-type Document = Database['public']['Tables']['documents']['Row'];
+// Initialize Supabase client with service role for backend operations
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+// Get the base URL for internal API calls
+const getBaseUrl = () => {
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`;
+  }
+  return process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+};
 
 interface AnalysisRequest {
   reportId: string;
 }
 
+// Allow up to 5 minutes for the orchestration
+export const maxDuration = 300;
+
 export async function POST(request: NextRequest) {
-  console.log('🔬 [ANALYZE] Starting analysis request');
+  console.log('🔬 [ORCHESTRATOR] Starting two-phase valuation workflow');
+
+  let reportId: string | undefined;
+
   try {
+    // ========================================================================
+    // 1. Authenticate user
+    // ========================================================================
     const authHeader = request.headers.get('authorization');
     if (!authHeader) {
       return NextResponse.json(
@@ -42,9 +73,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    // ========================================================================
+    // 2. Validate request
+    // ========================================================================
     const body = await request.json() as AnalysisRequest;
-    const { reportId } = body;
+    reportId = body.reportId;
 
     if (!reportId) {
       return NextResponse.json(
@@ -53,6 +86,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ========================================================================
+    // 3. Verify report and documents exist
+    // ========================================================================
     const { data: report, error: reportError } = await supabase
       .from('reports')
       .select('*')
@@ -80,33 +116,245 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`✓ [ANALYZE] Found ${documents.length} documents`);
+    console.log(`✓ [ORCHESTRATOR] Found ${documents.length} document(s) for report ${reportId}`);
 
-    // Update report status to processing
+    // ========================================================================
+    // 4. Update report status to processing
+    // ========================================================================
     await supabase
       .from('reports')
       .update({
         report_status: 'processing',
         processing_started_at: new Date().toISOString(),
-      } as any)
+        processing_progress: 0,
+        processing_message: 'Starting document analysis...',
+        error_message: null,
+      })
       .eq('id', reportId);
 
-    console.log(`✓ [ANALYZE] Report ${reportId} marked as processing`);
+    console.log(`✓ [ORCHESTRATOR] Report ${reportId} marked as processing`);
 
-    // NOTE: Claude processing is triggered by the frontend calling /api/reports/[id]/process-claude
-    // The frontend will poll the process-claude endpoint which runs the 6-pass valuation pipeline
-    // This approach leverages Claude's native PDF understanding for document analysis
+    // ========================================================================
+    // 5. PHASE 1: Extract documents
+    // ========================================================================
+    console.log('📄 [ORCHESTRATOR] Starting Phase 1: Document Extraction');
+
+    await supabase
+      .from('reports')
+      .update({
+        processing_progress: 5,
+        processing_message: `Extracting financial data from ${documents.length} document(s)...`,
+      })
+      .eq('id', reportId);
+
+    const baseUrl = getBaseUrl();
+    const extractUrl = `${baseUrl}/api/reports/${reportId}/extract-documents`;
+
+    console.log(`📄 [ORCHESTRATOR] Calling: ${extractUrl}`);
+
+    const extractResponse = await fetch(extractUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const extractResult = await extractResponse.json();
+
+    if (!extractResponse.ok) {
+      console.error('❌ [ORCHESTRATOR] Phase 1 failed:', extractResult);
+
+      await supabase
+        .from('reports')
+        .update({
+          report_status: 'extraction_failed',
+          error_message: extractResult.error || 'Document extraction failed',
+          processing_progress: 0,
+        })
+        .eq('id', reportId);
+
+      return NextResponse.json({
+        status: 'error',
+        phase: 1,
+        error: extractResult.error || 'Document extraction failed',
+        details: extractResult,
+      }, { status: 500 });
+    }
+
+    // Check if any extractions failed
+    if (extractResult.summary?.failed > 0) {
+      console.warn(`⚠️ [ORCHESTRATOR] ${extractResult.summary.failed} document(s) failed extraction`);
+
+      // If ALL documents failed, abort
+      if (extractResult.summary.success === 0) {
+        await supabase
+          .from('reports')
+          .update({
+            report_status: 'extraction_failed',
+            error_message: 'All document extractions failed',
+            processing_progress: 0,
+          })
+          .eq('id', reportId);
+
+        return NextResponse.json({
+          status: 'error',
+          phase: 1,
+          error: 'All document extractions failed',
+          details: extractResult,
+        }, { status: 500 });
+      }
+
+      // Continue with partial extractions
+      console.log(`✓ [ORCHESTRATOR] Continuing with ${extractResult.summary.success} successful extraction(s)`);
+    }
+
+    console.log(`✓ [ORCHESTRATOR] Phase 1 complete: ${extractResult.summary?.success || 0} document(s) extracted`);
+
+    // ========================================================================
+    // 6. PHASE 2: Generate valuation report
+    // ========================================================================
+    console.log('📊 [ORCHESTRATOR] Starting Phase 2: Valuation Report');
+
+    await supabase
+      .from('reports')
+      .update({
+        processing_progress: 50,
+        processing_message: 'Generating comprehensive valuation report...',
+      })
+      .eq('id', reportId);
+
+    const valuationUrl = `${baseUrl}/api/reports/${reportId}/process-claude`;
+
+    console.log(`📊 [ORCHESTRATOR] Calling: ${valuationUrl}`);
+
+    const valuationResponse = await fetch(valuationUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const valuationResult = await valuationResponse.json();
+
+    if (!valuationResponse.ok) {
+      console.error('❌ [ORCHESTRATOR] Phase 2 failed:', valuationResult);
+
+      await supabase
+        .from('reports')
+        .update({
+          report_status: 'valuation_failed',
+          error_message: valuationResult.error || 'Valuation report generation failed',
+          processing_progress: 50,
+        })
+        .eq('id', reportId);
+
+      return NextResponse.json({
+        status: 'error',
+        phase: 2,
+        error: valuationResult.error || 'Valuation report generation failed',
+        extractionResult: {
+          success: extractResult.summary?.success || 0,
+          failed: extractResult.summary?.failed || 0,
+        },
+        details: valuationResult,
+      }, { status: 500 });
+    }
+
+    console.log(`✓ [ORCHESTRATOR] Phase 2 complete: Valuation report generated`);
+
+    // ========================================================================
+    // 7. Return success response
+    // ========================================================================
+    console.log('🎉 [ORCHESTRATOR] Two-phase workflow completed successfully!');
 
     return NextResponse.json({
-      success: true,
-      message: 'Analysis started. Frontend will call /api/reports/[id]/process-claude to continue.',
+      status: 'completed',
+      message: 'Valuation report generated successfully',
       reportId,
+      phases: {
+        extraction: {
+          status: 'completed',
+          documentsProcessed: extractResult.summary?.success || 0,
+          documentsFailed: extractResult.summary?.failed || 0,
+        },
+        valuation: {
+          status: 'completed',
+          concludedValue: valuationResult.valuation?.concluded_value,
+          rangeLow: valuationResult.valuation?.range_low,
+          rangeHigh: valuationResult.valuation?.range_high,
+          confidence: valuationResult.valuation?.confidence,
+        },
+      },
+      metrics: valuationResult.metrics,
     });
+
   } catch (error) {
-    console.error('Error in analyze-documents route:', error);
-    return NextResponse.json(
-      { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown' },
-      { status: 500 }
-    );
+    console.error('❌ [ORCHESTRATOR] Unexpected error:', error);
+
+    // Try to update report status
+    if (reportId) {
+      try {
+        await supabase
+          .from('reports')
+          .update({
+            report_status: 'error',
+            error_message: error instanceof Error ? error.message : 'Unknown error',
+            processing_progress: 0,
+          })
+          .eq('id', reportId);
+      } catch (updateError) {
+        console.error('Failed to update report status:', updateError);
+      }
+    }
+
+    return NextResponse.json({
+      status: 'error',
+      error: 'Internal server error',
+      details: error instanceof Error ? error.message : 'Unknown error',
+    }, { status: 500 });
   }
+}
+
+/**
+ * GET endpoint to check the current status of analysis
+ */
+export async function GET(request: NextRequest) {
+  const { searchParams } = new URL(request.url);
+  const reportId = searchParams.get('reportId');
+
+  if (!reportId) {
+    return NextResponse.json({ error: 'reportId is required' }, { status: 400 });
+  }
+
+  const { data: report, error } = await supabase
+    .from('reports')
+    .select('report_status, processing_progress, processing_message, error_message')
+    .eq('id', reportId)
+    .single();
+
+  if (error || !report) {
+    return NextResponse.json({ error: 'Report not found' }, { status: 404 });
+  }
+
+  // Also get extraction status
+  const { data: extractions } = await supabase
+    .from('document_extractions')
+    .select('extraction_status')
+    .eq('report_id', reportId);
+
+  const extractionSummary = {
+    total: extractions?.length || 0,
+    completed: extractions?.filter(e => e.extraction_status === 'completed').length || 0,
+    failed: extractions?.filter(e => e.extraction_status === 'failed').length || 0,
+    pending: extractions?.filter(e => e.extraction_status === 'pending').length || 0,
+    processing: extractions?.filter(e => e.extraction_status === 'processing').length || 0,
+  };
+
+  return NextResponse.json({
+    status: report.report_status,
+    progress: report.processing_progress || 0,
+    message: report.processing_message || '',
+    error: report.error_message,
+    extraction: extractionSummary,
+  });
 }
