@@ -73,6 +73,19 @@ export default function DashboardPage() {
       failed: { variant: 'destructive', icon: <XCircle className="h-3 w-3 mr-1" /> },
       error: { variant: 'destructive', icon: <XCircle className="h-3 w-3 mr-1" /> },
       cancelled: { variant: 'secondary', icon: <XCircle className="h-3 w-3 mr-1" /> },
+      // 6-pass pipeline statuses
+      pass_1_processing: { variant: 'default', icon: <TrendingUp className="h-3 w-3 mr-1" /> },
+      pass_1_complete: { variant: 'default', icon: <TrendingUp className="h-3 w-3 mr-1" /> },
+      pass_2_processing: { variant: 'default', icon: <TrendingUp className="h-3 w-3 mr-1" /> },
+      pass_2_complete: { variant: 'default', icon: <TrendingUp className="h-3 w-3 mr-1" /> },
+      pass_3_processing: { variant: 'default', icon: <TrendingUp className="h-3 w-3 mr-1" /> },
+      pass_3_complete: { variant: 'default', icon: <TrendingUp className="h-3 w-3 mr-1" /> },
+      pass_4_processing: { variant: 'default', icon: <TrendingUp className="h-3 w-3 mr-1" /> },
+      pass_4_complete: { variant: 'default', icon: <TrendingUp className="h-3 w-3 mr-1" /> },
+      pass_5_processing: { variant: 'default', icon: <TrendingUp className="h-3 w-3 mr-1" /> },
+      pass_5_complete: { variant: 'default', icon: <TrendingUp className="h-3 w-3 mr-1" /> },
+      pass_6_processing: { variant: 'default', icon: <TrendingUp className="h-3 w-3 mr-1" /> },
+      pass_6_complete: { variant: 'default', icon: <TrendingUp className="h-3 w-3 mr-1" /> },
     };
 
     const { variant, icon } = variants[status] || variants.pending;

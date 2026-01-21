@@ -1,41 +1,64 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ProfessionalPDFGenerator } from '@/lib/pdf/professional-pdf-generator';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+// Lazy-initialize Supabase client to avoid build-time errors
+let supabase: SupabaseClient | null = null;
+
+function getSupabaseClient(): SupabaseClient {
+  if (!supabase) {
+    supabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+  }
+  return supabase;
+}
 
 /**
  * Generate a professional PDF report using Puppeteer
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const reportId = params.id;
-  console.log(`[PDF] Generating PDF for report ${reportId}`);
+  const { id: reportId } = await params;
+  const startTime = Date.now();
+  console.log(`[PDF] ========================================`);
+  console.log(`[PDF] PDF Generation Request Started`);
+  console.log(`[PDF] Report ID: ${reportId}`);
+  console.log(`[PDF] Timestamp: ${new Date().toISOString()}`);
 
   try {
     // Authenticate user
     const authHeader = request.headers.get('authorization');
+    console.log(`[PDF] Auth header present: ${!!authHeader}`);
+
     if (!authHeader) {
+      console.log(`[PDF] ❌ No authorization header`);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
     const token = authHeader.replace('Bearer ', '');
-    const authSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: `Bearer ${token}` } },
-    });
+    console.log(`[PDF] Token length: ${token.length}`);
+
+    const authSupabase = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        global: { headers: { Authorization: `Bearer ${token}` } },
+      }
+    );
 
     const { data: { user }, error: authError } = await authSupabase.auth.getUser();
     if (authError || !user) {
+      console.log(`[PDF] ❌ Auth failed:`, authError?.message || 'No user');
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+    console.log(`[PDF] ✓ User authenticated: ${user.id}`);
 
     // Fetch report data
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-    const { data: report, error: reportError } = await supabase
+    const { data: report, error: reportError } = await getSupabaseClient()
       .from('reports')
       .select('*')
       .eq('id', reportId)
@@ -43,27 +66,37 @@ export async function POST(
       .maybeSingle();
 
     if (reportError || !report) {
-      console.error('[PDF] Report not found:', reportError);
+      console.log(`[PDF] ❌ Report not found:`, reportError?.message || 'No report');
       return NextResponse.json({ error: 'Report not found' }, { status: 404 });
     }
+    console.log(`[PDF] ✓ Report found: ${report.company_name}`);
+    console.log(`[PDF] Report status: ${report.report_status}`);
 
     if (report.report_status !== 'completed') {
+      console.log(`[PDF] ❌ Report not completed (status: ${report.report_status})`);
       return NextResponse.json({ error: 'Report not completed yet' }, { status: 400 });
     }
 
     // Generate PDF
     const reportData = report.report_data || {};
+    console.log(`[PDF] Report data keys:`, Object.keys(reportData));
+    console.log(`[PDF] Report data size: ${JSON.stringify(reportData).length} bytes`);
+
     const generatedDate = new Date().toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
       day: 'numeric'
     });
 
-    console.log('[PDF] Generating professional PDF...');
+    console.log(`[PDF] Starting Puppeteer PDF generation...`);
     const generator = new ProfessionalPDFGenerator();
     const pdfBuffer = await generator.generate(report.company_name, reportData, generatedDate);
 
-    console.log(`[PDF] PDF generated successfully (${pdfBuffer.length} bytes)`);
+    const duration = Date.now() - startTime;
+    console.log(`[PDF] ✓ PDF generated successfully`);
+    console.log(`[PDF] PDF size: ${pdfBuffer.length} bytes`);
+    console.log(`[PDF] Generation time: ${duration}ms`);
+    console.log(`[PDF] ========================================`);
 
     // Return PDF as response
     const filename = `${report.company_name.replace(/[^a-z0-9]/gi, '_')}_Valuation_Report.pdf`;
@@ -77,7 +110,12 @@ export async function POST(
     });
 
   } catch (error: any) {
-    console.error('[PDF] Generation error:', error);
+    const duration = Date.now() - startTime;
+    console.error(`[PDF] ❌ Generation FAILED after ${duration}ms`);
+    console.error(`[PDF] Error name: ${error.name}`);
+    console.error(`[PDF] Error message: ${error.message}`);
+    console.error(`[PDF] Error stack:`, error.stack);
+    console.log(`[PDF] ========================================`);
     return NextResponse.json(
       { error: 'PDF generation failed', details: error.message },
       { status: 500 }
@@ -90,7 +128,7 @@ export async function POST(
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   return POST(request, { params });
 }

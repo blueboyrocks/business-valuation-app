@@ -159,6 +159,19 @@ export default function ReportDetailPage() {
       failed: { variant: 'destructive', icon: <XCircle className="h-4 w-4 mr-1.5" /> },
       error: { variant: 'destructive', icon: <XCircle className="h-4 w-4 mr-1.5" /> },
       cancelled: { variant: 'secondary', icon: <XCircle className="h-4 w-4 mr-1.5" /> },
+      // 6-pass pipeline statuses
+      pass_1_processing: { variant: 'default', icon: <TrendingUp className="h-4 w-4 mr-1.5" /> },
+      pass_1_complete: { variant: 'default', icon: <TrendingUp className="h-4 w-4 mr-1.5" /> },
+      pass_2_processing: { variant: 'default', icon: <TrendingUp className="h-4 w-4 mr-1.5" /> },
+      pass_2_complete: { variant: 'default', icon: <TrendingUp className="h-4 w-4 mr-1.5" /> },
+      pass_3_processing: { variant: 'default', icon: <TrendingUp className="h-4 w-4 mr-1.5" /> },
+      pass_3_complete: { variant: 'default', icon: <TrendingUp className="h-4 w-4 mr-1.5" /> },
+      pass_4_processing: { variant: 'default', icon: <TrendingUp className="h-4 w-4 mr-1.5" /> },
+      pass_4_complete: { variant: 'default', icon: <TrendingUp className="h-4 w-4 mr-1.5" /> },
+      pass_5_processing: { variant: 'default', icon: <TrendingUp className="h-4 w-4 mr-1.5" /> },
+      pass_5_complete: { variant: 'default', icon: <TrendingUp className="h-4 w-4 mr-1.5" /> },
+      pass_6_processing: { variant: 'default', icon: <TrendingUp className="h-4 w-4 mr-1.5" /> },
+      pass_6_complete: { variant: 'default', icon: <TrendingUp className="h-4 w-4 mr-1.5" /> },
     };
 
     const { variant, icon } = variants[status] || variants.pending;

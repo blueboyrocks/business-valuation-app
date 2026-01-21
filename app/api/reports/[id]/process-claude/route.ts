@@ -16,6 +16,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { runValuationPipeline } from '@/lib/claude/orchestrator';
+import { generateAndStorePDF } from '@/lib/pdf/auto-generate';
 
 // Lazy-initialize Supabase client to avoid build-time errors
 let supabase: SupabaseClient | null = null;
@@ -78,7 +79,7 @@ export async function POST(
         success: true,
         status: 'completed',
         message: 'Report already completed',
-        valuation_summary: extractValuationSummary(report.valuation_data),
+        valuation_summary: extractValuationSummary(report.report_data),
       });
     }
 
@@ -192,7 +193,7 @@ export async function POST(
     await updateReportStatus(reportId, 'completed', {
       processing_progress: 100,
       processing_message: 'Valuation complete',
-      valuation_data: valuationData,
+      report_data: valuationData,
       tokens_used: result.totalTokensUsed,
       processing_cost: result.totalCost,
       processing_time_ms: result.processingTime,
@@ -202,18 +203,39 @@ export async function POST(
     console.log(`[6-PASS] Report ${reportId} completed: FMV = $${valuationSummary.concluded_value?.toLocaleString() || 'N/A'}`);
 
     // ========================================================================
-    // 7. Return success response
+    // 7. Generate PDF automatically
+    // ========================================================================
+    console.log(`[6-PASS] Starting automatic PDF generation...`);
+    const pdfResult = await generateAndStorePDF(
+      reportId,
+      report.company_name,
+      (valuationData as unknown) as Record<string, unknown>
+    );
+
+    if (pdfResult.success) {
+      console.log(`[6-PASS] PDF generated and stored: ${pdfResult.pdfPath}`);
+    } else {
+      console.warn(`[6-PASS] PDF generation failed (non-blocking): ${pdfResult.error}`);
+    }
+
+    // ========================================================================
+    // 8. Return success response
     // ========================================================================
     return NextResponse.json({
       success: true,
       status: 'completed',
       message: 'Valuation completed successfully',
       valuation_summary: valuationSummary,
+      pdf: pdfResult.success ? {
+        path: pdfResult.pdfPath,
+        size: pdfResult.pdfSize,
+      } : null,
       metrics: {
         tokens_used: result.totalTokensUsed,
         cost: result.totalCost,
         processing_time_ms: result.processingTime,
         passes_completed: result.passOutputs.length,
+        pdf_generation_ms: pdfResult.generationTimeMs,
       },
     });
 

@@ -7,6 +7,7 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
+import { generateAndStorePDF } from './pdf/auto-generate';
 
 // Lazy-initialize clients to avoid build-time errors
 let supabase: SupabaseClient | null = null;
@@ -344,7 +345,23 @@ Output as a single valid JSON object. Do not include any text before or after th
     console.log(`[VALUATION] Concluded value: $${concludedValue.toLocaleString()}`);
 
     // ========================================================================
-    // 10. Return success response
+    // 10. Generate PDF automatically
+    // ========================================================================
+    console.log('[VALUATION] Starting automatic PDF generation...');
+    const pdfResult = await generateAndStorePDF(
+      reportId,
+      report.company_name,
+      mappedOutput as Record<string, unknown>
+    );
+
+    if (pdfResult.success) {
+      console.log(`[VALUATION] PDF generated and stored: ${pdfResult.pdfPath}`);
+    } else {
+      console.warn(`[VALUATION] PDF generation failed (non-blocking): ${pdfResult.error}`);
+    }
+
+    // ========================================================================
+    // 11. Return success response
     // ========================================================================
     return {
       success: true,

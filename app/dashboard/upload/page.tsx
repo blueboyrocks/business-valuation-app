@@ -466,16 +466,14 @@ export default function UploadPage() {
         description: 'Starting AI analysis...',
       });
 
-      console.log('Calling analyze API with reportId:', reportId);
+      console.log('Calling 6-pass valuation API with reportId:', reportId);
 
-      // Start analysis
-      const analyzeResponse = await fetch('/api/analyze-documents', {
+      // Start 6-pass valuation pipeline
+      const analyzeResponse = await fetch(`/api/reports/${reportId}/process-claude`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ reportId }),
         signal: abortControllerRef.current?.signal,
       });
 
