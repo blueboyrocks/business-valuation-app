@@ -86,14 +86,22 @@ export async function POST(
   console.log(`[PROCESS-PASS] Starting Pass ${passNumber} for report ${reportId}${forceParam ? ' (force mode)' : ''}`);
 
   try {
-    // Verify report exists
+    // Verify report exists (use maybeSingle to avoid "cannot coerce" errors)
     const { data: report, error: reportError } = await getSupabaseClient()
       .from('reports')
       .select('id, report_status, company_name')
       .eq('id', reportId)
-      .single();
+      .maybeSingle();
 
-    if (reportError || !report) {
+    if (reportError) {
+      console.error(`[PROCESS-PASS] Database error: ${reportError.message}`);
+      return NextResponse.json(
+        { success: false, error: `Database error: ${reportError.message}` },
+        { status: 500 }
+      );
+    }
+
+    if (!report) {
       return NextResponse.json(
         { success: false, error: 'Report not found' },
         { status: 404 }

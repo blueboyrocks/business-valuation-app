@@ -109,6 +109,8 @@ export interface Database {
           processing_message: string | null
           // PDF storage
           pdf_path: string | null
+          // Pass outputs for chained processing
+          pass_outputs: Json | null
         }
         Insert: {
           id?: string
@@ -136,6 +138,7 @@ export interface Database {
           processing_progress?: number | null
           processing_message?: string | null
           pdf_path?: string | null
+          pass_outputs?: Json | null
         }
         Update: {
           id?: string
@@ -163,6 +166,7 @@ export interface Database {
           processing_progress?: number | null
           processing_message?: string | null
           pdf_path?: string | null
+          pass_outputs?: Json | null
         }
       }
       document_extractions: {

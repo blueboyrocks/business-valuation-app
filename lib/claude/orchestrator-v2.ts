@@ -1224,17 +1224,30 @@ export async function getProcessingState(reportId: string): Promise<{
     .from('reports')
     .select('current_pass, pass_outputs, report_status, processing_progress, processing_message')
     .eq('id', reportId)
-    .single();
+    .maybeSingle();
 
-  if (error || !data) {
+  if (error) {
+    console.error(`[getProcessingState] Error: ${error.message}`);
     return {
       currentPass: 0,
       completedPasses: [],
       status: 'error',
       progress: 0,
-      message: 'Failed to load report state',
+      message: `Failed to load report state: ${error.message}`,
       canResume: false,
       nextPass: null,
+    };
+  }
+
+  if (!data) {
+    return {
+      currentPass: 0,
+      completedPasses: [],
+      status: 'not_found',
+      progress: 0,
+      message: 'Report not found',
+      canResume: false,
+      nextPass: 1, // Start from pass 1 if report exists but no data
     };
   }
 
