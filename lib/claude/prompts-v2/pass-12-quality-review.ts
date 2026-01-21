@@ -36,7 +36,7 @@ A quality report is one where:
 - The narrative is clear, professional, and error-free
 - All professional standards requirements are met
 
-You will output ONLY valid JSON matching the required schema.`;
+CRITICAL: Return ONLY valid JSON. Do NOT wrap in markdown code fences. Do NOT include \`\`\`json or \`\`\` tags. Start directly with { and end with }.`;
 
 export const PASS_12_USER_PROMPT = `Perform comprehensive quality review of the complete valuation report.
 

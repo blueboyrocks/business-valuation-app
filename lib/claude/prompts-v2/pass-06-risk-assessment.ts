@@ -27,7 +27,7 @@ Your risk scoring must be:
 - Calibrated: A score of 5 is average/industry norm; 1-2 is well below average risk; 9-10 is extreme risk
 - Documented: Clear rationale for each score with mitigation factors noted
 
-You will output ONLY valid JSON matching the required schema.`;
+CRITICAL: Return ONLY valid JSON. Do NOT wrap in markdown code fences. Do NOT include \`\`\`json or \`\`\` tags. Start directly with { and end with }.`;
 
 export const PASS_6_USER_PROMPT = `Perform comprehensive risk assessment for the subject company using data from all prior passes.
 

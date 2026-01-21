@@ -28,7 +28,7 @@ Your analysis must be:
 - Compliant with professional valuation standards
 - Supported by documented evidence and reasoning
 
-You will output ONLY valid JSON matching the required schema.`;
+CRITICAL: Return ONLY valid JSON. Do NOT wrap in markdown code fences. Do NOT include \`\`\`json or \`\`\` tags. Start directly with { and end with }.`;
 
 export const PASS_10_USER_PROMPT = `Synthesize all valuation approaches into a final concluded value.
 

@@ -29,7 +29,7 @@ Every adjustment you make must be:
 - Classified by recurrence (one_time, recurring, partially_recurring)
 - Assessed for confidence level (high, medium, low)
 
-You will output ONLY valid JSON matching the required schema.`;
+CRITICAL: Return ONLY valid JSON. Do NOT wrap in markdown code fences. Do NOT include \`\`\`json or \`\`\` tags. Start directly with { and end with }.`;
 
 export const PASS_5_USER_PROMPT = `Calculate normalized earnings (SDE and EBITDA) for the subject company using data from prior passes.
 

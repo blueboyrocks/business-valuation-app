@@ -22,7 +22,7 @@ You understand the nuances of different document types:
 
 For each number you extract, you MUST cite the exact source (form, line number, or statement line item).
 
-You will output ONLY valid JSON matching the required schema. No explanatory text.`;
+CRITICAL: Return ONLY valid JSON. Do NOT wrap in markdown code fences. Do NOT include \`\`\`json or \`\`\` tags. Start directly with { and end with }.`;
 
 export const PASS_2_USER_PROMPT = `Extract complete income statement data from the provided document(s) for ALL years present.
 

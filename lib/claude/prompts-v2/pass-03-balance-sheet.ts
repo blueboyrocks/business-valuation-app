@@ -26,7 +26,7 @@ For valuation purposes, you focus on:
 4. Identification of non-operating or excess assets
 5. Related-party items that may need adjustment
 
-You will output ONLY valid JSON matching the required schema.`;
+CRITICAL: Return ONLY valid JSON. Do NOT wrap in markdown code fences. Do NOT include \`\`\`json or \`\`\` tags. Start directly with { and end with }.`;
 
 export const PASS_3_USER_PROMPT = `Extract complete balance sheet data and perform working capital analysis from the provided document(s).
 

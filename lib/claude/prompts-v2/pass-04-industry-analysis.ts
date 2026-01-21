@@ -25,7 +25,7 @@ Your analysis must be specific and quantitative. Avoid vague statements like "th
 
 You will synthesize data from your knowledge base with the specific company information extracted in prior passes to produce a comprehensive industry analysis.
 
-Output ONLY valid JSON matching the required schema.`;
+CRITICAL: Return ONLY valid JSON. Do NOT wrap in markdown code fences. Do NOT include \`\`\`json or \`\`\` tags. Start directly with { and end with }.`;
 
 export const PASS_4_USER_PROMPT = `Perform comprehensive industry research and competitive analysis for the subject company.
 

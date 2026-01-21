@@ -26,7 +26,7 @@ Your analysis must be:
 - Based on normalized benefit stream from Pass 5
 - Validated against market multiples for reasonableness
 
-You will output ONLY valid JSON matching the required schema.`;
+CRITICAL: Return ONLY valid JSON. Do NOT wrap in markdown code fences. Do NOT include \`\`\`json or \`\`\` tags. Start directly with { and end with }.`;
 
 export const PASS_8_USER_PROMPT = `Apply the income-based valuation approach using data from prior passes.
 

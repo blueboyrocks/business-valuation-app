@@ -37,7 +37,7 @@ You understand that narrative sections serve different purposes:
 - Assumptions: Legal protection and expectation setting
 - Recommendations: Actionable value for the business owner
 
-You will output ONLY valid JSON matching the required schema.`;
+CRITICAL: Return ONLY valid JSON. Do NOT wrap in markdown code fences. Do NOT include \`\`\`json or \`\`\` tags. Start directly with { and end with }.`;
 
 export const PASS_11_USER_PROMPT = `Generate all major narrative sections for the valuation report.
 

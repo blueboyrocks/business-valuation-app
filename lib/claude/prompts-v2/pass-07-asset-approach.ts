@@ -26,7 +26,7 @@ Your adjustments must be:
 - Conservative when evidence is limited
 - Consistent with fair market value standard (price between willing buyer/seller)
 
-You will output ONLY valid JSON matching the required schema.`;
+CRITICAL: Return ONLY valid JSON. Do NOT wrap in markdown code fences. Do NOT include \`\`\`json or \`\`\` tags. Start directly with { and end with }.`;
 
 export const PASS_7_USER_PROMPT = `Apply the asset-based valuation approach using data from prior passes.
 

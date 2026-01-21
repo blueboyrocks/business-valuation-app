@@ -14,7 +14,7 @@ export const PASS_1_SYSTEM_PROMPT = `You are an expert financial document analys
 
 You must be extremely precise in your extractions. Every piece of data you report must be directly observable in the document. If information is not clearly present, mark it as null or indicate uncertainty.
 
-You will output ONLY valid JSON matching the required schema. No explanatory text before or after the JSON.`;
+CRITICAL: Return ONLY valid JSON. Do NOT wrap in markdown code fences. Do NOT include \`\`\`json or \`\`\` tags. Start directly with { and end with }.`;
 
 export const PASS_1_USER_PROMPT = `Analyze the provided document(s) and extract comprehensive information about the company and document characteristics.
 

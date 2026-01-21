@@ -2055,17 +2055,46 @@ async function saveToDatabase(
 // =============================================================================
 
 /**
+ * Clean JSON response by stripping markdown code fences
+ * Claude sometimes wraps JSON in ```json ... ``` even when told not to
+ */
+function cleanJsonResponse(response: string): string {
+  let cleaned = response.trim();
+
+  // Remove markdown code fences
+  if (cleaned.startsWith('```json')) {
+    cleaned = cleaned.slice(7);
+  } else if (cleaned.startsWith('```')) {
+    cleaned = cleaned.slice(3);
+  }
+
+  if (cleaned.endsWith('```')) {
+    cleaned = cleaned.slice(0, -3);
+  }
+
+  return cleaned.trim();
+}
+
+/**
  * Parse JSON from Claude response, handling markdown code blocks
  */
 function parsePassOutput<T>(response: string): T | null {
   try {
-    // Try to extract JSON from markdown code block
+    // First, try to clean and parse directly (most common case)
+    const cleaned = cleanJsonResponse(response);
+    try {
+      return JSON.parse(cleaned);
+    } catch {
+      // Continue to fallback methods
+    }
+
+    // Fallback: Try to extract JSON from markdown code block with regex
     const jsonMatch = response.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (jsonMatch) {
       return JSON.parse(jsonMatch[1].trim());
     }
 
-    // Try to find JSON object directly
+    // Fallback: Try to find JSON object directly by finding { and }
     const jsonStart = response.indexOf('{');
     const jsonEnd = response.lastIndexOf('}');
     if (jsonStart !== -1 && jsonEnd !== -1 && jsonEnd > jsonStart) {
@@ -2073,7 +2102,7 @@ function parsePassOutput<T>(response: string): T | null {
       return JSON.parse(jsonStr);
     }
 
-    // Try parsing the entire response
+    // Final fallback: Try parsing the entire response
     return JSON.parse(response);
   } catch (error) {
     console.error('[12-PASS] Failed to parse JSON from response:', error);
