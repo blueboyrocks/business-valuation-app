@@ -536,6 +536,659 @@ export async function runTwelvePassValuation(
 }
 
 // =============================================================================
+// SINGLE-PASS EXECUTION (for chained API calls pattern)
+// =============================================================================
+
+/**
+ * Result type for single-pass execution
+ */
+export interface SinglePassResult {
+  success: boolean;
+  passNumber: number;
+  passName: string;
+  output: PassOutput | null;
+  error?: string;
+  inputTokens: number;
+  outputTokens: number;
+  processingTimeMs: number;
+  costUsd: number;
+  isComplete: boolean; // True if this was the final pass (12)
+  nextPass: number | null; // Next pass to execute, or null if done
+  finalReport?: TwelvePassFinalReport; // Only present when isComplete is true
+}
+
+/**
+ * Load pass outputs from database
+ */
+async function loadPassOutputsFromDatabase(
+  supabase: ReturnType<typeof createServerClient>,
+  reportId: string
+): Promise<Record<string, PassOutput>> {
+  const { data, error } = await supabase
+    .from('reports')
+    .select('pass_outputs')
+    .eq('id', reportId)
+    .single();
+
+  if (error || !data) {
+    console.error(`[SINGLE-PASS] Failed to load pass outputs: ${error?.message}`);
+    return {};
+  }
+
+  return (data.pass_outputs as Record<string, PassOutput>) || {};
+}
+
+/**
+ * Save pass output to database
+ */
+async function savePassOutputToDatabase(
+  supabase: ReturnType<typeof createServerClient>,
+  reportId: string,
+  passNumber: number,
+  output: PassOutput,
+  additionalFields: Record<string, unknown> = {}
+): Promise<void> {
+  // Load existing outputs
+  const existingOutputs = await loadPassOutputsFromDatabase(supabase, reportId);
+
+  // Add new output
+  const updatedOutputs = {
+    ...existingOutputs,
+    [passNumber.toString()]: output,
+  };
+
+  // Save to database
+  const { error } = await supabase
+    .from('reports')
+    .update({
+      pass_outputs: updatedOutputs,
+      current_pass: passNumber,
+      updated_at: new Date().toISOString(),
+      ...additionalFields,
+    })
+    .eq('id', reportId);
+
+  if (error) {
+    console.error(`[SINGLE-PASS] Failed to save pass ${passNumber} output: ${error.message}`);
+    throw new Error(`Failed to save pass output: ${error.message}`);
+  }
+}
+
+/**
+ * Download documents for a report from Supabase storage
+ */
+async function downloadReportDocuments(
+  supabase: ReturnType<typeof createServerClient>,
+  reportId: string
+): Promise<string[]> {
+  // Get documents for this report
+  const { data: documents, error: docsError } = await supabase
+    .from('documents')
+    .select('file_path, file_name')
+    .eq('report_id', reportId);
+
+  if (docsError || !documents || documents.length === 0) {
+    // Try document_paths field on report
+    const { data: report } = await supabase
+      .from('reports')
+      .select('document_paths')
+      .eq('id', reportId)
+      .single();
+
+    if (!report?.document_paths) {
+      throw new Error('No documents found for this report');
+    }
+
+    const paths = typeof report.document_paths === 'string'
+      ? JSON.parse(report.document_paths)
+      : report.document_paths;
+
+    const pdfDocuments: string[] = [];
+    for (const filePath of paths as string[]) {
+      const cleanPath = filePath.replace(/^documents\//, '');
+      const { data, error } = await supabase.storage
+        .from('documents')
+        .download(cleanPath);
+
+      if (error) {
+        // Try original path
+        const { data: data2, error: error2 } = await supabase.storage
+          .from('documents')
+          .download(filePath);
+
+        if (error2) {
+          throw new Error(`Failed to download document: ${error.message}`);
+        }
+        const buffer = await data2.arrayBuffer();
+        pdfDocuments.push(Buffer.from(buffer).toString('base64'));
+      } else {
+        const buffer = await data.arrayBuffer();
+        pdfDocuments.push(Buffer.from(buffer).toString('base64'));
+      }
+    }
+    return pdfDocuments;
+  }
+
+  // Download each document
+  const pdfDocuments: string[] = [];
+  for (const doc of documents) {
+    const cleanPath = doc.file_path.replace(/^documents\//, '');
+    const { data, error } = await supabase.storage
+      .from('documents')
+      .download(cleanPath);
+
+    if (error) {
+      const { data: data2, error: error2 } = await supabase.storage
+        .from('documents')
+        .download(doc.file_path);
+
+      if (error2) {
+        throw new Error(`Failed to download document "${doc.file_name}": ${error.message}`);
+      }
+      const buffer = await data2.arrayBuffer();
+      pdfDocuments.push(Buffer.from(buffer).toString('base64'));
+    } else {
+      const buffer = await data.arrayBuffer();
+      pdfDocuments.push(Buffer.from(buffer).toString('base64'));
+    }
+  }
+
+  return pdfDocuments;
+}
+
+/**
+ * Execute a single pass of the valuation pipeline
+ *
+ * This function is designed for the chained API calls pattern where each pass
+ * is executed as a separate API call with its own timeout window.
+ *
+ * @param reportId - Report ID to process
+ * @param passNumber - Pass number to execute (1-12)
+ * @param onProgress - Optional progress callback
+ * @returns SinglePassResult with output and metadata
+ */
+export async function executeSinglePass(
+  reportId: string,
+  passNumber: number,
+  onProgress?: (message: string, percent: number) => void
+): Promise<SinglePassResult> {
+  const startTime = Date.now();
+  const client = new Anthropic();
+  const supabase = createServerClient();
+  const passName = PASS_METADATA[passNumber as keyof typeof PASS_METADATA]?.name || `Pass ${passNumber}`;
+  const progress = PASS_PROGRESS[passNumber];
+
+  console.log(`[SINGLE-PASS] ========================================`);
+  console.log(`[SINGLE-PASS] Executing Pass ${passNumber}: ${passName}`);
+  console.log(`[SINGLE-PASS] Report ID: ${reportId}`);
+  console.log(`[SINGLE-PASS] ========================================`);
+
+  try {
+    // Validate pass number
+    if (passNumber < 1 || passNumber > 12) {
+      throw new Error(`Invalid pass number: ${passNumber}. Must be 1-12.`);
+    }
+
+    // Load previous pass outputs from database
+    const passOutputs = await loadPassOutputsFromDatabase(supabase, reportId);
+
+    // Validate that required previous passes are complete
+    for (let i = 1; i < passNumber; i++) {
+      if (!passOutputs[i.toString()]) {
+        throw new Error(`Pass ${i} must be completed before Pass ${passNumber}`);
+      }
+    }
+
+    // Update status to processing
+    await saveToDatabase(supabase, reportId, {
+      report_status: `pass_${passNumber}_processing`,
+      current_pass: passNumber,
+      processing_progress: progress,
+      processing_message: `Pass ${passNumber}/12: ${passName}...`,
+    });
+
+    onProgress?.(`Pass ${passNumber}/12: ${passName}...`, progress);
+
+    let result: PassResult<PassOutput>;
+
+    // Handle passes 1-3 differently (need PDF documents)
+    if (passNumber <= 3) {
+      // Download documents
+      console.log(`[SINGLE-PASS] Downloading documents for extraction pass...`);
+      const pdfBase64 = await downloadReportDocuments(supabase, reportId);
+      console.log(`[SINGLE-PASS] Downloaded ${pdfBase64.length} document(s)`);
+
+      // Create context for per-document extraction
+      const context: PassContext = {
+        reportId,
+        pdfBase64,
+        passOutputs: new Map(Object.entries(passOutputs).map(([k, v]) => [parseInt(k), v])),
+        onProgress: (pass, msg, pct) => onProgress?.(msg, pct),
+      };
+
+      if (passNumber === 1) {
+        // Pass 1: Document Classification - process each document individually
+        const pass1Config = getPromptConfig(1)!;
+        const pass1Outputs: Pass1Output[] = [];
+
+        for (let i = 0; i < pdfBase64.length; i++) {
+          console.log(`[SINGLE-PASS] Processing document ${i + 1}/${pdfBase64.length} for Pass 1`);
+          const docResult = await executeSingleDocumentExtraction<Pass1Output>(
+            client, 1, pdfBase64[i],
+            pass1Config.systemPrompt, pass1Config.userPrompt,
+            pass1Config.maxTokens || 8192, pass1Config.temperature || 0.2,
+            i, pdfBase64.length
+          );
+
+          if (!docResult.success || !docResult.output) {
+            throw new Error(`Pass 1 failed for document ${i + 1}: ${docResult.error}`);
+          }
+          pass1Outputs.push(docResult.output);
+        }
+
+        const mergedOutput = mergePass1Outputs(pass1Outputs);
+        result = {
+          success: true,
+          output: mergedOutput,
+          rawResponse: '',
+          inputTokens: pass1Outputs.length * 5000, // Estimate
+          outputTokens: pass1Outputs.length * 2000,
+          processingTime: Date.now() - startTime,
+          retryCount: 0,
+        };
+      } else if (passNumber === 2) {
+        // Pass 2: Income Statement - process each document individually
+        const pass1Output = passOutputs['1'] as Pass1Output;
+        const pass2Config = getPromptConfig(2)!;
+        const pass2Outputs: Pass2Output[] = [];
+
+        const pass2PriorContext = `
+## PRIOR PASS DATA
+### Pass 1 Output (Document Classification)
+Company: ${pass1Output.company_profile?.legal_name || 'Unknown'}
+Industry: ${pass1Output.industry_classification?.naics_description || 'Unknown'}
+`;
+
+        for (let i = 0; i < pdfBase64.length; i++) {
+          console.log(`[SINGLE-PASS] Processing document ${i + 1}/${pdfBase64.length} for Pass 2`);
+          const docResult = await executeSingleDocumentExtraction<Pass2Output>(
+            client, 2, pdfBase64[i],
+            pass2Config.systemPrompt, pass2PriorContext + '\n\n' + pass2Config.userPrompt,
+            pass2Config.maxTokens || 8192, pass2Config.temperature || 0.2,
+            i, pdfBase64.length
+          );
+
+          if (!docResult.success || !docResult.output) {
+            throw new Error(`Pass 2 failed for document ${i + 1}: ${docResult.error}`);
+          }
+          pass2Outputs.push(docResult.output);
+        }
+
+        const mergedOutput = mergePass2Outputs(pass2Outputs);
+        result = {
+          success: true,
+          output: mergedOutput,
+          rawResponse: '',
+          inputTokens: pass2Outputs.length * 5000,
+          outputTokens: pass2Outputs.length * 2000,
+          processingTime: Date.now() - startTime,
+          retryCount: 0,
+        };
+      } else {
+        // Pass 3: Balance Sheet - process each document individually
+        const pass1Output = passOutputs['1'] as Pass1Output;
+        const pass2Output = passOutputs['2'] as Pass2Output;
+        const pass3Config = getPromptConfig(3)!;
+        const pass3Outputs: Pass3Output[] = [];
+
+        const naicsCode = pass1Output.industry_classification?.naics_code || '';
+        const wcBenchmark = getWorkingCapitalBenchmark(naicsCode.substring(0, 2));
+
+        const pass3PriorContext = `
+## PRIOR PASS DATA
+### Pass 1 Output (Document Classification)
+Company: ${pass1Output.company_profile?.legal_name || 'Unknown'}
+Industry: ${pass1Output.industry_classification?.naics_description || 'Unknown'}
+
+### Pass 2 Output (Income Statement)
+Most Recent Revenue: $${(pass2Output.income_statements?.[0]?.revenue?.total_revenue || 0).toLocaleString()}
+
+### Working Capital Benchmarks
+${wcBenchmark ? `Industry: ${wcBenchmark.industry}` : 'No specific benchmarks available.'}
+`;
+
+        for (let i = 0; i < pdfBase64.length; i++) {
+          console.log(`[SINGLE-PASS] Processing document ${i + 1}/${pdfBase64.length} for Pass 3`);
+          const docResult = await executeSingleDocumentExtraction<Pass3Output>(
+            client, 3, pdfBase64[i],
+            pass3Config.systemPrompt, pass3PriorContext + '\n\n' + pass3Config.userPrompt,
+            pass3Config.maxTokens || 8192, pass3Config.temperature || 0.2,
+            i, pdfBase64.length
+          );
+
+          if (!docResult.success || !docResult.output) {
+            throw new Error(`Pass 3 failed for document ${i + 1}: ${docResult.error}`);
+          }
+          pass3Outputs.push(docResult.output);
+        }
+
+        const mergedOutput = mergePass3Outputs(pass3Outputs);
+        result = {
+          success: true,
+          output: mergedOutput,
+          rawResponse: '',
+          inputTokens: pass3Outputs.length * 5000,
+          outputTokens: pass3Outputs.length * 2000,
+          processingTime: Date.now() - startTime,
+          retryCount: 0,
+        };
+      }
+    } else {
+      // Passes 4-12: Analysis passes (no PDF needed)
+      const pass1 = passOutputs['1'] as Pass1Output;
+      const pass2 = passOutputs['2'] as Pass2Output;
+      const pass3 = passOutputs['3'] as Pass3Output;
+      const pass4 = passOutputs['4'] as Pass4Output;
+      const pass5 = passOutputs['5'] as Pass5Output;
+      const pass6 = passOutputs['6'] as Pass6Output;
+      const pass7 = passOutputs['7'] as Pass7Output;
+      const pass8 = passOutputs['8'] as Pass8Output;
+      const pass9 = passOutputs['9'] as Pass9Output;
+      const pass10 = passOutputs['10'] as Pass10Output;
+      const pass11 = passOutputs['11'] as Pass11Output;
+
+      // Build the request based on pass number
+      let buildRequest: () => { system: string; prompt: string };
+
+      switch (passNumber) {
+        case 4:
+          buildRequest = () => buildPass4Request(pass1, pass2, pass3);
+          break;
+        case 5:
+          buildRequest = () => buildPass5Request(pass1, pass2, pass3, pass4);
+          break;
+        case 6:
+          buildRequest = () => buildPass6Request(pass1, pass2, pass3, pass4, pass5);
+          break;
+        case 7:
+          buildRequest = () => buildPass7Request(pass3, pass4, pass6);
+          break;
+        case 8:
+          buildRequest = () => buildPass8Request(pass3, pass4, pass5, pass6);
+          break;
+        case 9:
+          buildRequest = () => buildPass9Request(pass1, pass4, pass5, pass6);
+          break;
+        case 10:
+          buildRequest = () => buildPass10Request(pass1, pass3, pass4, pass5, pass6, pass7, pass8, pass9);
+          break;
+        case 11:
+          buildRequest = () => buildPass11Request(pass1, pass2, pass3, pass4, pass5, pass6, pass7, pass8, pass9, pass10);
+          break;
+        case 12:
+          buildRequest = () => buildPass12Request(pass1, pass2, pass3, pass4, pass5, pass6, pass7, pass8, pass9, pass10, pass11);
+          break;
+        default:
+          throw new Error(`Invalid pass number: ${passNumber}`);
+      }
+
+      const passConfig = getPromptConfig(passNumber);
+      result = await executePassWithRetry<PassOutput>(
+        client,
+        passNumber,
+        buildRequest,
+        passConfig?.maxTokens || 8192,
+        passConfig?.temperature || 0.2
+      );
+    }
+
+    if (!result.success || !result.output) {
+      throw new Error(result.error || `Pass ${passNumber} failed`);
+    }
+
+    // Save pass output to database
+    const processingTime = Date.now() - startTime;
+    const cost = calculateCost(result.inputTokens, result.outputTokens);
+
+    await savePassOutputToDatabase(supabase, reportId, passNumber, result.output, {
+      processing_progress: progress,
+      processing_message: `Pass ${passNumber}/12: ${passName} complete`,
+      report_status: `pass_${passNumber}_complete`,
+    });
+
+    console.log(`[SINGLE-PASS] Pass ${passNumber} complete in ${processingTime}ms`);
+
+    // Check if this is the final pass
+    const isComplete = passNumber === 12;
+    let finalReport: TwelvePassFinalReport | undefined;
+
+    if (isComplete) {
+      // Build final report
+      console.log(`[SINGLE-PASS] Building final report...`);
+
+      // Reload all pass outputs including the one we just saved
+      const allOutputs = await loadPassOutputsFromDatabase(supabase, reportId);
+
+      // Assemble final report
+      finalReport = await assembleFinalReport(allOutputs, reportId, supabase);
+
+      // Save final report to database
+      await saveToDatabase(supabase, reportId, {
+        report_status: 'completed',
+        processing_progress: 100,
+        processing_message: 'Valuation complete',
+        report_data: finalReport,
+      });
+
+      console.log(`[SINGLE-PASS] Final report saved. FMV: $${finalReport.valuation_conclusion?.concluded_value?.toLocaleString() || 'N/A'}`);
+    }
+
+    return {
+      success: true,
+      passNumber,
+      passName,
+      output: result.output,
+      inputTokens: result.inputTokens,
+      outputTokens: result.outputTokens,
+      processingTimeMs: processingTime,
+      costUsd: cost,
+      isComplete,
+      nextPass: isComplete ? null : passNumber + 1,
+      finalReport,
+    };
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const processingTime = Date.now() - startTime;
+
+    console.error(`[SINGLE-PASS] Pass ${passNumber} failed: ${errorMessage}`);
+
+    // Save error state
+    await saveToDatabase(supabase, reportId, {
+      report_status: 'error',
+      processing_message: `Pass ${passNumber} failed: ${errorMessage}`,
+      error_message: errorMessage,
+    });
+
+    return {
+      success: false,
+      passNumber,
+      passName,
+      output: null,
+      error: errorMessage,
+      inputTokens: 0,
+      outputTokens: 0,
+      processingTimeMs: processingTime,
+      costUsd: 0,
+      isComplete: false,
+      nextPass: passNumber, // Retry from this pass
+    };
+  }
+}
+
+/**
+ * Assemble the final report from all pass outputs
+ */
+async function assembleFinalReport(
+  passOutputs: Record<string, PassOutput>,
+  reportId: string,
+  supabase: ReturnType<typeof createServerClient>
+): Promise<TwelvePassFinalReport> {
+  const pass1 = passOutputs['1'] as Pass1Output;
+  const pass2 = passOutputs['2'] as Pass2Output;
+  const pass3 = passOutputs['3'] as Pass3Output;
+  const pass4 = passOutputs['4'] as Pass4Output;
+  const pass5 = passOutputs['5'] as Pass5Output;
+  const pass6 = passOutputs['6'] as Pass6Output;
+  const pass7 = passOutputs['7'] as Pass7Output;
+  const pass8 = passOutputs['8'] as Pass8Output;
+  const pass9 = passOutputs['9'] as Pass9Output;
+  const pass10 = passOutputs['10'] as Pass10Output;
+  const pass11 = passOutputs['11'] as Pass11Output;
+  const pass12 = passOutputs['12'] as Pass12Output;
+
+  // Use current date as valuation date
+  const valuationDate = new Date().toISOString().split('T')[0];
+
+  // Try to use the transform function
+  try {
+    const passOutputsForTransform: PassOutputs = {
+      pass1, pass2, pass3, pass4, pass5, pass6,
+      pass7, pass8, pass9, pass10, pass11, pass12,
+    };
+
+    const transformedReport = transformToFinalReport(passOutputsForTransform, valuationDate);
+    const validation = validateFinalReport(transformedReport);
+
+    if (validation.valid) {
+      console.log('[SINGLE-PASS] Using transformed FinalValuationReport');
+      return transformedReport as unknown as TwelvePassFinalReport;
+    } else {
+      console.warn('[SINGLE-PASS] Transform validation failed, using legacy assembly:', validation.errors);
+    }
+  } catch (transformError) {
+    console.warn('[SINGLE-PASS] Transform failed, using legacy assembly:', transformError);
+  }
+
+  // Legacy assembly as fallback - use double type assertions to access properties
+  // that may have different names in different versions of the types
+  const p1 = pass1 as unknown as Record<string, unknown>;
+  const p2 = pass2 as unknown as Record<string, unknown>;
+  const p3 = pass3 as unknown as Record<string, unknown>;
+  const p5 = pass5 as unknown as Record<string, unknown>;
+  const p6 = pass6 as unknown as Record<string, unknown>;
+  const p7 = pass7 as unknown as Record<string, unknown>;
+  const p8 = pass8 as unknown as Record<string, unknown>;
+  const p9 = pass9 as unknown as Record<string, unknown>;
+  const p10 = pass10 as unknown as Record<string, unknown>;
+  const p11 = pass11 as unknown as Record<string, unknown>;
+  const p12 = pass12 as unknown as Record<string, unknown>;
+
+  // Extract concluded value from pass 10
+  const conclusion = (p10.conclusion || p10.final_value_conclusion) as Record<string, unknown> | undefined;
+  const concludedValue = (conclusion?.concluded_value || conclusion?.concluded_fair_market_value || 0) as number;
+  const valueRange = conclusion?.value_range as Record<string, number> | undefined;
+  const valuationRangeLow = valueRange?.low || (conclusion?.valuation_range_low as number) || concludedValue * 0.85;
+  const valuationRangeHigh = valueRange?.high || (conclusion?.valuation_range_high as number) || concludedValue * 1.15;
+
+  // Build report object
+  const report: Record<string, unknown> = {
+    report_metadata: {
+      report_id: reportId,
+      generated_at: new Date().toISOString(),
+      valuation_date: valuationDate,
+      report_version: ORCHESTRATOR_VERSION,
+    },
+    company_profile: p1.company_profile,
+    valuation_conclusion: {
+      concluded_value: concludedValue,
+      value_range_low: valuationRangeLow,
+      value_range_high: valuationRangeHigh,
+      effective_date: valuationDate,
+      standard_of_value: 'Fair Market Value',
+      premise_of_value: 'Going Concern',
+      confidence_level: conclusion?.confidence_level || 'medium',
+    },
+    financial_summary: {
+      revenue: ((p2.income_statements as Array<Record<string, unknown>>)?.[0]?.revenue as Record<string, number>)?.total_revenue || 0,
+      gross_profit: (p2.income_statements as Array<Record<string, unknown>>)?.[0]?.gross_profit || 0,
+      sde: ((p5.normalized_earnings || p5.sde_calculation) as Record<string, number>)?.weighted_average_sde || 0,
+      ebitda: ((p5.normalized_earnings || p5.ebitda_calculation) as Record<string, number>)?.weighted_average_ebitda || 0,
+      total_assets: (p3.balance_sheets as Array<Record<string, number>>)?.[0]?.total_assets || 0,
+      total_liabilities: (p3.balance_sheets as Array<Record<string, number>>)?.[0]?.total_liabilities || 0,
+      net_working_capital: (p3.working_capital_analysis as Array<Record<string, number>>)?.[0]?.net_working_capital || 0,
+    },
+    valuation_approaches: {
+      asset: p7.value_indication || p7.asset_approach_indication,
+      income: p8.value_indication || p8.income_approach_indication,
+      market: p9.value_indication || p9.market_approach_indication,
+    },
+    risk_assessment: p6.overall_risk_assessment,
+    narratives: p11.narratives,
+    quality_review: {
+      grade: p12.quality_grade || 'B',
+      score: p12.quality_score || 75,
+      issues_found: (p12.issues_identified as unknown[])?.length || 0,
+      corrections_made: (p12.corrections_applied as unknown[])?.length || 0,
+    },
+    pass_outputs: passOutputs,
+    quality_grade: p12.quality_grade || 'B',
+    quality_score: p12.quality_score || 75,
+  };
+
+  return report as unknown as TwelvePassFinalReport;
+}
+
+/**
+ * Get the current processing state for a report
+ */
+export async function getProcessingState(reportId: string): Promise<{
+  currentPass: number;
+  completedPasses: number[];
+  status: string;
+  progress: number;
+  message: string;
+  canResume: boolean;
+  nextPass: number | null;
+}> {
+  const supabase = createServerClient();
+
+  const { data, error } = await supabase
+    .from('reports')
+    .select('current_pass, pass_outputs, report_status, processing_progress, processing_message')
+    .eq('id', reportId)
+    .single();
+
+  if (error || !data) {
+    return {
+      currentPass: 0,
+      completedPasses: [],
+      status: 'error',
+      progress: 0,
+      message: 'Failed to load report state',
+      canResume: false,
+      nextPass: null,
+    };
+  }
+
+  const passOutputs = (data.pass_outputs as Record<string, unknown>) || {};
+  const completedPasses = Object.keys(passOutputs).map(k => parseInt(k)).filter(n => !isNaN(n)).sort((a, b) => a - b);
+  const currentPass = data.current_pass || completedPasses[completedPasses.length - 1] || 0;
+  const nextPass = completedPasses.length < 12 ? (completedPasses[completedPasses.length - 1] || 0) + 1 : null;
+  const canResume = data.report_status !== 'completed' && nextPass !== null;
+
+  return {
+    currentPass,
+    completedPasses,
+    status: data.report_status || 'pending',
+    progress: data.processing_progress || 0,
+    message: data.processing_message || '',
+    canResume,
+    nextPass,
+  };
+}
+
+// =============================================================================
 // PASS EXECUTION
 // =============================================================================
 
