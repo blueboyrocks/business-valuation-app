@@ -66,24 +66,28 @@ Select the value to use:
 
 Construct the capitalization rate using the build-up method with EVERY component sourced:
 
-#### A. Risk-Free Rate
+#### A. Risk-Free Rate (REQUIRED: ~4.5%)
 | Source | Rate | Notes |
 |--------|------|-------|
-| 20-Year Treasury | Current yield | Most common for business valuation |
-| 10-Year Treasury | Current yield | Alternative, slightly lower |
+| **20-Year Treasury** | **~4.5%** | **REQUIRED - Use this as default** |
+| 10-Year Treasury | ~4.3% | Alternative if specifically justified |
 
-**Document**: Specific rate, source, and as-of date from Pass 6.
+**MANDATORY**: Use the 20-year Treasury yield of approximately 4.5% (check current yield at valuation date). This represents the time value of money for a long-duration investment comparable to business ownership.
 
-#### B. Equity Risk Premium (ERP)
-| Source | Typical Range | Notes |
-|--------|---------------|-------|
-| Duff & Phelps/Kroll | 5.0-6.0% | Most widely accepted |
-| Ibbotson/SBBI | 6.5-7.5% | Historical approach |
-| Damodaran | 4.5-5.5% | Implied from market |
+**Document**: Exact rate used, source (e.g., "20-Year U.S. Treasury Yield"), and as-of date.
 
-**Document**: Specific rate and source from Pass 6.
+#### B. Equity Risk Premium (ERP) (REQUIRED: 6.0%)
+| Source | Rate | Notes |
+|--------|------|-------|
+| **Duff & Phelps/Kroll** | **6.0%** | **REQUIRED - Use this as default** |
+| Ibbotson/SBBI | 6.5-7.5% | Historical approach - higher |
+| Damodaran | 4.5-5.5% | Implied from market - lower |
 
-#### C. Size Premium
+**MANDATORY**: Use 6.0% from Duff & Phelps/Kroll Cost of Capital Navigator. This is the industry standard ERP for business valuation.
+
+**Document**: "Equity Risk Premium of 6.0% per Duff & Phelps/Kroll Cost of Capital Navigator"
+
+#### C. Size Premium (REQUIRED: 8-12% for Small Business)
 Based on company revenue/earnings, using Kroll or similar data:
 
 | Revenue Range | Size Premium | Source |
@@ -91,11 +95,19 @@ Based on company revenue/earnings, using Kroll or similar data:
 | > $50M | 2-4% | Kroll decile 9-10 |
 | $10M-$50M | 4-6% | Kroll + adjustment |
 | $5M-$10M | 7-10% | Small business adjustment |
-| $2M-$5M | 9-12% | Small business adjustment |
-| $1M-$2M | 11-14% | Small business adjustment |
-| < $1M | 13-18% | Micro business adjustment |
+| **$2M-$5M** | **8-12%** | **TYPICAL RANGE for most valuations** |
+| $1M-$2M | 10-14% | Small business adjustment |
+| < $1M | 12-18% | Micro business adjustment |
 
-**Document**: Company size category and specific premium from Pass 6.
+**MANDATORY**: For businesses with revenue in the $2M-$5M range (typical for this system), use a size premium of **8-12%** (typically 9.5-10.5% as a midpoint).
+
+The size premium reflects:
+- Lack of access to capital markets
+- Less management depth
+- Higher operational risk
+- Smaller buyer pool reducing liquidity
+
+**Document**: Company size category and specific premium with citation to Kroll size study.
 
 #### D. Industry Risk Premium
 Adjustment based on industry characteristics:
@@ -376,6 +388,28 @@ Output ONLY valid JSON matching this structure:
 9. **ASSIGN WEIGHT**: Recommend weight with clear rationale based on business characteristics.
 
 10. **OUTPUT ONLY JSON**: Your entire response must be valid JSON. No text before or after.
+
+## CRITICAL QUALITY REQUIREMENTS
+
+You are a Certified Valuation Analyst (CVA) with 20+ years of experience. Your work must meet professional standards.
+
+### Documentation Standards
+1. EVERY numerical value must cite its source (e.g., "Form 1120-S, Line 7: $125,000")
+2. EVERY adjustment must include detailed justification (2-3 sentences minimum)
+3. NEVER use vague language like "significant" - use specific numbers
+
+### Narrative Standards
+- Meet or EXCEED all word count minimums
+- Write in professional, objective prose
+- Reference specific numbers from the analysis
+- Avoid boilerplate language - be specific to THIS business
+
+### Professional Voice
+Write as if this report will be:
+- Presented to business owners making $500K+ decisions
+- Reviewed by CPAs and attorneys
+- Used as evidence in legal proceedings
+- Submitted to SBA for loan approval
 
 Now apply the income approach valuation.`;
 

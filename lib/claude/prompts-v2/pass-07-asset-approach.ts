@@ -440,6 +440,28 @@ Output ONLY valid JSON matching this structure:
 
 10. **OUTPUT ONLY JSON**: Your entire response must be valid JSON. No text before or after.
 
+## CRITICAL QUALITY REQUIREMENTS
+
+You are a Certified Valuation Analyst (CVA) with 20+ years of experience. Your work must meet professional standards.
+
+### Documentation Standards
+1. EVERY numerical value must cite its source (e.g., "Form 1120-S, Line 7: $125,000")
+2. EVERY adjustment must include detailed justification (2-3 sentences minimum)
+3. NEVER use vague language like "significant" - use specific numbers
+
+### Narrative Standards
+- Meet or EXCEED all word count minimums
+- Write in professional, objective prose
+- Reference specific numbers from the analysis
+- Avoid boilerplate language - be specific to THIS business
+
+### Professional Voice
+Write as if this report will be:
+- Presented to business owners making $500K+ decisions
+- Reviewed by CPAs and attorneys
+- Used as evidence in legal proceedings
+- Submitted to SBA for loan approval
+
 Now apply the asset approach valuation.`;
 
 export const pass7PromptConfig = {

@@ -200,15 +200,21 @@ Evaluate whether the analysis makes sense:
 
 Evaluate each narrative section:
 
-#### A. Word Count Verification
+#### A. Word Count Verification (TOTAL TARGET: 7,500-9,500 words)
 | Section | Target | Actual | Pass/Fail |
 |---------|--------|--------|-----------|
-| Executive Summary | 1000-1200 | XXX | [ ] |
+| Executive Summary | 1,000-1,200 | XXX | [ ] |
 | Company Overview | 600-800 | XXX | [ ] |
-| Financial Analysis | 800-1000 | XXX | [ ] |
-| Valuation Methodology | 500-600 | XXX | [ ] |
+| Financial Analysis | 1,000-1,200 | XXX | [ ] |
+| Industry Analysis | 600-800 | XXX | [ ] |
+| Risk Assessment | 700-900 | XXX | [ ] |
+| Asset Approach | 500-600 | XXX | [ ] |
+| Income Approach | 500-600 | XXX | [ ] |
+| Market Approach | 500-600 | XXX | [ ] |
+| Valuation Synthesis | 700-900 | XXX | [ ] |
 | Assumptions | 400-500 | XXX | [ ] |
 | Value Enhancement | 600-800 | XXX | [ ] |
+| **TOTAL** | **7,500-9,500** | **XXX** | **[ ]** |
 
 #### B. Content Quality
 For each section, assess:
@@ -674,6 +680,28 @@ If errors are found, the output would include:
 10. **INCLUDE CORRECTED_FINAL_REPORT**: If errors found, populate this field with corrections.
 
 11. **OUTPUT ONLY JSON**: Your entire response must be valid JSON. No text before or after.
+
+## CRITICAL QUALITY REQUIREMENTS
+
+You are a Certified Valuation Analyst (CVA) with 20+ years of experience. Your work must meet professional standards.
+
+### Documentation Standards
+1. EVERY numerical value must cite its source (e.g., "Form 1120-S, Line 7: $125,000")
+2. EVERY adjustment must include detailed justification (2-3 sentences minimum)
+3. NEVER use vague language like "significant" - use specific numbers
+
+### Narrative Standards
+- Meet or EXCEED all word count minimums
+- Write in professional, objective prose
+- Reference specific numbers from the analysis
+- Avoid boilerplate language - be specific to THIS business
+
+### Professional Voice
+Write as if this report will be:
+- Presented to business owners making $500K+ decisions
+- Reviewed by CPAs and attorneys
+- Used as evidence in legal proceedings
+- Submitted to SBA for loan approval
 
 Now perform comprehensive quality review of the valuation report.`;
 

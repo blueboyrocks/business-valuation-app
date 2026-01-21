@@ -34,6 +34,54 @@ export const PASS_3_USER_PROMPT = `Extract complete balance sheet data and perfo
 
 Systematically extract every balance sheet line item for ALL years present. Tax returns on Schedule L show both beginning and end of year balances - extract both as separate years.
 
+### SCHEDULE L COMPLETE LINE-BY-LINE EXTRACTION (Lines 1-26)
+
+For Form 1120-S Schedule L, you MUST extract EVERY line with BOTH beginning (Column b) AND ending (Column d) balances:
+
+**ASSETS (Lines 1-15)**
+| Line | Description | Beginning (b) | Ending (d) |
+|------|-------------|---------------|------------|
+| 1 | Cash | $ | $ |
+| 2a | Trade notes and accounts receivable | $ | $ |
+| 2b | Less allowance for bad debts | $ | $ |
+| 3 | Inventories | $ | $ |
+| 4 | U.S. government obligations | $ | $ |
+| 5 | Tax-exempt securities | $ | $ |
+| 6 | Other current assets (attach statement) | $ | $ |
+| 7 | Loans to shareholders | $ | $ |
+| 8 | Mortgage and real estate loans | $ | $ |
+| 9 | Other investments (attach statement) | $ | $ |
+| 10a | Buildings and other depreciable assets | $ | $ |
+| 10b | Less accumulated depreciation | $ | $ |
+| 11a | Depletable assets | $ | $ |
+| 11b | Less accumulated depletion | $ | $ |
+| 12 | Land (net of any amortization) | $ | $ |
+| 13a | Intangible assets (amortizable only) | $ | $ |
+| 13b | Less accumulated amortization | $ | $ |
+| 14 | Other assets (attach statement) | $ | $ |
+| 15 | **Total assets** | $ | $ |
+
+**LIABILITIES AND SHAREHOLDERS' EQUITY (Lines 16-27)**
+| Line | Description | Beginning (b) | Ending (d) |
+|------|-------------|---------------|------------|
+| 16 | Accounts payable | $ | $ |
+| 17 | Mortgages, notes, bonds payable in less than 1 year | $ | $ |
+| 18 | Other current liabilities (attach statement) | $ | $ |
+| 19 | Loans from shareholders | $ | $ |
+| 20 | Mortgages, notes, bonds payable in 1 year or more | $ | $ |
+| 21 | Other liabilities (attach statement) | $ | $ |
+| 22a | Capital stock | $ | $ |
+| 22b | Additional paid-in capital | $ | $ |
+| 23 | Retained earnings | $ | $ |
+| 24 | Adjustments to shareholders' equity | $ | $ |
+| 25 | Less cost of treasury stock | $ | $ |
+| 26 | Total liabilities and shareholders' equity | $ | $ |
+
+**CRITICAL VALIDATION:**
+- Line 15 (Total Assets) MUST EQUAL Line 26 (Total Liabilities + Equity)
+- If they don't balance, FLAG THIS DISCREPANCY
+- Document both Beginning of Year (Column b) and End of Year (Column d)
+
 ### EXTRACTION REQUIREMENTS
 
 #### 1. CURRENT ASSETS
@@ -448,6 +496,28 @@ Output ONLY valid JSON matching this structure:
 8. **PRESERVE EXACT AMOUNTS**: Do not round. Copy numbers exactly as shown on documents.
 
 9. **OUTPUT ONLY JSON**: Your entire response must be valid JSON. No text before or after.
+
+## CRITICAL QUALITY REQUIREMENTS
+
+You are a Certified Valuation Analyst (CVA) with 20+ years of experience. Your work must meet professional standards.
+
+### Documentation Standards
+1. EVERY numerical value must cite its source (e.g., "Form 1120-S, Line 7: $125,000")
+2. EVERY adjustment must include detailed justification (2-3 sentences minimum)
+3. NEVER use vague language like "significant" - use specific numbers
+
+### Narrative Standards
+- Meet or EXCEED all word count minimums
+- Write in professional, objective prose
+- Reference specific numbers from the analysis
+- Avoid boilerplate language - be specific to THIS business
+
+### Professional Voice
+Write as if this report will be:
+- Presented to business owners making $500K+ decisions
+- Reviewed by CPAs and attorneys
+- Used as evidence in legal proceedings
+- Submitted to SBA for loan approval
 
 Now extract the complete balance sheet and working capital analysis from the provided document(s).`;
 

@@ -49,30 +49,44 @@ Perform comprehensive earnings normalization for each year of data available, th
 
 ### 1. SDE CALCULATION (Seller's Discretionary Earnings)
 
-For each year, start with reported net income and systematically identify all add-backs:
+For each year, start with reported net income and systematically identify all add-backs.
 
-#### A. Non-Cash Expenses (Always Add Back)
-| Item | Typical Source | Notes |
-|------|---------------|-------|
-| Depreciation | 1120-S Line 14, Form 4562 | 100% add-back |
-| Amortization | Various schedules | 100% add-back |
+## MANDATORY ADD-BACKS (Always Add Back - No Justification Required)
 
-#### B. Interest & Financing (Add Back for Debt-Free Value)
-| Item | Typical Source | Notes |
-|------|---------------|-------|
-| Interest Expense | 1120-S Line 13 | All interest to show debt-free cash flow |
-| Loan Fees | Other deductions | One-time financing costs |
+These items are ALWAYS added back to calculate SDE:
 
-#### C. Owner Compensation (Primary SDE Component)
-| Item | Typical Source | Notes |
-|------|---------------|-------|
-| Officer/Owner Salary | 1120-S Line 7, W-2 | Full amount added back |
-| Owner Payroll Taxes | Calculated from salary | FICA/Medicare on owner wages |
-| Owner Health Insurance | Benefits/Schedule K-1 | Personal health coverage |
-| Owner Life Insurance | Insurance expense detail | Key-man or personal policies |
-| Owner Retirement Contributions | Line 17, 401(k) records | Owner-specific contributions |
-| Owner Vehicle (Personal Portion) | Vehicle expense, Form 4562 | Estimate 30-50% personal |
-| Owner Cell Phone | Utilities/other expenses | If identifiable |
+| # | Item | Form 1120-S Line | Notes |
+|---|------|-----------------|-------|
+| 1 | **Officer/Owner Compensation** | Line 7 | FULL amount added back - cite exact amount and names from Schedule E |
+| 2 | **Interest Expense** | Line 13 | All interest to show debt-free cash flow |
+| 3 | **Depreciation** | Line 14 / Form 4562 | 100% add-back - non-cash expense |
+| 4 | **Amortization** | Form 4562 Part VI | 100% add-back - non-cash expense |
+
+**For each MANDATORY add-back, provide:**
+- Exact amount from tax return
+- Specific line number citation (e.g., "Form 1120-S, Line 7: $125,000")
+- Brief note (1 sentence)
+
+## DISCRETIONARY ADD-BACKS (Require Detailed Justification)
+
+These items MAY be added back but require 2-3 sentence justification each:
+
+| # | Item | Typical Range | Source | Bank/Buyer Acceptance |
+|---|------|--------------|--------|----------------------|
+| 5 | Owner vehicle expenses (personal portion) | $8,000-$15,000 | Other deductions - auto/truck | Medium - banks accept 50-70% personal |
+| 6 | Owner travel & entertainment | $2,000-$10,000 | Other deductions - T&E | Low-Medium - scrutinized heavily |
+| 7 | Owner health insurance | Varies | Schedule K-1 Box 12E | High - clearly personal benefit |
+| 8 | Owner retirement contributions (excess) | Varies | Line 17, 401(k) records | High - personal savings |
+| 9 | Non-recurring expenses | Varies | Legal, settlements, one-time | High if documented |
+| 10 | Above-market rent to related parties | $6,000-$24,000 | Line 11 vs market comps | Medium - need comparables |
+| 11 | Excess family compensation | Varies | Wages, Schedule E | Low-Medium - need job descriptions |
+
+**For EACH discretionary add-back, you MUST provide:**
+- **Category**: One of the 11 categories above
+- **Amount**: Exact dollar amount
+- **Source**: Form line number or P&L line item (e.g., "Form 1120-S, Line 11: $120,000")
+- **Justification**: 2-3 sentences explaining WHY this is a legitimate add-back
+- **Buyer/Bank Acceptance**: High/Medium/Low likelihood a buyer or SBA lender would accept
 
 **CRITICAL**: Document the owner's actual compensation and benefits in detail. This is typically the largest SDE add-back.
 
@@ -147,16 +161,38 @@ Evaluate the quality and sustainability of earnings:
 - What percentage of earnings is sustainable?
 - Identify any at-risk items (customer concentration, key contract, etc.)
 
-### 4. MULTI-YEAR WEIGHTED AVERAGE
+### 4. MULTI-YEAR WEIGHTED AVERAGE (REQUIRED)
 
-Calculate weighted average SDE and EBITDA using appropriate weighting:
+Calculate weighted average SDE and EBITDA using the following formula:
 
-**Weighting Methods**:
-- **Equal Weight**: Use when earnings are stable
-- **Recent Weighted**: Use when trend is clear (e.g., 1-2-3 for 3 years)
-- **Most Recent Only**: Use when significant recent changes make history less relevant
+**STANDARD WEIGHTED AVERAGE FORMULA (3 Years):**
 
-Document which method you're using and why.
+Weighted Average SDE = (Year3 × 3 + Year2 × 2 + Year1 × 1) / 6
+
+Where:
+- Year3 = Most recent year (highest weight of 3)
+- Year2 = Prior year (weight of 2)
+- Year1 = Oldest year (weight of 1)
+- Divisor = Sum of weights (3+2+1 = 6)
+
+**Example:**
+- 2023 SDE: $600,000 × 3 = $1,800,000
+- 2022 SDE: $525,000 × 2 = $1,050,000
+- 2021 SDE: $480,000 × 1 = $480,000
+- Weighted Average = ($1,800,000 + $1,050,000 + $480,000) / 6 = **$555,000**
+
+**For 2 Years of Data:**
+
+Weighted Average SDE = (Year2 × 2 + Year1 × 1) / 3
+
+**Alternative Weighting Methods** (use only with justification):
+- **Equal Weight**: Use ONLY when earnings are remarkably stable (CV < 5%)
+- **Most Recent Only**: Use ONLY when significant recent changes (acquisition, new product line, major customer gain/loss) make history irrelevant - DOCUMENT the specific change
+
+You MUST document:
+1. Which weighting method you used
+2. The exact calculation showing the math
+3. Why this method is appropriate for this company
 
 ### 5. COMPARISON TO BENCHMARKS
 
@@ -655,6 +691,28 @@ Output ONLY valid JSON matching this structure:
 10. **WEIGHTED AVERAGE**: Use appropriate weighting (equal, recent-weighted, or single-year) and explain your choice.
 
 11. **OUTPUT ONLY JSON**: Your entire response must be valid JSON. No text before or after.
+
+## CRITICAL QUALITY REQUIREMENTS
+
+You are a Certified Valuation Analyst (CVA) with 20+ years of experience. Your work must meet professional standards.
+
+### Documentation Standards
+1. EVERY numerical value must cite its source (e.g., "Form 1120-S, Line 7: $125,000")
+2. EVERY adjustment must include detailed justification (2-3 sentences minimum)
+3. NEVER use vague language like "significant" - use specific numbers
+
+### Narrative Standards
+- Meet or EXCEED all word count minimums
+- Write in professional, objective prose
+- Reference specific numbers from the analysis
+- Avoid boilerplate language - be specific to THIS business
+
+### Professional Voice
+Write as if this report will be:
+- Presented to business owners making $500K+ decisions
+- Reviewed by CPAs and attorneys
+- Used as evidence in legal proceedings
+- Submitted to SBA for loan approval
 
 Now calculate the complete earnings normalization.`;
 

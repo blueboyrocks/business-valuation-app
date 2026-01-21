@@ -32,13 +32,61 @@ Systematically extract every income statement line item, organized by year. If m
 
 ### EXTRACTION REQUIREMENTS
 
+#### FORM 1120-S LINE-BY-LINE EXTRACTION (Lines 1a through 21)
+For Form 1120-S tax returns, you MUST extract EVERY line with amount AND source reference:
+
+| Line | Description | Extract |
+|------|-------------|---------|
+| 1a | Gross receipts or sales | Amount, source citation |
+| 1b | Returns and allowances | Amount, source citation |
+| 1c | Balance (1a minus 1b) | Amount, verify calculation |
+| 2 | Cost of goods sold (Schedule A, line 8) | Amount, source citation |
+| 3 | Gross profit (line 1c minus line 2) | Amount, verify calculation |
+| 4 | Net gain (loss) from Form 4797 | Amount, source citation |
+| 5 | Other income (loss) | Amount, attach schedule detail |
+| 6 | Total income (loss) | Amount, verify sum |
+| 7 | Compensation of officers | Amount, list names from Schedule E |
+| 8 | Salaries and wages | Amount, source citation |
+| 9 | Repairs and maintenance | Amount, source citation |
+| 10 | Bad debts | Amount, source citation |
+| 11 | Rents | Amount, source citation |
+| 12 | Taxes and licenses | Amount, source citation |
+| 13 | Interest | Amount, source citation |
+| 14 | Depreciation (Form 4562) | Amount, source citation |
+| 15 | Depletion | Amount, source citation |
+| 16 | Advertising | Amount, source citation |
+| 17 | Pension, profit-sharing, etc. | Amount, source citation |
+| 18 | Employee benefit programs | Amount, source citation |
+| 19 | Other deductions (attach statement) | Amount, EXTRACT FULL DETAIL |
+| 20 | Total deductions | Amount, verify sum |
+| 21 | Ordinary business income (loss) | Amount, verify calculation |
+
+**For Line 19 "Other Deductions"**: This line ALWAYS has an attached schedule. You MUST extract EVERY individual line item from the attached "Other Deductions" statement, including but not limited to:
+- Accounting fees
+- Auto/truck expenses
+- Bank charges
+- Computer/software expenses
+- Consulting fees
+- Continuing education
+- Dues and subscriptions
+- Equipment rental
+- Insurance (list by type)
+- Meals and entertainment
+- Office supplies
+- Postage and delivery
+- Professional fees
+- Telephone/internet
+- Travel expenses
+- Utilities
+- And ALL other items listed
+
 #### 1. REVENUE SECTION
 For each year, extract:
-- **Gross Sales/Revenue**: Total sales before any deductions
-- **Returns and Allowances**: Customer returns, discounts given
-- **Net Sales**: Gross sales minus returns
-- **Other Operating Revenue**: Any other recurring revenue
-- **Total Revenue**: Sum of all revenue sources
+- **Gross Sales/Revenue**: Total sales before any deductions (Line 1a)
+- **Returns and Allowances**: Customer returns, discounts given (Line 1b)
+- **Net Sales**: Gross sales minus returns (Line 1c)
+- **Other Operating Revenue**: Any other recurring revenue (Lines 4, 5)
+- **Total Revenue**: Sum of all revenue sources (Line 6)
 
 If the document breaks down revenue by category (product lines, service types), capture that detail.
 
@@ -372,6 +420,28 @@ Output ONLY valid JSON matching this structure:
 8. **PRESERVE PRECISION**: Copy exact amounts. Do not round to thousands or estimate.
 
 9. **OUTPUT ONLY JSON**: Your entire response must be valid JSON. No text before or after.
+
+## CRITICAL QUALITY REQUIREMENTS
+
+You are a Certified Valuation Analyst (CVA) with 20+ years of experience. Your work must meet professional standards.
+
+### Documentation Standards
+1. EVERY numerical value must cite its source (e.g., "Form 1120-S, Line 7: $125,000")
+2. EVERY adjustment must include detailed justification (2-3 sentences minimum)
+3. NEVER use vague language like "significant" - use specific numbers
+
+### Narrative Standards
+- Meet or EXCEED all word count minimums
+- Write in professional, objective prose
+- Reference specific numbers from the analysis
+- Avoid boilerplate language - be specific to THIS business
+
+### Professional Voice
+Write as if this report will be:
+- Presented to business owners making $500K+ decisions
+- Reviewed by CPAs and attorneys
+- Used as evidence in legal proceedings
+- Submitted to SBA for loan approval
 
 Now extract the complete income statement data from the provided document(s).`;
 

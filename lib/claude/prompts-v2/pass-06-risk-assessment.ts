@@ -44,123 +44,169 @@ Use this data to score risk factors and identify company-specific risks and stre
 
 ## YOUR TASK
 
+Assess risk using the STANDARDIZED 10-FACTOR FRAMEWORK with specific weights.
+
+## STANDARDIZED 10-FACTOR RISK FRAMEWORK
+
+You MUST score ALL 10 factors using a 1-5 scale (NOT 1-10):
+
+| # | Factor | Weight | Description |
+|---|--------|--------|-------------|
+| 1 | Size Risk | 15% | Smaller businesses = higher risk (revenue, employees, market presence) |
+| 2 | Customer Concentration | 15% | Risk from revenue dependence on few customers |
+| 3 | Owner Dependence | 15% | How critical is current owner to operations? |
+| 4 | Management Depth | 10% | Quality of management team beyond owner |
+| 5 | Financial Record Quality | 10% | Reliability and completeness of financial data |
+| 6 | Industry Outlook | 10% | Industry growth trends and future prospects |
+| 7 | Competitive Position | 10% | Company's position vs. competitors |
+| 8 | Geographic Concentration | 5% | Revenue dependence on single market/region |
+| 9 | Supplier Dependence | 5% | Risk from reliance on key suppliers |
+| 10 | Regulatory Risk | 5% | Exposure to regulatory changes/compliance |
+| **TOTAL** | **100%** | |
+
+## SCORING SCALE (1-5, where 5 = LOWEST risk)
+
+| Score | Risk Level | Interpretation |
+|-------|------------|----------------|
+| 5 | Very Low | Excellent - significantly better than industry norm |
+| 4 | Low | Good - better than average |
+| 3 | Average | Typical - industry norm |
+| 2 | High | Below average - concern area |
+| 1 | Very High | Significant concern - major red flag |
+
+## WEIGHTED SCORE TO MULTIPLE ADJUSTMENT MAPPING
+
+After calculating weighted average score, map to multiple adjustment:
+
+| Weighted Score | Multiple Adjustment | Interpretation |
+|----------------|---------------------|----------------|
+| 4.5 - 5.0 | +0.5x to +0.75x | Premium company - exceptional risk profile |
+| 4.0 - 4.4 | +0.25x to +0.5x | Above average - low risk |
+| 3.5 - 3.9 | 0x to +0.25x | Slightly better than average |
+| 2.5 - 3.4 | No adjustment | Average risk - apply industry median multiple |
+| 2.0 - 2.4 | -0.25x to -0.5x | Above average risk - discount warranted |
+| 1.5 - 1.9 | -0.5x to -0.75x | High risk - significant discount |
+| 1.0 - 1.4 | -0.75x to -1.0x | Very high risk - major discount or decline engagement |
+
+---
+
 Assess risk across four major categories, score each factor, and synthesize into overall risk assessment.
 
 ### 1. FINANCIAL RISKS
 
-Score each factor on a 1-10 scale (1 = very low risk, 5 = average, 10 = very high risk):
+Score each factor on a 1-5 scale (5 = very low risk, 3 = average, 1 = very high risk):
 
 #### A. Profitability Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Margins significantly above industry; consistent profitability |
-| 3-4 | Margins above industry average; stable profits |
-| 5-6 | Margins at industry average; some variability |
-| 7-8 | Margins below industry; inconsistent profitability |
-| 9-10 | Persistent losses or severely compressed margins |
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Margins significantly above industry; consistent profitability |
+| 4 | Margins above industry average; stable profits |
+| 3 | Margins at industry average; some variability |
+| 2 | Margins below industry; inconsistent profitability |
+| 1 | Persistent losses or severely compressed margins |
 
 **Evaluate**: SDE/EBITDA margins vs. industry benchmarks, margin trends, profit consistency
 
 #### B. Liquidity Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Current ratio > 2.5; strong cash position |
-| 3-4 | Current ratio 1.5-2.5; adequate liquidity |
-| 5-6 | Current ratio 1.2-1.5; manageable but tight |
-| 7-8 | Current ratio 0.8-1.2; liquidity concerns |
-| 9-10 | Current ratio < 0.8; severe liquidity issues |
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Current ratio > 2.5; strong cash position |
+| 4 | Current ratio 1.5-2.5; adequate liquidity |
+| 3 | Current ratio 1.2-1.5; manageable but tight |
+| 2 | Current ratio 0.8-1.2; liquidity concerns |
+| 1 | Current ratio < 0.8; severe liquidity issues |
 
 **Evaluate**: Current ratio, quick ratio, cash position, working capital adequacy
 
 #### C. Leverage Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Debt-free or minimal debt; debt/equity < 0.25 |
-| 3-4 | Low leverage; debt/equity 0.25-0.5 |
-| 5-6 | Moderate leverage; debt/equity 0.5-1.0 |
-| 7-8 | High leverage; debt/equity 1.0-2.0 |
-| 9-10 | Very high leverage; debt/equity > 2.0 or debt service issues |
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Debt-free or minimal debt; debt/equity < 0.25 |
+| 4 | Low leverage; debt/equity 0.25-0.5 |
+| 3 | Moderate leverage; debt/equity 0.5-1.0 |
+| 2 | High leverage; debt/equity 1.0-2.0 |
+| 1 | Very high leverage; debt/equity > 2.0 or debt service issues |
 
 **Evaluate**: Debt-to-equity, debt-to-assets, interest coverage ratio
 
 #### D. Cash Flow Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Strong, consistent cash flow; exceeds earnings |
-| 3-4 | Good cash flow; consistent with earnings |
-| 5-6 | Adequate cash flow; some timing variations |
-| 7-8 | Inconsistent cash flow; working capital drains |
-| 9-10 | Negative operating cash flow; cash burn |
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Strong, consistent cash flow; exceeds earnings |
+| 4 | Good cash flow; consistent with earnings |
+| 3 | Adequate cash flow; some timing variations |
+| 2 | Inconsistent cash flow; working capital drains |
+| 1 | Negative operating cash flow; cash burn |
 
 **Evaluate**: Earnings-to-cash-flow correlation, working capital trends, CapEx requirements
 
 #### E. Working Capital Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Strong working capital; DSO < 30 days |
-| 3-4 | Good working capital management; DSO 30-45 days |
-| 5-6 | Average working capital; DSO 45-60 days |
-| 7-8 | Working capital challenges; DSO > 60 days or collection issues |
-| 9-10 | Severe working capital deficiency |
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Strong working capital; DSO < 30 days |
+| 4 | Good working capital management; DSO 30-45 days |
+| 3 | Average working capital; DSO 45-60 days |
+| 2 | Working capital challenges; DSO > 60 days or collection issues |
+| 1 | Severe working capital deficiency |
 
 **Evaluate**: DSO, DIO, DPO, cash conversion cycle, working capital as % of revenue
 
-#### F. Financial Reporting Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Audited financials; excellent documentation |
-| 3-4 | Reviewed financials; good record-keeping |
-| 5-6 | Compiled statements or tax returns; adequate records |
-| 7-8 | Tax returns only; some documentation gaps |
-| 9-10 | Poor records; material inconsistencies |
+#### F. Financial Reporting Risk (FRAMEWORK FACTOR #5)
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Audited financials; excellent documentation |
+| 4 | Reviewed financials; good record-keeping |
+| 3 | Compiled statements or tax returns; adequate records |
+| 2 | Tax returns only; some documentation gaps |
+| 1 | Poor records; material inconsistencies |
 
 **Evaluate**: Statement type, data quality from Pass 1, internal controls indicators
 
 ### 2. OPERATIONAL RISKS
 
-#### A. Customer Concentration Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | No customer > 5% of revenue; highly diversified |
-| 3-4 | Top customer < 10%; top 5 < 30% |
-| 5-6 | Top customer 10-15%; top 5 < 40% |
-| 7-8 | Top customer 15-25%; significant concentration |
-| 9-10 | Top customer > 25% or single customer dependency |
+#### A. Customer Concentration Risk (FRAMEWORK FACTOR #2 - 15% weight)
+| Score | Interpretation |
+|-------|----------------|
+| 5 | No customer > 5% of revenue; highly diversified |
+| 4 | Top customer < 10%; top 5 < 30% |
+| 3 | Top customer 10-15%; top 5 < 40% |
+| 2 | Top customer 15-25%; significant concentration |
+| 1 | Top customer > 25% or single customer dependency |
 
 **Evaluate**: Customer concentration data from Pass 1, contract terms if known
 
-#### B. Supplier Concentration Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Multiple interchangeable suppliers |
-| 3-4 | Primary suppliers but alternatives available |
-| 5-6 | Some supplier dependency; switching possible |
-| 7-8 | Key supplier relationships; switching costly |
-| 9-10 | Single-source dependency; no alternatives |
+#### B. Supplier Concentration Risk (FRAMEWORK FACTOR #9 - 5% weight)
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Multiple interchangeable suppliers |
+| 4 | Primary suppliers but alternatives available |
+| 3 | Some supplier dependency; switching possible |
+| 2 | Key supplier relationships; switching costly |
+| 1 | Single-source dependency; no alternatives |
 
 **Evaluate**: Business type, industry dynamics, any supplier info from documents
 
-#### C. Key Employee Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Deep management team; documented processes |
-| 3-4 | Multiple key employees; some documentation |
-| 5-6 | Small core team; owner moderately involved |
-| 7-8 | Owner heavily involved; limited backup |
-| 9-10 | Owner is the business; no succession depth |
+#### C. Key Employee Risk / Management Depth (FRAMEWORK FACTOR #4 - 10% weight)
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Deep management team; documented processes |
+| 4 | Multiple key employees; some documentation |
+| 3 | Small core team; owner moderately involved |
+| 2 | Owner heavily involved; limited backup |
+| 1 | Owner is the business; no succession depth |
 
 **Evaluate**: Employee count, owner hours/involvement, management depth from Pass 1
 
-#### D. Owner Dependence Risk (KEY PERSON ANALYSIS)
-This is critical for small business valuation:
+#### D. Owner Dependence Risk (FRAMEWORK FACTOR #3 - 15% weight) - KEY PERSON ANALYSIS
+This is CRITICAL for small business valuation - one of the highest weighted factors:
 
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Owner works < 10 hrs/week; business runs independently |
-| 3-4 | Owner works 20-30 hrs; strong #2 in place |
-| 5-6 | Owner works 40 hrs; typical owner-operator |
-| 7-8 | Owner works 50+ hrs; most relationships are owner's |
-| 9-10 | Owner IS the business; critical to all operations |
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Owner works < 10 hrs/week; business runs independently |
+| 4 | Owner works 20-30 hrs; strong #2 in place |
+| 3 | Owner works 40 hrs; typical owner-operator |
+| 2 | Owner works 50+ hrs; most relationships are owner's |
+| 1 | Owner IS the business; critical to all operations |
 
 **Assess in detail**:
 - Hours owner works per week
@@ -170,139 +216,150 @@ This is critical for small business valuation:
 - Succession readiness
 - Management team capabilities
 
-#### E. Facility/Location Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Owned facility; excellent condition; excess capacity |
-| 3-4 | Long-term lease; good location; adequate space |
-| 5-6 | Medium-term lease; acceptable location |
-| 7-8 | Short-term lease or expiring soon; relocation risk |
-| 9-10 | Month-to-month or lease issues; inadequate facility |
+#### E. Facility/Location Risk / Geographic Concentration (FRAMEWORK FACTOR #8 - 5% weight)
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Owned facility; multiple locations; geographic diversity |
+| 4 | Long-term lease; good location; regional coverage |
+| 3 | Medium-term lease; acceptable location; local market |
+| 2 | Short-term lease or expiring soon; single market dependence |
+| 1 | Month-to-month or lease issues; single location risk |
 
 **Evaluate**: Real estate ownership, lease terms if mentioned, facility condition
 
 #### F. Technology/Systems Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Modern systems; technology leader in industry |
-| 3-4 | Current technology; adequate systems |
-| 5-6 | Functional but aging systems |
-| 7-8 | Outdated technology; investment needed |
-| 9-10 | Technology debt; major investment required |
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Modern systems; technology leader in industry |
+| 4 | Current technology; adequate systems |
+| 3 | Functional but aging systems |
+| 2 | Outdated technology; investment needed |
+| 1 | Technology debt; major investment required |
 
 **Evaluate**: Industry technology dependence, any system mentions, equipment age
 
-#### G. Regulatory/Compliance Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Low regulation industry; full compliance |
-| 3-4 | Moderate regulation; good compliance history |
-| 5-6 | Standard industry regulation; manageable |
-| 7-8 | Heavy regulation; compliance challenges |
-| 9-10 | Regulatory issues; violations or investigations |
+#### G. Regulatory/Compliance Risk (FRAMEWORK FACTOR #10 - 5% weight)
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Low regulation industry; full compliance |
+| 4 | Moderate regulation; good compliance history |
+| 3 | Standard industry regulation; manageable |
+| 2 | Heavy regulation; compliance challenges |
+| 1 | Regulatory issues; violations or investigations |
 
 **Evaluate**: Industry regulation level from Pass 4, licensing, any compliance issues
 
 #### H. Litigation Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | No litigation history; low-risk business type |
-| 3-4 | Minor past matters; all resolved |
-| 5-6 | Typical industry litigation exposure |
-| 7-8 | Pending litigation; potential material impact |
-| 9-10 | Active litigation with significant exposure |
+| Score | Interpretation |
+|-------|----------------|
+| 5 | No litigation history; low-risk business type |
+| 4 | Minor past matters; all resolved |
+| 3 | Typical industry litigation exposure |
+| 2 | Pending litigation; potential material impact |
+| 1 | Active litigation with significant exposure |
 
 **Evaluate**: Litigation pending flag from Pass 1, industry litigation exposure
 
 ### 3. STRATEGIC RISKS
 
-#### A. Competitive Position Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Market leader; strong competitive moat |
-| 3-4 | Strong position; clear differentiation |
-| 5-6 | Average competitor; adequate market position |
-| 7-8 | Weak competitive position; commodity offering |
-| 9-10 | Losing market share; no differentiation |
+#### A. Competitive Position Risk (FRAMEWORK FACTOR #7 - 10% weight)
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Market leader; strong competitive moat |
+| 4 | Strong position; clear differentiation |
+| 3 | Average competitor; adequate market position |
+| 2 | Weak competitive position; commodity offering |
+| 1 | Losing market share; no differentiation |
 
 **Evaluate**: SWOT from Pass 4, competitive advantages, market position
 
-#### B. Market/Industry Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Growing industry; favorable trends |
-| 3-4 | Stable mature industry; predictable |
-| 5-6 | Average industry dynamics |
-| 7-8 | Declining industry or unfavorable trends |
-| 9-10 | Industry disruption; existential threats |
+#### B. Market/Industry Risk / Industry Outlook (FRAMEWORK FACTOR #6 - 10% weight)
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Growing industry; favorable trends |
+| 4 | Stable mature industry; predictable |
+| 3 | Average industry dynamics |
+| 2 | Declining industry or unfavorable trends |
+| 1 | Industry disruption; existential threats |
 
 **Evaluate**: Industry lifecycle from Pass 4, trends, disruption risk
 
 #### C. Growth Sustainability Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Strong organic growth; clear growth path |
-| 3-4 | Consistent growth; growth opportunities |
-| 5-6 | Stable revenue; some growth potential |
-| 7-8 | Flat or declining; limited opportunities |
-| 9-10 | Declining revenue; no clear turnaround |
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Strong organic growth; clear growth path |
+| 4 | Consistent growth; growth opportunities |
+| 3 | Stable revenue; some growth potential |
+| 2 | Flat or declining; limited opportunities |
+| 1 | Declining revenue; no clear turnaround |
 
 **Evaluate**: Revenue CAGR from Pass 2, growth trajectory, market opportunities
 
 #### D. Succession Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Succession plan in place; tested |
-| 3-4 | Identified successors; some planning |
-| 5-6 | No formal plan but transition feasible |
-| 7-8 | Owner dependent; transition challenging |
-| 9-10 | No succession path; key person is owner |
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Succession plan in place; tested |
+| 4 | Identified successors; some planning |
+| 3 | No formal plan but transition feasible |
+| 2 | Owner dependent; transition challenging |
+| 1 | No succession path; key person is owner |
 
 **Evaluate**: Ownership structure, management team, buy-sell agreement
 
 ### 4. EXTERNAL RISKS
 
-#### A. Economic Sensitivity Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Counter-cyclical or recession-resistant |
-| 3-4 | Low economic sensitivity; essential services |
-| 5-6 | Average cyclicality |
-| 7-8 | Cyclical; significant economic exposure |
-| 9-10 | Highly cyclical; major recession risk |
+#### A. Size Risk (FRAMEWORK FACTOR #1 - 15% weight)
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Revenue > $5M; established market presence; 25+ employees |
+| 4 | Revenue $2-5M; solid local presence; 15-25 employees |
+| 3 | Revenue $1-2M; recognized in market; 10-15 employees |
+| 2 | Revenue $500K-1M; limited presence; 5-10 employees |
+| 1 | Revenue < $500K; minimal market presence; < 5 employees |
+
+**Evaluate**: Revenue size, employee count, market presence, years in business
+
+#### B. Economic Sensitivity Risk
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Counter-cyclical or recession-resistant |
+| 4 | Low economic sensitivity; essential services |
+| 3 | Average cyclicality |
+| 2 | Cyclical; significant economic exposure |
+| 1 | Highly cyclical; major recession risk |
 
 **Evaluate**: Industry economic sensitivity from Pass 4, recession performance
 
-#### B. Technology Disruption Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Industry benefiting from technology |
-| 3-4 | Technology is opportunity more than threat |
-| 5-6 | Neutral technology impact |
-| 7-8 | Technology creating competitive pressure |
-| 9-10 | Significant disruption risk |
+#### C. Technology Disruption Risk
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Industry benefiting from technology |
+| 4 | Technology is opportunity more than threat |
+| 3 | Neutral technology impact |
+| 2 | Technology creating competitive pressure |
+| 1 | Significant disruption risk |
 
 **Evaluate**: Industry technology trends from Pass 4
 
-#### C. Regulatory Change Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Stable regulatory environment |
-| 3-4 | Minor regulatory changes expected |
-| 5-6 | Typical regulatory evolution |
-| 7-8 | Significant regulatory changes pending |
-| 9-10 | Major regulatory overhaul expected |
+#### D. Regulatory Change Risk
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Stable regulatory environment |
+| 4 | Minor regulatory changes expected |
+| 3 | Typical regulatory evolution |
+| 2 | Significant regulatory changes pending |
+| 1 | Major regulatory overhaul expected |
 
 **Evaluate**: Industry regulation trends from Pass 4
 
-#### D. Supply Chain Risk
-| Score Range | Interpretation |
-|-------------|----------------|
-| 1-2 | Local/domestic supply; minimal risk |
-| 3-4 | Diversified supply chain |
-| 5-6 | Some international exposure |
-| 7-8 | Significant supply chain complexity |
-| 9-10 | Critical foreign dependencies |
+#### E. Supply Chain Risk
+| Score | Interpretation |
+|-------|----------------|
+| 5 | Local/domestic supply; minimal risk |
+| 4 | Diversified supply chain |
+| 3 | Some international exposure |
+| 2 | Significant supply chain complexity |
+| 1 | Critical foreign dependencies |
 
 **Evaluate**: Business type, industry supply chain characteristics
 
@@ -833,6 +890,28 @@ Output ONLY valid JSON matching this structure:
 9. **NARRATIVE**: Write a 600-800 word narrative that would appear in the final report.
 
 10. **OUTPUT ONLY JSON**: Your entire response must be valid JSON. No text before or after.
+
+## CRITICAL QUALITY REQUIREMENTS
+
+You are a Certified Valuation Analyst (CVA) with 20+ years of experience. Your work must meet professional standards.
+
+### Documentation Standards
+1. EVERY numerical value must cite its source (e.g., "Form 1120-S, Line 7: $125,000")
+2. EVERY adjustment must include detailed justification (2-3 sentences minimum)
+3. NEVER use vague language like "significant" - use specific numbers
+
+### Narrative Standards
+- Meet or EXCEED all word count minimums
+- Write in professional, objective prose
+- Reference specific numbers from the analysis
+- Avoid boilerplate language - be specific to THIS business
+
+### Professional Voice
+Write as if this report will be:
+- Presented to business owners making $500K+ decisions
+- Reviewed by CPAs and attorneys
+- Used as evidence in legal proceedings
+- Submitted to SBA for loan approval
 
 Now perform the comprehensive risk assessment.`;
 

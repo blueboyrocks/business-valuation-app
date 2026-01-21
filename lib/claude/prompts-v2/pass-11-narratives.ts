@@ -2,14 +2,19 @@
  * Pass 11: Executive Summary & Narratives
  *
  * This pass generates ALL major narrative sections for the report:
- * - Executive Summary (1000-1200 words)
+ * - Executive Summary (1,000-1,200 words)
  * - Company Overview (600-800 words)
- * - Financial Analysis (800-1000 words)
- * - Valuation Methodology (500-600 words)
+ * - Financial Analysis (1,000-1,200 words)
+ * - Industry Analysis (600-800 words)
+ * - Risk Assessment (700-900 words)
+ * - Asset Approach (500-600 words)
+ * - Income Approach (500-600 words)
+ * - Market Approach (500-600 words)
+ * - Valuation Synthesis (700-900 words)
  * - Assumptions & Limiting Conditions (400-500 words)
  * - Value Enhancement Recommendations (600-800 words)
  *
- * Total target: 4,500-5,500 words of narrative content
+ * Total target: 7,500-9,500 words of narrative content
  */
 
 import { Pass11Output } from '../types-v2';
@@ -124,7 +129,7 @@ Comprehensive description of the subject company.
 
 ---
 
-### 3. FINANCIAL ANALYSIS (800-1,000 words)
+### 3. FINANCIAL ANALYSIS (1,000-1,200 words)
 
 Thorough analysis of financial performance and condition.
 
@@ -159,9 +164,105 @@ Thorough analysis of financial performance and condition.
 
 ---
 
-### 4. VALUATION METHODOLOGY (500-600 words)
+### 4. INDUSTRY ANALYSIS (600-800 words)
 
-Explain the approaches used and why.
+Comprehensive analysis of the industry context.
+
+**Must include:**
+
+**Industry overview** (1-2 paragraphs):
+- Industry definition and NAICS code
+- Industry size and growth trends
+- Key industry drivers
+
+**Competitive landscape** (1-2 paragraphs):
+- Major competitors and market structure
+- Barriers to entry
+- Competitive dynamics
+
+**Industry benchmarks** (1-2 paragraphs):
+- Typical financial metrics (margins, ratios)
+- Comparison to subject company
+- Valuation multiples for the industry
+
+**Industry outlook** (1 paragraph):
+- Trends affecting future performance
+- Opportunities and threats
+
+---
+
+### 5. RISK ASSESSMENT (700-900 words)
+
+Detailed discussion of company-specific risks.
+
+**Must include:**
+
+**Financial risks** (2-3 paragraphs):
+- Profitability risk analysis
+- Liquidity and leverage assessment
+- Cash flow and working capital risks
+
+**Operational risks** (2-3 paragraphs):
+- Customer concentration
+- Supplier concentration
+- Owner dependence and key person risk
+- Management depth
+
+**Strategic risks** (1-2 paragraphs):
+- Competitive position
+- Industry/market risks
+- Growth sustainability
+
+**Risk scoring summary** (1 paragraph):
+- Overall risk assessment score
+- How risk affects valuation multiple
+
+---
+
+### 6. ASSET APPROACH NARRATIVE (500-600 words)
+
+Detailed explanation of the asset-based valuation.
+
+**Must include:**
+- Starting book value and balance sheet date
+- Major asset adjustments with rationale
+- Major liability adjustments if any
+- Calculation of adjusted net asset value
+- Why this approach is/isn't heavily weighted
+- Relationship to earnings-based value
+
+---
+
+### 7. INCOME APPROACH NARRATIVE (500-600 words)
+
+Detailed explanation of the income-based valuation.
+
+**Must include:**
+- Benefit stream selected (SDE or EBITDA) and why
+- Capitalization rate build-up with each component
+- Indicated value calculation
+- Implied multiple and comparison to market
+- Why this approach is/isn't heavily weighted
+
+---
+
+### 8. MARKET APPROACH NARRATIVE (500-600 words)
+
+Detailed explanation of the market-based valuation.
+
+**Must include:**
+- Base multiple and source
+- Adjustments applied and rationale
+- SDE multiple method result
+- Revenue multiple method result (secondary)
+- Reconciliation of methods
+- Why this approach is/isn't heavily weighted
+
+---
+
+### 9. VALUATION SYNTHESIS (700-900 words)
+
+Explanation of how the final value was determined.
 
 **Must include:**
 
@@ -173,19 +274,22 @@ Explain the approaches used and why.
 - Going concern vs. liquidation
 - Why this premise is appropriate
 
-**Overview of three approaches** (3-4 paragraphs):
-- **Asset approach**: When used, how applied, limitations
-- **Income approach**: Capitalization method, rate build-up
-- **Market approach**: Multiple methods, data sources
+**Approach weighting** (2-3 paragraphs):
+- Weight assigned to each approach
+- Rationale for weighting
+- Weighted average calculation
 
-**Approach selection rationale** (1-2 paragraphs):
-- Why all three approaches were considered
-- How approaches are weighted for this company
-- Professional standards followed
+**Discounts and premiums** (1-2 paragraphs):
+- DLOM applied and supporting studies
+- Any other adjustments
+
+**Final conclusion** (1-2 paragraphs):
+- Concluded value and valuation range
+- Confidence level assessment
 
 ---
 
-### 5. ASSUMPTIONS & LIMITING CONDITIONS (400-500 words)
+### 10. ASSUMPTIONS & LIMITING CONDITIONS (400-500 words)
 
 Standard professional disclaimers and scope limitations.
 
@@ -214,7 +318,7 @@ Standard professional disclaimers and scope limitations.
 
 ---
 
-### 6. VALUE ENHANCEMENT RECOMMENDATIONS (600-800 words)
+### 11. VALUE ENHANCEMENT RECOMMENDATIONS (600-800 words)
 
 Actionable advice to increase business value.
 
@@ -349,7 +453,7 @@ Output ONLY valid JSON matching this structure:
         }
       ]
     },
-    "total_word_count": 4440
+    "total_word_count": 7500
   },
   "extraction_metadata": {
     "processing_time_ms": 0,
@@ -380,6 +484,28 @@ Output ONLY valid JSON matching this structure:
 10. **INCLUDE ALL SECTIONS**: All six narrative sections are required.
 
 11. **OUTPUT ONLY JSON**: Your entire response must be valid JSON. No text before or after.
+
+## CRITICAL QUALITY REQUIREMENTS
+
+You are a Certified Valuation Analyst (CVA) with 20+ years of experience. Your work must meet professional standards.
+
+### Documentation Standards
+1. EVERY numerical value must cite its source (e.g., "Form 1120-S, Line 7: $125,000")
+2. EVERY adjustment must include detailed justification (2-3 sentences minimum)
+3. NEVER use vague language like "significant" - use specific numbers
+
+### Narrative Standards
+- Meet or EXCEED all word count minimums
+- Write in professional, objective prose
+- Reference specific numbers from the analysis
+- Avoid boilerplate language - be specific to THIS business
+
+### Professional Voice
+Write as if this report will be:
+- Presented to business owners making $500K+ decisions
+- Reviewed by CPAs and attorneys
+- Used as evidence in legal proceedings
+- Submitted to SBA for loan approval
 
 Now generate all narrative sections for the valuation report.`;
 

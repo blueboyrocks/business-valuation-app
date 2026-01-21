@@ -116,7 +116,17 @@ DLOM reflects the difficulty of selling a privately-held interest compared to pu
 - Primary supporting study: [Name and cite]
 - Rationale for selection within range
 
-**Important**: For controlling interests, DLOM is typically lower (10-25%) than minority interests (20-40%).
+**REQUIRED DLOM RANGE FOR CONTROLLING INTERESTS: 10-20%**
+
+For 100% controlling interests in small businesses, select DLOM within the **10-20%** range:
+- 10-12%: Strong buyer market, excellent financials, attractive industry
+- 13-15%: Average buyer market, good financials
+- 16-18%: Weaker buyer market, average financials
+- 18-20%: Limited buyer market, financial concerns
+
+**Always cite supporting studies** (e.g., FMV Opinions Restricted Stock Study, Stout Restricted Stock Study, Willamette Management Associates studies).
+
+**Important**: For controlling interests, DLOM is typically lower (10-20%) than minority interests (20-40%).
 
 #### B. Discount for Lack of Control (DLOC)
 
@@ -157,7 +167,23 @@ If not already reflected in the approaches, adjust for working capital:
 
 **Note**: Check whether each approach already includes this adjustment to avoid double-counting.
 
-### 5. CALCULATE FINAL CONCLUDED VALUE
+### 5. VALUE FLOOR CHECK (REQUIRED)
+
+**CRITICAL**: For a going concern business, the concluded value should generally be >= Adjusted Net Asset Value from Pass 7.
+
+| Check | Value | Status |
+|-------|-------|--------|
+| Adjusted Net Asset Value (Pass 7) | $X,XXX,XXX | Floor value |
+| Preliminary Concluded Value | $X,XXX,XXX | After discounts |
+| Value Floor Test | PASS/FAIL | Concluded >= Asset |
+
+**If concluded value < asset approach value:**
+- Re-examine approach weights (asset approach may need higher weight)
+- Verify DLOM is not excessive
+- Document why going concern value is below liquidation value (rare for profitable business)
+- Consider whether liquidation premise should be used instead
+
+### 6. CALCULATE FINAL CONCLUDED VALUE
 
 \`\`\`
 Weighted Average Preliminary Value    $X,XXX,XXX
@@ -169,7 +195,7 @@ Plus/Less: Working Capital Adj.       $XXX,XXX
 Final Concluded Value:                $X,XXX,XXX
 \`\`\`
 
-### 6. DETERMINE VALUATION RANGE
+### 7. DETERMINE VALUATION RANGE (±15-20% TYPICAL)
 
 Professional appraisals typically present a range reflecting inherent uncertainty:
 
@@ -194,7 +220,7 @@ Valuation Range:       $X,XXX,XXX to $X,XXX,XXX
 - Business stability
 - Market conditions
 
-### 7. CONFIDENCE ASSESSMENT
+### 8. CONFIDENCE ASSESSMENT
 
 Rate confidence in the concluded value:
 
@@ -211,7 +237,7 @@ Rate confidence in the concluded value:
 - Moderate (5-7): Adequate data, some divergence, normal uncertainty
 - Low (< 5): Limited data, significant divergence, high uncertainty
 
-### 8. VALUE SYNTHESIS NARRATIVE
+### 9. VALUE SYNTHESIS NARRATIVE (700-900 words)
 
 Write a 600-800 word narrative explaining:
 - Why each approach received its weight
@@ -402,6 +428,28 @@ Output ONLY valid JSON matching this structure:
 9. **CONSISTENCY CHECK**: Verify the concluded value makes sense relative to individual approaches.
 
 10. **OUTPUT ONLY JSON**: Your entire response must be valid JSON. No text before or after.
+
+## CRITICAL QUALITY REQUIREMENTS
+
+You are a Certified Valuation Analyst (CVA) with 20+ years of experience. Your work must meet professional standards.
+
+### Documentation Standards
+1. EVERY numerical value must cite its source (e.g., "Form 1120-S, Line 7: $125,000")
+2. EVERY adjustment must include detailed justification (2-3 sentences minimum)
+3. NEVER use vague language like "significant" - use specific numbers
+
+### Narrative Standards
+- Meet or EXCEED all word count minimums
+- Write in professional, objective prose
+- Reference specific numbers from the analysis
+- Avoid boilerplate language - be specific to THIS business
+
+### Professional Voice
+Write as if this report will be:
+- Presented to business owners making $500K+ decisions
+- Reviewed by CPAs and attorneys
+- Used as evidence in legal proceedings
+- Submitted to SBA for loan approval
 
 Now synthesize the valuation approaches into a final concluded value.`;
 
