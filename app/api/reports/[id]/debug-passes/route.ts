@@ -41,7 +41,15 @@ export async function GET(
       return NextResponse.json({ error: 'Report not found' }, { status: 404 });
     }
 
-    const passOutputs = data.pass_outputs || {};
+    const reportData = data as {
+      id: string;
+      company_name: string;
+      report_status: string;
+      current_pass: number;
+      pass_outputs: Record<string, unknown> | null;
+    };
+
+    const passOutputs = reportData.pass_outputs || {};
     const passKeys = Object.keys(passOutputs);
 
     // If specific pass requested, show just that pass
@@ -49,9 +57,9 @@ export async function GET(
       const passData = passOutputs[passParam];
       return NextResponse.json({
         reportId,
-        companyName: data.company_name,
-        status: data.report_status,
-        currentPass: data.current_pass,
+        companyName: reportData.company_name,
+        status: reportData.report_status,
+        currentPass: reportData.current_pass,
         requestedPass: passParam,
         passExists: !!passData,
         passKeys: passData ? Object.keys(passData) : [],
@@ -70,9 +78,9 @@ export async function GET(
 
     return NextResponse.json({
       reportId,
-      companyName: data.company_name,
-      status: data.report_status,
-      currentPass: data.current_pass,
+      companyName: reportData.company_name,
+      status: reportData.report_status,
+      currentPass: reportData.current_pass,
       totalPasses: passKeys.length,
       passKeys,
       passSummaries,

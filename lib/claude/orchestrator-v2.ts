@@ -890,7 +890,17 @@ ${wcBenchmark ? `Industry: ${wcBenchmark.industry}` : 'No specific benchmarks av
       }
     } else {
       // Passes 4-12: Analysis passes (no PDF needed)
-      const pass1 = passOutputs['1'] as Pass1Output;
+      console.log(`[SINGLE-PASS] Available pass outputs: ${Object.keys(passOutputs).join(', ')}`);
+
+      // Debug: show what's in pass 1
+      const rawPass1 = passOutputs['1'];
+      if (!rawPass1) {
+        console.error(`[SINGLE-PASS] Pass 1 output is missing! Available keys: ${Object.keys(passOutputs).join(', ')}`);
+        throw new Error(`Pass 1 output not found in database. Available passes: ${Object.keys(passOutputs).join(', ')}`);
+      }
+      console.log(`[SINGLE-PASS] Pass 1 keys: ${Object.keys(rawPass1).join(', ')}`);
+
+      const pass1 = rawPass1 as Pass1Output;
       const pass2 = passOutputs['2'] as Pass2Output;
       const pass3 = passOutputs['3'] as Pass3Output;
       const pass4 = passOutputs['4'] as Pass4Output;
@@ -1442,19 +1452,27 @@ WC % Revenue: ${(wcBenchmark.workingCapitalAsPercentOfRevenue.min * 100).toFixed
 function buildPass4Request(pass1: Pass1Output, pass2: Pass2Output, pass3: Pass3Output): { system: string; prompt: string } {
   const config = getPromptConfig(4)!;
 
-  // Inject industry knowledge
-  const naicsCode = pass1.industry_classification?.naics_code || '';
+  // Safely access pass1 fields with fallbacks
+  if (!pass1) {
+    throw new Error('Pass 1 output is required for Pass 4');
+  }
+
+  // Inject industry knowledge - handle both old and new field structures
+  const industryClass = pass1.industry_classification || (pass1 as unknown as Record<string, unknown>).industryClassification as typeof pass1.industry_classification;
+  const companyProf = pass1.company_profile || (pass1 as unknown as Record<string, unknown>).companyProfile as typeof pass1.company_profile;
+
+  const naicsCode = industryClass?.naics_code || '';
   const sectorMultiples = findSectorMultiples(pass1);
 
   const priorContext = `
 ## PRIOR PASS DATA
 
 ### Pass 1 Output (Company Profile)
-Company: ${pass1.company_profile?.legal_name || 'Unknown'}
-Years in Business: ${pass1.company_profile?.years_in_business || 'Unknown'}
+Company: ${companyProf?.legal_name || 'Unknown'}
+Years in Business: ${companyProf?.years_in_business || 'Unknown'}
 NAICS Code: ${naicsCode}
-Industry: ${pass1.industry_classification?.naics_description || 'Unknown'}
-Business Description: ${pass1.company_profile?.business_description || 'Not provided'}
+Industry: ${industryClass?.naics_description || 'Unknown'}
+Business Description: ${companyProf?.business_description || 'Not provided'}
 
 ### Pass 2 Output (Financial Performance)
 ${JSON.stringify(pass2.income_statements?.slice(0, 3).map(is => ({
@@ -2211,8 +2229,12 @@ function updateMetrics(
  * Find sector multiples based on Pass 1 output
  */
 function findSectorMultiples(pass1: Pass1Output) {
-  const naicsCode = pass1.industry_classification?.naics_code || '';
-  const keywords = pass1.company_profile?.products_services || [];
+  // Handle both snake_case and camelCase field names
+  const industryClass = pass1.industry_classification || (pass1 as unknown as Record<string, unknown>).industryClassification as typeof pass1.industry_classification;
+  const companyProf = pass1.company_profile || (pass1 as unknown as Record<string, unknown>).companyProfile as typeof pass1.company_profile;
+
+  const naicsCode = industryClass?.naics_code || '';
+  const keywords = companyProf?.products_services || [];
 
   // Map NAICS prefixes to sectors
   const naicsSectorMap: Record<string, string> = {
