@@ -583,12 +583,11 @@ async function executePassWithLogging<T extends PassOutput>(
     const summary = getPassCompletionSummary(passNumber, result.output);
     console.log(`[12-PASS] Pass ${passNumber} complete: ${summary}`);
 
-    // Save pass output to database
+    // Save progress to database (pass outputs saved only in final report)
     await saveToDatabase(supabase, context.reportId, {
       report_status: `pass_${passNumber}_complete`,
       processing_progress: progress,
       processing_message: `Pass ${passNumber} complete: ${shortDescription}`,
-      [`pass_${passNumber}_output`]: result.output,
     });
   } else {
     console.error(`[12-PASS] Pass ${passNumber} failed: ${result.error}`);
@@ -2001,7 +2000,6 @@ async function runExtractionPassesWithPerDocumentProcessing(
     report_status: 'pass_1_complete',
     processing_progress: PASS_PROGRESS[1],
     processing_message: 'Pass 1 complete: Document Classification',
-    pass_1_output: mergedPass1,
   });
 
   // =========================================================================
@@ -2087,7 +2085,6 @@ Document Type: ${mergedPass1.document_info?.document_type || 'Unknown'}
     report_status: 'pass_2_complete',
     processing_progress: PASS_PROGRESS[2],
     processing_message: 'Pass 2 complete: Income Statement Extraction',
-    pass_2_output: mergedPass2,
   });
 
   // =========================================================================
@@ -2188,7 +2185,6 @@ WC % Revenue: ${(wcBenchmark.workingCapitalAsPercentOfRevenue.min * 100).toFixed
     report_status: 'pass_3_complete',
     processing_progress: PASS_PROGRESS[3],
     processing_message: 'Pass 3 complete: Balance Sheet Extraction',
-    pass_3_output: mergedPass3,
   });
 
   return {
