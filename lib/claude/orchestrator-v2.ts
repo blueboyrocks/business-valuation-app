@@ -564,18 +564,28 @@ async function loadPassOutputsFromDatabase(
   supabase: ReturnType<typeof createServerClient>,
   reportId: string
 ): Promise<Record<string, PassOutput>> {
+  console.log(`[SINGLE-PASS] Loading pass outputs from database for report ${reportId}`);
+
   const { data, error } = await supabase
     .from('reports')
     .select('pass_outputs')
     .eq('id', reportId)
     .single();
 
-  if (error || !data) {
-    console.error(`[SINGLE-PASS] Failed to load pass outputs: ${error?.message}`);
+  if (error) {
+    console.error(`[SINGLE-PASS] Failed to load pass outputs: ${error.message}`);
     return {};
   }
 
-  return (data.pass_outputs as Record<string, PassOutput>) || {};
+  if (!data) {
+    console.warn(`[SINGLE-PASS] No data returned for report ${reportId}`);
+    return {};
+  }
+
+  const passOutputs = (data as { pass_outputs: Record<string, PassOutput> | null }).pass_outputs;
+  console.log(`[SINGLE-PASS] Loaded pass_outputs: ${passOutputs ? Object.keys(passOutputs).join(', ') : 'null/empty'}`);
+
+  return passOutputs || {};
 }
 
 /**
@@ -588,30 +598,42 @@ async function savePassOutputToDatabase(
   output: PassOutput,
   additionalFields: Record<string, unknown> = {}
 ): Promise<void> {
+  console.log(`[SINGLE-PASS] >>> savePassOutputToDatabase called for Pass ${passNumber}, report ${reportId}`);
+
   // Load existing outputs
   const existingOutputs = await loadPassOutputsFromDatabase(supabase, reportId);
+  console.log(`[SINGLE-PASS] Existing outputs keys: ${Object.keys(existingOutputs).join(', ') || 'none'}`);
 
   // Add new output
   const updatedOutputs = {
     ...existingOutputs,
     [passNumber.toString()]: output,
   };
+  console.log(`[SINGLE-PASS] Updated outputs keys: ${Object.keys(updatedOutputs).join(', ')}`);
+  console.log(`[SINGLE-PASS] Pass ${passNumber} output keys: ${Object.keys(output || {}).join(', ')}`);
 
   // Save to database
-  const { error } = await supabase
+  const updatePayload = {
+    pass_outputs: updatedOutputs,
+    current_pass: passNumber,
+    updated_at: new Date().toISOString(),
+    ...additionalFields,
+  };
+  console.log(`[SINGLE-PASS] Saving to database with keys: ${Object.keys(updatePayload).join(', ')}`);
+
+  const { data, error } = await supabase
     .from('reports')
-    .update({
-      pass_outputs: updatedOutputs,
-      current_pass: passNumber,
-      updated_at: new Date().toISOString(),
-      ...additionalFields,
-    })
-    .eq('id', reportId);
+    .update(updatePayload)
+    .eq('id', reportId)
+    .select('id, current_pass');
 
   if (error) {
-    console.error(`[SINGLE-PASS] Failed to save pass ${passNumber} output: ${error.message}`);
+    console.error(`[SINGLE-PASS] !!! Database save FAILED: ${error.message}`);
+    console.error(`[SINGLE-PASS] Error details:`, JSON.stringify(error));
     throw new Error(`Failed to save pass output: ${error.message}`);
   }
+
+  console.log(`[SINGLE-PASS] Database save SUCCESS. Result:`, JSON.stringify(data));
 }
 
 /**
@@ -964,6 +986,9 @@ ${wcBenchmark ? `Industry: ${wcBenchmark.industry}` : 'No specific benchmarks av
     // Save pass output to database
     const processingTime = Date.now() - startTime;
     const cost = calculateCost(result.inputTokens, result.outputTokens);
+
+    console.log(`[SINGLE-PASS] About to save Pass ${passNumber} output to database...`);
+    console.log(`[SINGLE-PASS] result.output exists: ${!!result.output}, keys: ${result.output ? Object.keys(result.output).join(', ') : 'none'}`);
 
     await savePassOutputToDatabase(supabase, reportId, passNumber, result.output, {
       processing_progress: progress,
