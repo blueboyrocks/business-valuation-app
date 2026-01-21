@@ -58,6 +58,14 @@ import {
   getWorkingCapitalBenchmark,
 } from './embedded-knowledge';
 
+import {
+  transformToFinalReport,
+  validateFinalReport,
+  PassOutputs,
+} from './transform-to-final-report';
+
+import { FinalValuationReport } from './final-report-schema';
+
 // =============================================================================
 // CONSTANTS
 // =============================================================================
@@ -365,8 +373,41 @@ export async function runTwelvePassValuation(
     console.log(`[12-PASS] Total Cost: $${totalCost.toFixed(4)}`);
     console.log(`[12-PASS] ========================================`);
 
-    // Build final report using Pass 12's corrections
-    const finalReport = buildFinalReport(
+    // Build PassOutputs for transformation
+    const allPassOutputs: PassOutputs = {
+      pass1: pass1Result.output!,
+      pass2: pass2Result.output!,
+      pass3: pass3Result.output!,
+      pass4: pass4Result.output!,
+      pass5: pass5Result.output!,
+      pass6: pass6Result.output!,
+      pass7: pass7Result.output!,
+      pass8: pass8Result.output!,
+      pass9: pass9Result.output!,
+      pass10: pass10Result.output!,
+      pass11: pass11Result.output!,
+      pass12: pass12Result.output!,
+    };
+
+    // Transform to FinalValuationReport schema (matches OUTPUT_SCHEMA.md)
+    const valuationDate = pass10Result.output!.conclusion?.valuation_date ||
+                          new Date().toISOString().split('T')[0];
+    const finalValuationReport = transformToFinalReport(allPassOutputs, valuationDate);
+
+    // Validate the final report
+    const validation = validateFinalReport(finalValuationReport);
+    if (!validation.valid) {
+      console.warn(`[12-PASS] Final report validation errors:`, validation.errors);
+    }
+    if (validation.warnings.length > 0) {
+      console.warn(`[12-PASS] Final report validation warnings:`, validation.warnings);
+    }
+
+    console.log(`[12-PASS] Final report validated: ${validation.valid ? 'PASSED' : 'FAILED'}`);
+    console.log(`[12-PASS] Errors: ${validation.errors.length}, Warnings: ${validation.warnings.length}`);
+
+    // Build legacy report format for backwards compatibility
+    const legacyReport = buildFinalReport(
       reportId,
       pass1Result.output!,
       pass2Result.output!,
@@ -382,12 +423,16 @@ export async function runTwelvePassValuation(
       pass12Result.output!
     );
 
-    // Save final report to database
+    // Save final report to database (using new schema format)
     await saveToDatabase(supabase, reportId, {
       report_status: 'completed',
       processing_progress: 100,
       processing_message: 'Valuation complete',
-      report_data: finalReport,
+      report_data: finalValuationReport,
+      // Also store legacy format for backwards compatibility
+      legacy_report_data: legacyReport,
+      validation_errors: validation.errors,
+      validation_warnings: validation.warnings,
     });
 
     // Calculate metrics
@@ -400,7 +445,9 @@ export async function runTwelvePassValuation(
       pass_outputs: Array.from(passOutputs.values()),
       completed_passes: 12,
       total_passes: 12,
-      final_report: finalReport,
+      final_report: legacyReport,
+      final_valuation_report: finalValuationReport,
+      validation_result: validation,
       metrics: {
         total_duration_ms: totalDuration,
         total_tokens_used: totalInputTokens + totalOutputTokens,

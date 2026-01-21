@@ -233,6 +233,54 @@ Grade each section: A (excellent), B (good), C (acceptable), D (needs revision),
 [ ] Data sources cited throughout
 \`\`\`
 
+### 5.5. FINAL OUTPUT SCHEMA VALIDATION (OUTPUT_SCHEMA.md v2.0)
+
+Verify the final report can be transformed to match the authoritative output schema:
+
+#### A. Required Top-Level Fields
+\`\`\`
+[ ] schema_version: "2.0" present
+[ ] valuation_date: YYYY-MM-DD format
+[ ] generated_at: ISO-8601 timestamp
+[ ] company_profile: All required fields populated
+[ ] financial_data: At least one income statement and balance sheet
+[ ] normalized_earnings: SDE and EBITDA calculations complete
+[ ] industry_analysis: Benchmarks and multiples present
+[ ] risk_assessment: Overall rating and risk factors present
+[ ] kpi_analysis: Profitability, liquidity, efficiency metrics
+[ ] valuation_approaches: All three approaches calculated
+[ ] valuation_synthesis: Final value with range
+[ ] narratives: All 11 narrative sections present
+[ ] data_quality: Extraction confidence and completeness score
+[ ] metadata: Documents analyzed and processing notes
+\`\`\`
+
+#### B. Critical Schema Rules
+\`\`\`
+[ ] Approach weights sum to exactly 1.0 (100%)
+[ ] valuation_range_low < concluded_value < valuation_range_high
+[ ] concluded_value >= adjusted_net_asset_value (valuation floor)
+[ ] All monetary values are numbers (not formatted strings)
+[ ] All percentages expressed as decimals (0.15, not "15%")
+\`\`\`
+
+#### C. Narrative Word Count Targets (must be within 80% of target)
+| Section | Target Words | Minimum Acceptable |
+|---------|-------------|-------------------|
+| executive_summary | 800 | 640 |
+| company_overview | 500 | 400 |
+| financial_analysis | 1000 | 800 |
+| industry_analysis | 600 | 480 |
+| risk_assessment | 700 | 560 |
+| asset_approach_narrative | 500 | 400 |
+| income_approach_narrative | 500 | 400 |
+| market_approach_narrative | 500 | 400 |
+| valuation_synthesis_narrative | 600 | 480 |
+| assumptions_and_limiting_conditions | 400 | 320 |
+| value_enhancement_recommendations | 500 | 400 |
+
+**Document any schema validation issues found.**
+
 ### 6. ERROR CLASSIFICATION
 
 Classify any errors found:
@@ -493,6 +541,33 @@ Output ONLY valid JSON matching this structure:
       "compliance_percentage": 100,
       "compliance_grade": "A"
     },
+    "schema_validation": {
+      "schema_version": "2.0",
+      "validation_checks": [
+        { "check": "All required top-level fields present", "status": "pass" },
+        { "check": "Approach weights sum to 1.0", "status": "pass", "value": 1.0 },
+        { "check": "Concluded value within range", "status": "pass" },
+        { "check": "Valuation floor check", "status": "pass", "concluded": 2000000, "floor": 1850000 },
+        { "check": "Monetary values as numbers", "status": "pass" },
+        { "check": "Percentages as decimals", "status": "pass" }
+      ],
+      "narrative_word_counts": {
+        "executive_summary": { "target": 800, "actual": 850, "status": "pass" },
+        "company_overview": { "target": 500, "actual": 520, "status": "pass" },
+        "financial_analysis": { "target": 1000, "actual": 980, "status": "pass" },
+        "industry_analysis": { "target": 600, "actual": 620, "status": "pass" },
+        "risk_assessment": { "target": 700, "actual": 710, "status": "pass" },
+        "asset_approach_narrative": { "target": 500, "actual": 480, "status": "pass" },
+        "income_approach_narrative": { "target": 500, "actual": 510, "status": "pass" },
+        "market_approach_narrative": { "target": 500, "actual": 490, "status": "pass" },
+        "valuation_synthesis_narrative": { "target": 600, "actual": 580, "status": "pass" },
+        "assumptions_and_limiting_conditions": { "target": 400, "actual": 420, "status": "pass" },
+        "value_enhancement_recommendations": { "target": 500, "actual": 480, "status": "pass" }
+      },
+      "validation_passed": true,
+      "validation_errors": [],
+      "validation_warnings": []
+    },
     "errors_found": [],
     "corrections_made": [],
     "quality_scores": {
@@ -501,6 +576,7 @@ Output ONLY valid JSON matching this structure:
       "logical_coherence": { "grade": "A", "score": 94, "notes": "Conclusion well-supported by analysis" },
       "narrative_quality": { "grade": "A", "score": 92, "notes": "Professional, specific narratives" },
       "professional_standards": { "grade": "A", "score": 100, "notes": "Full compliance" },
+      "schema_validation": { "grade": "A", "score": 100, "notes": "All schema requirements met" },
       "overall": { "grade": "A", "score": 96, "notes": "Report ready for delivery" }
     },
     "final_recommendation": {

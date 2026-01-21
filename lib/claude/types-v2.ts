@@ -1879,6 +1879,34 @@ export interface QualityReview {
     growth_rates_reasonable: QualityCheck;
     adjustments_reasonable: QualityCheck;
   };
+
+  // Schema Validation (OUTPUT_SCHEMA.md v2.0)
+  schema_validation?: {
+    schema_version: '2.0';
+    validation_checks: Array<{
+      check: string;
+      status: 'pass' | 'fail';
+      value?: number | string;
+      concluded?: number;
+      floor?: number;
+    }>;
+    narrative_word_counts: {
+      executive_summary: { target: number; actual: number; status: 'pass' | 'fail' };
+      company_overview: { target: number; actual: number; status: 'pass' | 'fail' };
+      financial_analysis: { target: number; actual: number; status: 'pass' | 'fail' };
+      industry_analysis: { target: number; actual: number; status: 'pass' | 'fail' };
+      risk_assessment: { target: number; actual: number; status: 'pass' | 'fail' };
+      asset_approach_narrative: { target: number; actual: number; status: 'pass' | 'fail' };
+      income_approach_narrative: { target: number; actual: number; status: 'pass' | 'fail' };
+      market_approach_narrative: { target: number; actual: number; status: 'pass' | 'fail' };
+      valuation_synthesis_narrative: { target: number; actual: number; status: 'pass' | 'fail' };
+      assumptions_and_limiting_conditions: { target: number; actual: number; status: 'pass' | 'fail' };
+      value_enhancement_recommendations: { target: number; actual: number; status: 'pass' | 'fail' };
+    };
+    validation_passed: boolean;
+    validation_errors: string[];
+    validation_warnings: string[];
+  };
 }
 
 export interface Pass12Output {
@@ -2053,6 +2081,16 @@ export interface TwelvePassOrchestrationResult {
 
   // Final Report (only if success)
   final_report?: TwelvePassFinalReport;
+
+  // Final Valuation Report in new schema format (matches OUTPUT_SCHEMA.md)
+  final_valuation_report?: import('./final-report-schema').FinalValuationReport;
+
+  // Validation result for the final report
+  validation_result?: {
+    valid: boolean;
+    errors: string[];
+    warnings: string[];
+  };
 
   // Metrics
   metrics: {
