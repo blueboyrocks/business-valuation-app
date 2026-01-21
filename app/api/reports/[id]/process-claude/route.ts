@@ -1,3 +1,7 @@
+// Vercel config - must be at top before imports
+export const maxDuration = 800; // Vercel Pro max
+export const dynamic = 'force-dynamic';
+
 /**
  * Claude 12-Pass Business Valuation Processing Route
  *
@@ -28,9 +32,6 @@ function getSupabaseClient(): SupabaseClient {
   }
   return supabase;
 }
-
-// Vercel Pro allows up to 5 minutes for serverless functions
-export const maxDuration = 300;
 
 // Pass descriptions for progress messages
 const PASS_DESCRIPTIONS: Record<number, string> = {
