@@ -456,55 +456,25 @@ export default function UploadPage() {
       }
 
       setAnalysisProgress({
-        phase: 'extracting',
-        progress: 40,
-        message: 'Starting AI analysis...',
+        phase: 'completed',
+        progress: 100,
+        message: 'Upload complete! Redirecting to analysis...',
       });
 
       toast({
         title: 'Upload successful',
-        description: 'Starting AI analysis...',
+        description: 'Redirecting to your report...',
       });
 
-      console.log('Calling 6-pass valuation API with reportId:', reportId);
+      console.log('Upload complete, redirecting to report page:', reportId);
 
-      // Start 6-pass valuation pipeline
-      const analyzeResponse = await fetch(`/api/reports/${reportId}/process-claude`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-        },
-        signal: abortControllerRef.current?.signal,
-      });
-
-      console.log('Analyze response status:', analyzeResponse.status);
-
-      if (!analyzeResponse.ok) {
-        let errorMessage = 'Analysis failed to start';
-        try {
-          const contentType = analyzeResponse.headers.get('content-type');
-          if (contentType && contentType.includes('application/json')) {
-            const errorData = await analyzeResponse.json();
-            console.error('Analyze error:', errorData);
-            errorMessage = errorData.error || 'Analysis failed to start';
-          } else {
-            const errorText = await analyzeResponse.text();
-            console.error('Analyze error (non-JSON):', errorText);
-            errorMessage = errorText || `Analysis failed with status ${analyzeResponse.status}`;
-          }
-        } catch (parseError) {
-          console.error('Error parsing analyze response:', parseError);
-          errorMessage = `Analysis failed with status ${analyzeResponse.status}`;
-        }
-        throw new Error(errorMessage);
-      }
-
-      // Analysis started - now poll for status
-      setIsAnalyzing(true);
+      // Redirect to the report page which will handle the chained pass processing
+      // The report page auto-starts processing when status is 'pending'
       setIsUploading(false);
 
-      // Start polling
-      pollAnalysisStatus(reportId, token, 0);
+      setTimeout(() => {
+        router.push(`/dashboard/reports/${reportId}`);
+      }, 1000);
 
     } catch (error) {
       if ((error as Error).message === 'Cancelled' || (error as Error).name === 'AbortError') {
