@@ -65,6 +65,7 @@ export async function POST(
   const { id: reportId } = await params;
   const { searchParams } = new URL(request.url);
   const passParam = searchParams.get('pass');
+  const forceParam = searchParams.get('force') === 'true';
 
   // Validate pass parameter
   if (!passParam) {
@@ -82,7 +83,7 @@ export async function POST(
     );
   }
 
-  console.log(`[PROCESS-PASS] Starting Pass ${passNumber} for report ${reportId}`);
+  console.log(`[PROCESS-PASS] Starting Pass ${passNumber} for report ${reportId}${forceParam ? ' (force mode)' : ''}`);
 
   try {
     // Verify report exists
@@ -114,7 +115,7 @@ export async function POST(
     }
 
     // Execute the single pass
-    const result: SinglePassResult = await executeSinglePass(reportId, passNumber);
+    const result: SinglePassResult = await executeSinglePass(reportId, passNumber, undefined, { force: forceParam });
 
     // If this was the final pass and it succeeded, generate PDF
     if (result.success && result.isComplete && result.finalReport) {

@@ -710,7 +710,8 @@ async function downloadReportDocuments(
 export async function executeSinglePass(
   reportId: string,
   passNumber: number,
-  onProgress?: (message: string, percent: number) => void
+  onProgress?: (message: string, percent: number) => void,
+  options?: { force?: boolean }
 ): Promise<SinglePassResult> {
   const startTime = Date.now();
   const client = new Anthropic();
@@ -732,11 +733,15 @@ export async function executeSinglePass(
     // Load previous pass outputs from database
     const passOutputs = await loadPassOutputsFromDatabase(supabase, reportId);
 
-    // Validate that required previous passes are complete
-    for (let i = 1; i < passNumber; i++) {
-      if (!passOutputs[i.toString()]) {
-        throw new Error(`Pass ${i} must be completed before Pass ${passNumber}`);
+    // Validate that required previous passes are complete (unless force mode)
+    if (!options?.force) {
+      for (let i = 1; i < passNumber; i++) {
+        if (!passOutputs[i.toString()]) {
+          throw new Error(`Pass ${i} must be completed before Pass ${passNumber}. Use force=true to skip this check.`);
+        }
       }
+    } else {
+      console.log(`[SINGLE-PASS] Force mode enabled - skipping prerequisite check`);
     }
 
     // Update status to processing
