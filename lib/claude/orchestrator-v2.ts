@@ -1589,7 +1589,7 @@ function buildPass5Request(pass1: Pass1Output, pass2: Pass2Output, pass3: Pass3O
 ### Pass 1 Output (Company Profile)
 Company: ${pass1.company_profile?.legal_name || 'Unknown'}
 Entity Type: ${pass1.ownership_info?.ownership_type || 'Unknown'}
-Owners: ${JSON.stringify(pass1.ownership_info?.owners?.map(o => ({ name: o.name, ownership: o.ownership_percentage, active: o.active_in_business, comp: o.compensation })) || [])}
+Owners: ${JSON.stringify(Array.isArray(pass1.ownership_info?.owners) ? pass1.ownership_info.owners.map(o => ({ name: o.name, ownership: o.ownership_percentage, active: o.active_in_business, comp: o.compensation })) : [])}
 
 ### Pass 2 Output (Income Statements)
 ${JSON.stringify(pass2.income_statements?.slice(0, 3) || [], null, 2)}
@@ -1825,7 +1825,7 @@ ${DLOM_STUDIES.factorsAffectingDLOM.slice(0, 6).map(f =>
 ## PRIOR PASS DATA
 
 ### Pass 1 Output (Ownership)
-Ownership Being Valued: ${pass1.ownership_info?.owners?.[0]?.ownership_percentage || 100}%
+Ownership Being Valued: ${Array.isArray(pass1.ownership_info?.owners) && pass1.ownership_info.owners[0]?.ownership_percentage || 100}%
 Entity Type: ${pass1.ownership_info?.ownership_type || 'Unknown'}
 
 ### Pass 3 Output (Working Capital Adjustment)
