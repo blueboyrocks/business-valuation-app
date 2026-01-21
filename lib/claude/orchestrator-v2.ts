@@ -566,19 +566,21 @@ async function loadPassOutputsFromDatabase(
 ): Promise<Record<string, PassOutput>> {
   console.log(`[SINGLE-PASS] Loading pass outputs from database for report ${reportId}`);
 
+  // Use maybeSingle() instead of single() to handle case where report doesn't exist
   const { data, error } = await supabase
     .from('reports')
     .select('pass_outputs')
     .eq('id', reportId)
-    .single();
+    .maybeSingle();
 
   if (error) {
     console.error(`[SINGLE-PASS] Failed to load pass outputs: ${error.message}`);
+    console.error(`[SINGLE-PASS] Error code: ${error.code}, details: ${error.details}`);
     return {};
   }
 
   if (!data) {
-    console.warn(`[SINGLE-PASS] No data returned for report ${reportId}`);
+    console.warn(`[SINGLE-PASS] No report found with id ${reportId}`);
     return {};
   }
 
@@ -643,22 +645,77 @@ async function downloadReportDocuments(
   supabase: ReturnType<typeof createServerClient>,
   reportId: string
 ): Promise<string[]> {
-  // Get documents for this report
+  console.log(`[SINGLE-PASS] Downloading documents for report ${reportId}`);
+
+  // Get documents for this report from documents table
   const { data: documents, error: docsError } = await supabase
     .from('documents')
-    .select('file_path, file_name')
+    .select('file_path, file_name, id')
     .eq('report_id', reportId);
 
-  if (docsError || !documents || documents.length === 0) {
+  console.log(`[SINGLE-PASS] Documents query result: found=${documents?.length || 0}, error=${docsError?.message || 'none'}`);
+
+  if (docsError) {
+    console.error(`[SINGLE-PASS] Error querying documents table: ${docsError.message}`);
+  }
+
+  if (!documents || documents.length === 0) {
+    console.log(`[SINGLE-PASS] No documents found via report_id, trying document_paths field...`);
+
     // Try document_paths field on report
-    const { data: report } = await supabase
+    const { data: report, error: reportError } = await supabase
       .from('reports')
-      .select('document_paths')
+      .select('document_paths, document_id')
       .eq('id', reportId)
-      .single();
+      .maybeSingle();
+
+    console.log(`[SINGLE-PASS] Report query: document_paths=${report?.document_paths ? 'exists' : 'null'}, document_id=${report?.document_id || 'null'}, error=${reportError?.message || 'none'}`);
+
+    // If we have a document_id, try to get that specific document
+    if (report?.document_id) {
+      console.log(`[SINGLE-PASS] Trying to fetch document by document_id: ${report.document_id}`);
+      const { data: singleDoc, error: singleDocError } = await supabase
+        .from('documents')
+        .select('file_path, file_name, id')
+        .eq('id', report.document_id)
+        .maybeSingle();
+
+      if (singleDoc) {
+        console.log(`[SINGLE-PASS] Found document via document_id: ${singleDoc.file_name}`);
+        // Also check for other documents with same report_id or user
+        // Fall through to use this document
+        const pdfDocuments: string[] = [];
+        const cleanPath = singleDoc.file_path.replace(/^documents\//, '');
+        console.log(`[SINGLE-PASS] Downloading from storage: ${cleanPath}`);
+
+        const { data, error } = await supabase.storage
+          .from('documents')
+          .download(cleanPath);
+
+        if (error) {
+          console.log(`[SINGLE-PASS] First download attempt failed, trying original path: ${singleDoc.file_path}`);
+          const { data: data2, error: error2 } = await supabase.storage
+            .from('documents')
+            .download(singleDoc.file_path);
+
+          if (error2) {
+            throw new Error(`Failed to download document "${singleDoc.file_name}": ${error.message}, ${error2.message}`);
+          }
+          const buffer = await data2.arrayBuffer();
+          pdfDocuments.push(Buffer.from(buffer).toString('base64'));
+        } else {
+          const buffer = await data.arrayBuffer();
+          pdfDocuments.push(Buffer.from(buffer).toString('base64'));
+        }
+        console.log(`[SINGLE-PASS] Successfully downloaded ${pdfDocuments.length} document(s)`);
+        return pdfDocuments;
+      } else {
+        console.error(`[SINGLE-PASS] Could not find document with id ${report.document_id}: ${singleDocError?.message || 'not found'}`);
+      }
+    }
 
     if (!report?.document_paths) {
-      throw new Error('No documents found for this report');
+      throw new Error(`No documents found for report ${reportId}. Check that documents are properly linked.`);
     }
 
     const paths = typeof report.document_paths === 'string'
