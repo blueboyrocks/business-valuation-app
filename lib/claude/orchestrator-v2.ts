@@ -662,14 +662,14 @@ async function downloadReportDocuments(
   if (!documents || documents.length === 0) {
     console.log(`[SINGLE-PASS] No documents found via report_id, trying document_paths field...`);
 
-    // Try document_paths field on report
+    // Try document_id field on report (document_paths column may not exist)
     const { data: report, error: reportError } = await supabase
       .from('reports')
-      .select('document_paths, document_id')
+      .select('document_id')
       .eq('id', reportId)
       .maybeSingle();
 
-    console.log(`[SINGLE-PASS] Report query: document_paths=${report?.document_paths ? 'exists' : 'null'}, document_id=${report?.document_id || 'null'}, error=${reportError?.message || 'none'}`);
+    console.log(`[SINGLE-PASS] Report query: document_id=${report?.document_id || 'null'}, error=${reportError?.message || 'none'}`);
 
     // If we have a document_id, try to get that specific document
     if (report?.document_id) {
@@ -714,38 +714,8 @@ async function downloadReportDocuments(
       }
     }
 
-    if (!report?.document_paths) {
-      throw new Error(`No documents found for report ${reportId}. Check that documents are properly linked.`);
-    }
-
-    const paths = typeof report.document_paths === 'string'
-      ? JSON.parse(report.document_paths)
-      : report.document_paths;
-
-    const pdfDocuments: string[] = [];
-    for (const filePath of paths as string[]) {
-      const cleanPath = filePath.replace(/^documents\//, '');
-      const { data, error } = await supabase.storage
-        .from('documents')
-        .download(cleanPath);
-
-      if (error) {
-        // Try original path
-        const { data: data2, error: error2 } = await supabase.storage
-          .from('documents')
-          .download(filePath);
-
-        if (error2) {
-          throw new Error(`Failed to download document: ${error.message}`);
-        }
-        const buffer = await data2.arrayBuffer();
-        pdfDocuments.push(Buffer.from(buffer).toString('base64'));
-      } else {
-        const buffer = await data.arrayBuffer();
-        pdfDocuments.push(Buffer.from(buffer).toString('base64'));
-      }
-    }
-    return pdfDocuments;
+    // No documents found through any method
+    throw new Error(`No documents found for report ${reportId}. Documents table returned 0 rows for report_id, and document_id lookup failed.`);
   }
 
   // Download each document
