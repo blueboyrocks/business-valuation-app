@@ -170,49 +170,31 @@ export async function runTwelvePassValuation(
 
   try {
     // =========================================================================
-    // PASS 1: Document Classification & Company Profile
+    // PASS 1-3: Data Extraction (per-document processing to avoid 100-page limit)
     // =========================================================================
-    const pass1Result = await executePassWithLogging<Pass1Output>(
-      client, supabase, context, 1,
-      () => buildPass1Request(pdfBase64),
-      'Document Classification'
+    const extractionResults = await runExtractionPassesWithPerDocumentProcessing(
+      client, supabase, context
     );
+
+    // Validate Pass 1
+    const pass1Result = extractionResults.pass1;
     if (!pass1Result.success) throw createPassError(1, pass1Result.error);
-    updateMetrics(pass1Result, passMetrics, totalInputTokens, totalOutputTokens, totalRetries);
-    totalInputTokens += pass1Result.inputTokens;
-    totalOutputTokens += pass1Result.outputTokens;
-    totalRetries += pass1Result.retryCount;
-    passOutputs.set(1, pass1Result.output!);
+    updateMetrics(pass1Result, passMetrics, 0, 0, 0);
 
-    // =========================================================================
-    // PASS 2: Income Statement Extraction
-    // =========================================================================
-    const pass2Result = await executePassWithLogging<Pass2Output>(
-      client, supabase, context, 2,
-      () => buildPass2Request(pdfBase64, pass1Result.output!),
-      'Income Statement Extraction'
-    );
+    // Validate Pass 2
+    const pass2Result = extractionResults.pass2;
     if (!pass2Result.success) throw createPassError(2, pass2Result.error);
-    updateMetrics(pass2Result, passMetrics, totalInputTokens, totalOutputTokens, totalRetries);
-    totalInputTokens += pass2Result.inputTokens;
-    totalOutputTokens += pass2Result.outputTokens;
-    totalRetries += pass2Result.retryCount;
-    passOutputs.set(2, pass2Result.output!);
+    updateMetrics(pass2Result, passMetrics, pass1Result.inputTokens, pass1Result.outputTokens, pass1Result.retryCount);
 
-    // =========================================================================
-    // PASS 3: Balance Sheet & Working Capital
-    // =========================================================================
-    const pass3Result = await executePassWithLogging<Pass3Output>(
-      client, supabase, context, 3,
-      () => buildPass3Request(pdfBase64, pass1Result.output!, pass2Result.output!),
-      'Balance Sheet Extraction'
-    );
+    // Validate Pass 3
+    const pass3Result = extractionResults.pass3;
     if (!pass3Result.success) throw createPassError(3, pass3Result.error);
-    updateMetrics(pass3Result, passMetrics, totalInputTokens, totalOutputTokens, totalRetries);
-    totalInputTokens += pass3Result.inputTokens;
-    totalOutputTokens += pass3Result.outputTokens;
-    totalRetries += pass3Result.retryCount;
-    passOutputs.set(3, pass3Result.output!);
+    updateMetrics(pass3Result, passMetrics, pass1Result.inputTokens + pass2Result.inputTokens, pass1Result.outputTokens + pass2Result.outputTokens, pass1Result.retryCount + pass2Result.retryCount);
+
+    // Update total tokens
+    totalInputTokens = extractionResults.totalInputTokens;
+    totalOutputTokens = extractionResults.totalOutputTokens;
+    totalRetries = extractionResults.totalRetries;
 
     // =========================================================================
     // PASS 4: Industry Analysis
@@ -1567,6 +1549,656 @@ function findSectorMultiples(pass1: Pass1Output) {
   }
 
   return SECTOR_MULTIPLES.find(sm => sm.sector === sector) || SECTOR_MULTIPLES[0];
+}
+
+// =============================================================================
+// PER-DOCUMENT EXTRACTION HELPERS (Pass 1-3)
+// =============================================================================
+
+/**
+ * Execute a single-document extraction pass
+ * Used for Pass 1-3 to avoid exceeding the 100-page limit
+ */
+async function executeSingleDocumentExtraction<T extends PassOutput>(
+  client: Anthropic,
+  passNumber: number,
+  singlePdfBase64: string,
+  systemPrompt: string,
+  userPrompt: string,
+  maxTokens: number,
+  temperature: number,
+  documentIndex: number,
+  totalDocuments: number
+): Promise<PassResult<T>> {
+  const startTime = Date.now();
+  let retryCount = 0;
+  let lastError = '';
+
+  console.log(`[12-PASS] Processing document ${documentIndex + 1}/${totalDocuments} for Pass ${passNumber}`);
+
+  while (retryCount <= MAX_RETRIES) {
+    try {
+      const messages: Anthropic.MessageParam[] = [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'document' as const,
+              source: {
+                type: 'base64' as const,
+                media_type: 'application/pdf' as const,
+                data: singlePdfBase64,
+              },
+            },
+            {
+              type: 'text' as const,
+              text: userPrompt,
+            },
+          ],
+        },
+      ];
+
+      const response = await client.messages.create({
+        model: MODEL,
+        max_tokens: maxTokens,
+        temperature,
+        system: systemPrompt,
+        messages,
+      });
+
+      const responseText = response.content
+        .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+        .map(block => block.text)
+        .join('\n');
+
+      const parsed = parsePassOutput<T>(responseText);
+
+      if (!parsed) {
+        throw new Error(`Failed to parse JSON from Pass ${passNumber} response for document ${documentIndex + 1}`);
+      }
+
+      const processingTime = Date.now() - startTime;
+
+      return {
+        success: true,
+        output: parsed as T,
+        rawResponse: responseText,
+        inputTokens: response.usage.input_tokens,
+        outputTokens: response.usage.output_tokens,
+        processingTime,
+        retryCount,
+      };
+
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : 'Unknown error';
+      console.warn(`[12-PASS] Pass ${passNumber} document ${documentIndex + 1} attempt ${retryCount + 1}/${MAX_RETRIES + 1} failed: ${lastError}`);
+      retryCount++;
+
+      if (retryCount <= MAX_RETRIES) {
+        const delay = 1000 * Math.pow(2, retryCount);
+        console.log(`[12-PASS] Retrying in ${delay}ms...`);
+        await sleep(delay);
+      }
+    }
+  }
+
+  return {
+    success: false,
+    output: null,
+    rawResponse: '',
+    inputTokens: 0,
+    outputTokens: 0,
+    processingTime: Date.now() - startTime,
+    error: lastError,
+    retryCount,
+  };
+}
+
+// =============================================================================
+// MERGE FUNCTIONS FOR MULTI-DOCUMENT EXTRACTION
+// =============================================================================
+
+/**
+ * Merge multiple Pass1Output results from individual documents
+ * Uses the first document's company profile as primary and enhances with others
+ */
+function mergePass1Outputs(outputs: Pass1Output[]): Pass1Output {
+  if (outputs.length === 0) {
+    throw new Error('No Pass 1 outputs to merge');
+  }
+  if (outputs.length === 1) {
+    return outputs[0];
+  }
+
+  // Use the first document's output as the base
+  const base = { ...outputs[0] };
+
+  // Merge document info - combine quality notes and schedules
+  const allQualityNotes = new Set<string>();
+  const allSchedulesPresent = new Set<string>();
+  const allMissingSchedules = new Set<string>();
+  let totalPagesAnalyzed = 0;
+
+  outputs.forEach(output => {
+    totalPagesAnalyzed += output.document_info?.pages_analyzed || 0;
+    output.document_info?.quality_notes?.forEach(note => allQualityNotes.add(note));
+    output.document_info?.schedules_present?.forEach(schedule => allSchedulesPresent.add(schedule));
+    output.document_info?.missing_schedules?.forEach(schedule => allMissingSchedules.add(schedule));
+  });
+
+  base.document_info = {
+    ...base.document_info,
+    pages_analyzed: totalPagesAnalyzed,
+    quality_notes: Array.from(allQualityNotes),
+    schedules_present: Array.from(allSchedulesPresent),
+    missing_schedules: Array.from(allMissingSchedules).filter(s => !allSchedulesPresent.has(s)),
+  };
+
+  // Merge data quality assessment
+  const allMissingCritical = new Set<string>();
+  const allDataLimitations = new Set<string>();
+  const allAssumptions = new Set<string>();
+  let avgCompleteness = 0;
+  let avgReliability = 0;
+
+  outputs.forEach(output => {
+    avgCompleteness += output.data_quality_assessment?.completeness_score || 0;
+    avgReliability += output.data_quality_assessment?.reliability_score || 0;
+    output.data_quality_assessment?.missing_critical_data?.forEach(d => allMissingCritical.add(d));
+    output.data_quality_assessment?.data_limitations?.forEach(d => allDataLimitations.add(d));
+    output.data_quality_assessment?.assumptions_required?.forEach(a => allAssumptions.add(a));
+  });
+
+  base.data_quality_assessment = {
+    ...base.data_quality_assessment,
+    completeness_score: Math.round(avgCompleteness / outputs.length),
+    reliability_score: Math.round(avgReliability / outputs.length),
+    missing_critical_data: Array.from(allMissingCritical),
+    data_limitations: Array.from(allDataLimitations),
+    assumptions_required: Array.from(allAssumptions),
+  };
+
+  console.log(`[12-PASS] Merged ${outputs.length} Pass 1 outputs (${totalPagesAnalyzed} total pages)`);
+  return base;
+}
+
+/**
+ * Merge multiple Pass2Output results from individual documents
+ * Combines income statements from all years, deduplicating by fiscal year
+ */
+function mergePass2Outputs(outputs: Pass2Output[]): Pass2Output {
+  if (outputs.length === 0) {
+    throw new Error('No Pass 2 outputs to merge');
+  }
+  if (outputs.length === 1) {
+    return outputs[0];
+  }
+
+  // Collect all income statements, keyed by fiscal year
+  const incomeStatementsByYear = new Map<number, Pass2Output['income_statements'][0]>();
+
+  outputs.forEach(output => {
+    output.income_statements?.forEach(is => {
+      if (is.fiscal_year) {
+        // Keep the more complete version if duplicate year
+        const existing = incomeStatementsByYear.get(is.fiscal_year);
+        if (!existing || (is.revenue?.total_revenue || 0) > (existing.revenue?.total_revenue || 0)) {
+          incomeStatementsByYear.set(is.fiscal_year, is);
+        }
+      }
+    });
+  });
+
+  // Sort by year descending (most recent first)
+  const mergedStatements = Array.from(incomeStatementsByYear.values())
+    .sort((a, b) => b.fiscal_year - a.fiscal_year);
+
+  // Use the first output as base and update with merged data
+  const base: Pass2Output = {
+    ...outputs[0],
+    income_statements: mergedStatements,
+    years_analyzed: mergedStatements.length,
+  };
+
+  // Recalculate trend analysis
+  if (mergedStatements.length >= 2) {
+    const revenues = mergedStatements.map(is => is.revenue?.total_revenue || 0).reverse();
+    const grossProfits = mergedStatements.map(is => is.gross_profit || 0).reverse();
+    const netIncomes = mergedStatements.map(is => is.net_income || 0).reverse();
+
+    const years = mergedStatements.length;
+    const revenueCAGR = revenues.length >= 2 && revenues[0] > 0
+      ? Math.pow(revenues[revenues.length - 1] / revenues[0], 1 / (years - 1)) - 1
+      : 0;
+    const grossProfitCAGR = grossProfits.length >= 2 && grossProfits[0] > 0
+      ? Math.pow(grossProfits[grossProfits.length - 1] / grossProfits[0], 1 / (years - 1)) - 1
+      : 0;
+
+    base.trend_analysis = {
+      ...base.trend_analysis,
+      revenue_cagr: revenueCAGR,
+      gross_profit_cagr: grossProfitCAGR,
+      revenue_trend: revenueCAGR > 0.05 ? 'growing' : revenueCAGR < -0.05 ? 'declining' : 'stable',
+    };
+  }
+
+  // Recalculate key metrics
+  if (mergedStatements.length > 0) {
+    const avgRevenue = mergedStatements.reduce((sum, is) => sum + (is.revenue?.total_revenue || 0), 0) / mergedStatements.length;
+    const avgGrossMargin = mergedStatements.reduce((sum, is) => sum + (is.gross_margin_percentage || 0), 0) / mergedStatements.length;
+    const avgOperatingMargin = mergedStatements.reduce((sum, is) => sum + (is.operating_margin_percentage || 0), 0) / mergedStatements.length;
+    const avgNetMargin = mergedStatements.reduce((sum, is) => sum + (is.net_margin_percentage || 0), 0) / mergedStatements.length;
+
+    base.key_metrics = {
+      ...base.key_metrics,
+      average_revenue: avgRevenue,
+      average_gross_margin: avgGrossMargin,
+      average_operating_margin: avgOperatingMargin,
+      average_net_margin: avgNetMargin,
+      most_recent_revenue: mergedStatements[0]?.revenue?.total_revenue || 0,
+      most_recent_net_income: mergedStatements[0]?.net_income || 0,
+    };
+  }
+
+  // Merge extraction confidence notes
+  const allConfidenceNotes = new Set<string>();
+  outputs.forEach(output => {
+    output.extraction_confidence?.notes?.forEach(note => allConfidenceNotes.add(note));
+  });
+  base.extraction_confidence = {
+    ...base.extraction_confidence,
+    notes: Array.from(allConfidenceNotes),
+  };
+
+  console.log(`[12-PASS] Merged ${outputs.length} Pass 2 outputs (${mergedStatements.length} unique years)`);
+  return base;
+}
+
+/**
+ * Merge multiple Pass3Output results from individual documents
+ * Combines balance sheets from all years, deduplicating by fiscal year
+ */
+function mergePass3Outputs(outputs: Pass3Output[]): Pass3Output {
+  if (outputs.length === 0) {
+    throw new Error('No Pass 3 outputs to merge');
+  }
+  if (outputs.length === 1) {
+    return outputs[0];
+  }
+
+  // Collect all balance sheets, keyed by fiscal year
+  const balanceSheetsByYear = new Map<number, Pass3Output['balance_sheets'][0]>();
+
+  outputs.forEach(output => {
+    output.balance_sheets?.forEach(bs => {
+      if (bs.fiscal_year) {
+        const existing = balanceSheetsByYear.get(bs.fiscal_year);
+        if (!existing || (bs.total_assets || 0) > (existing.total_assets || 0)) {
+          balanceSheetsByYear.set(bs.fiscal_year, bs);
+        }
+      }
+    });
+  });
+
+  // Sort by year descending
+  const mergedBalanceSheets = Array.from(balanceSheetsByYear.values())
+    .sort((a, b) => b.fiscal_year - a.fiscal_year);
+
+  // Collect all working capital analyses, keyed by fiscal year
+  const wcByYear = new Map<number, Pass3Output['working_capital_analysis'][0]>();
+
+  outputs.forEach(output => {
+    output.working_capital_analysis?.forEach(wc => {
+      if (wc.fiscal_year) {
+        const existing = wcByYear.get(wc.fiscal_year);
+        if (!existing) {
+          wcByYear.set(wc.fiscal_year, wc);
+        }
+      }
+    });
+  });
+
+  const mergedWC = Array.from(wcByYear.values())
+    .sort((a, b) => b.fiscal_year - a.fiscal_year);
+
+  // Use the first output as base
+  const base: Pass3Output = {
+    ...outputs[0],
+    balance_sheets: mergedBalanceSheets,
+    working_capital_analysis: mergedWC,
+  };
+
+  // Recalculate key metrics
+  if (mergedBalanceSheets.length > 0) {
+    const mostRecent = mergedBalanceSheets[0];
+    const avgCurrentRatio = mergedWC.reduce((sum, wc) => sum + (wc.current_ratio || 0), 0) / Math.max(mergedWC.length, 1);
+    const totalDebt = (mostRecent.current_liabilities?.line_of_credit || 0) +
+                      (mostRecent.current_liabilities?.notes_payable_short_term || 0) +
+                      (mostRecent.long_term_liabilities?.notes_payable_long_term || 0) +
+                      (mostRecent.long_term_liabilities?.mortgage_payable || 0);
+    const equity = mostRecent.equity?.total_equity || 0;
+
+    base.key_metrics = {
+      most_recent_total_assets: mostRecent.total_assets || 0,
+      most_recent_total_liabilities: mostRecent.total_liabilities || 0,
+      most_recent_equity: equity,
+      most_recent_working_capital: mergedWC[0]?.net_working_capital || 0,
+      average_current_ratio: avgCurrentRatio,
+      average_debt_to_equity: equity > 0 ? totalDebt / equity : 0,
+      tangible_book_value: (mostRecent.total_assets || 0) - (mostRecent.other_assets?.goodwill || 0) - (mostRecent.other_assets?.net_intangibles || 0) - (mostRecent.total_liabilities || 0),
+    };
+  }
+
+  // Merge off-balance sheet items
+  const offBSItems = new Map<string, Pass3Output['off_balance_sheet_items'][0]>();
+  outputs.forEach(output => {
+    output.off_balance_sheet_items?.forEach(item => {
+      if (item.description && !offBSItems.has(item.description)) {
+        offBSItems.set(item.description, item);
+      }
+    });
+  });
+  base.off_balance_sheet_items = Array.from(offBSItems.values());
+
+  console.log(`[12-PASS] Merged ${outputs.length} Pass 3 outputs (${mergedBalanceSheets.length} unique years)`);
+  return base;
+}
+
+/**
+ * Run Pass 1-3 extractions for all documents individually, then merge
+ */
+async function runExtractionPassesWithPerDocumentProcessing(
+  client: Anthropic,
+  supabase: ReturnType<typeof createServerClient>,
+  context: PassContext
+): Promise<{
+  pass1: PassResult<Pass1Output>;
+  pass2: PassResult<Pass2Output>;
+  pass3: PassResult<Pass3Output>;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalRetries: number;
+}> {
+  const pdfBase64 = context.pdfBase64;
+  const numDocs = pdfBase64.length;
+
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let totalRetries = 0;
+
+  console.log(`[12-PASS] Starting per-document extraction for ${numDocs} document(s)`);
+
+  // =========================================================================
+  // PASS 1: Document Classification - Process each document separately
+  // =========================================================================
+  const pass1Config = getPromptConfig(1)!;
+  const pass1Outputs: Pass1Output[] = [];
+  let pass1TotalTime = 0;
+  let pass1InputTokens = 0;
+  let pass1OutputTokens = 0;
+  let pass1Retries = 0;
+
+  context.onProgress?.(1, 'Document Classification...', PASS_PROGRESS[1]);
+  await saveToDatabase(supabase, context.reportId, {
+    report_status: 'pass_1_processing',
+    processing_progress: PASS_PROGRESS[1],
+    processing_message: `Pass 1: Processing ${numDocs} document(s) individually...`,
+  });
+
+  const pass1StartTime = Date.now();
+  for (let i = 0; i < numDocs; i++) {
+    const result = await executeSingleDocumentExtraction<Pass1Output>(
+      client,
+      1,
+      pdfBase64[i],
+      pass1Config.systemPrompt,
+      pass1Config.userPrompt,
+      pass1Config.maxTokens || 8192,
+      pass1Config.temperature || 0.2,
+      i,
+      numDocs
+    );
+
+    if (!result.success || !result.output) {
+      console.error(`[12-PASS] Pass 1 failed for document ${i + 1}: ${result.error}`);
+      return {
+        pass1: result as PassResult<Pass1Output>,
+        pass2: { success: false, output: null, rawResponse: '', inputTokens: 0, outputTokens: 0, processingTime: 0, retryCount: 0, error: 'Pass 1 failed' },
+        pass3: { success: false, output: null, rawResponse: '', inputTokens: 0, outputTokens: 0, processingTime: 0, retryCount: 0, error: 'Pass 1 failed' },
+        totalInputTokens: pass1InputTokens,
+        totalOutputTokens: pass1OutputTokens,
+        totalRetries: pass1Retries,
+      };
+    }
+
+    pass1Outputs.push(result.output);
+    pass1InputTokens += result.inputTokens;
+    pass1OutputTokens += result.outputTokens;
+    pass1Retries += result.retryCount;
+  }
+  pass1TotalTime = Date.now() - pass1StartTime;
+
+  // Merge Pass 1 outputs
+  const mergedPass1 = mergePass1Outputs(pass1Outputs);
+  const pass1Result: PassResult<Pass1Output> = {
+    success: true,
+    output: mergedPass1,
+    rawResponse: '',
+    inputTokens: pass1InputTokens,
+    outputTokens: pass1OutputTokens,
+    processingTime: pass1TotalTime,
+    retryCount: pass1Retries,
+  };
+
+  totalInputTokens += pass1InputTokens;
+  totalOutputTokens += pass1OutputTokens;
+  totalRetries += pass1Retries;
+
+  console.log(`[12-PASS] Pass 1 complete: ${mergedPass1.company_profile?.legal_name || 'Company'} identified`);
+  context.passOutputs.set(1, mergedPass1);
+
+  await saveToDatabase(supabase, context.reportId, {
+    report_status: 'pass_1_complete',
+    processing_progress: PASS_PROGRESS[1],
+    processing_message: 'Pass 1 complete: Document Classification',
+    pass_1_output: mergedPass1,
+  });
+
+  // =========================================================================
+  // PASS 2: Income Statement - Process each document separately
+  // =========================================================================
+  const pass2Config = getPromptConfig(2)!;
+  const pass2Outputs: Pass2Output[] = [];
+  let pass2TotalTime = 0;
+  let pass2InputTokens = 0;
+  let pass2OutputTokens = 0;
+  let pass2Retries = 0;
+
+  context.onProgress?.(2, 'Income Statement Extraction...', PASS_PROGRESS[2]);
+  await saveToDatabase(supabase, context.reportId, {
+    report_status: 'pass_2_processing',
+    processing_progress: PASS_PROGRESS[2],
+    processing_message: `Pass 2: Processing ${numDocs} document(s) individually...`,
+  });
+
+  // Build prior context for Pass 2
+  const pass2PriorContext = `
+## PRIOR PASS DATA
+
+### Pass 1 Output (Document Classification)
+Company: ${mergedPass1.company_profile?.legal_name || 'Unknown'}
+Industry: ${mergedPass1.industry_classification?.naics_description || 'Unknown'}
+Document Type: ${mergedPass1.document_info?.document_type || 'Unknown'}
+`;
+
+  const pass2StartTime = Date.now();
+  for (let i = 0; i < numDocs; i++) {
+    const result = await executeSingleDocumentExtraction<Pass2Output>(
+      client,
+      2,
+      pdfBase64[i],
+      pass2Config.systemPrompt,
+      pass2PriorContext + '\n\n' + pass2Config.userPrompt,
+      pass2Config.maxTokens || 8192,
+      pass2Config.temperature || 0.2,
+      i,
+      numDocs
+    );
+
+    if (!result.success || !result.output) {
+      console.error(`[12-PASS] Pass 2 failed for document ${i + 1}: ${result.error}`);
+      return {
+        pass1: pass1Result,
+        pass2: result as PassResult<Pass2Output>,
+        pass3: { success: false, output: null, rawResponse: '', inputTokens: 0, outputTokens: 0, processingTime: 0, retryCount: 0, error: 'Pass 2 failed' },
+        totalInputTokens: totalInputTokens + pass2InputTokens,
+        totalOutputTokens: totalOutputTokens + pass2OutputTokens,
+        totalRetries: totalRetries + pass2Retries,
+      };
+    }
+
+    pass2Outputs.push(result.output);
+    pass2InputTokens += result.inputTokens;
+    pass2OutputTokens += result.outputTokens;
+    pass2Retries += result.retryCount;
+  }
+  pass2TotalTime = Date.now() - pass2StartTime;
+
+  // Merge Pass 2 outputs
+  const mergedPass2 = mergePass2Outputs(pass2Outputs);
+  const pass2Result: PassResult<Pass2Output> = {
+    success: true,
+    output: mergedPass2,
+    rawResponse: '',
+    inputTokens: pass2InputTokens,
+    outputTokens: pass2OutputTokens,
+    processingTime: pass2TotalTime,
+    retryCount: pass2Retries,
+  };
+
+  totalInputTokens += pass2InputTokens;
+  totalOutputTokens += pass2OutputTokens;
+  totalRetries += pass2Retries;
+
+  console.log(`[12-PASS] Pass 2 complete: ${mergedPass2.income_statements?.length || 0} years extracted`);
+  context.passOutputs.set(2, mergedPass2);
+
+  await saveToDatabase(supabase, context.reportId, {
+    report_status: 'pass_2_complete',
+    processing_progress: PASS_PROGRESS[2],
+    processing_message: 'Pass 2 complete: Income Statement Extraction',
+    pass_2_output: mergedPass2,
+  });
+
+  // =========================================================================
+  // PASS 3: Balance Sheet - Process each document separately
+  // =========================================================================
+  const pass3Config = getPromptConfig(3)!;
+  const pass3Outputs: Pass3Output[] = [];
+  let pass3TotalTime = 0;
+  let pass3InputTokens = 0;
+  let pass3OutputTokens = 0;
+  let pass3Retries = 0;
+
+  context.onProgress?.(3, 'Balance Sheet Extraction...', PASS_PROGRESS[3]);
+  await saveToDatabase(supabase, context.reportId, {
+    report_status: 'pass_3_processing',
+    processing_progress: PASS_PROGRESS[3],
+    processing_message: `Pass 3: Processing ${numDocs} document(s) individually...`,
+  });
+
+  // Inject working capital benchmarks
+  const naicsCode = mergedPass1.industry_classification?.naics_code || '';
+  const wcBenchmark = getWorkingCapitalBenchmark(naicsCode.substring(0, 2));
+
+  const pass3PriorContext = `
+## PRIOR PASS DATA
+
+### Pass 1 Output (Document Classification)
+Company: ${mergedPass1.company_profile?.legal_name || 'Unknown'}
+Industry: ${mergedPass1.industry_classification?.naics_description || 'Unknown'}
+
+### Pass 2 Output (Income Statement)
+Most Recent Revenue: $${(mergedPass2.income_statements?.[0]?.revenue || 0).toLocaleString()}
+Most Recent Net Income: $${(mergedPass2.income_statements?.[0]?.net_income || 0).toLocaleString()}
+
+### Working Capital Benchmarks
+${wcBenchmark ? `
+Industry: ${wcBenchmark.industry}
+DSO Range: ${wcBenchmark.daysSalesOutstanding.min}-${wcBenchmark.daysSalesOutstanding.max} days
+DIO Range: ${wcBenchmark.daysInventoryOutstanding.min}-${wcBenchmark.daysInventoryOutstanding.max} days
+DPO Range: ${wcBenchmark.daysPayableOutstanding.min}-${wcBenchmark.daysPayableOutstanding.max} days
+WC % Revenue: ${(wcBenchmark.workingCapitalAsPercentOfRevenue.min * 100).toFixed(0)}%-${(wcBenchmark.workingCapitalAsPercentOfRevenue.max * 100).toFixed(0)}%
+` : 'No specific benchmarks available for this industry.'}
+`;
+
+  const pass3StartTime = Date.now();
+  for (let i = 0; i < numDocs; i++) {
+    const result = await executeSingleDocumentExtraction<Pass3Output>(
+      client,
+      3,
+      pdfBase64[i],
+      pass3Config.systemPrompt,
+      pass3PriorContext + '\n\n' + pass3Config.userPrompt,
+      pass3Config.maxTokens || 8192,
+      pass3Config.temperature || 0.2,
+      i,
+      numDocs
+    );
+
+    if (!result.success || !result.output) {
+      console.error(`[12-PASS] Pass 3 failed for document ${i + 1}: ${result.error}`);
+      return {
+        pass1: pass1Result,
+        pass2: pass2Result,
+        pass3: result as PassResult<Pass3Output>,
+        totalInputTokens: totalInputTokens + pass3InputTokens,
+        totalOutputTokens: totalOutputTokens + pass3OutputTokens,
+        totalRetries: totalRetries + pass3Retries,
+      };
+    }
+
+    pass3Outputs.push(result.output);
+    pass3InputTokens += result.inputTokens;
+    pass3OutputTokens += result.outputTokens;
+    pass3Retries += result.retryCount;
+  }
+  pass3TotalTime = Date.now() - pass3StartTime;
+
+  // Merge Pass 3 outputs
+  const mergedPass3 = mergePass3Outputs(pass3Outputs);
+  const pass3Result: PassResult<Pass3Output> = {
+    success: true,
+    output: mergedPass3,
+    rawResponse: '',
+    inputTokens: pass3InputTokens,
+    outputTokens: pass3OutputTokens,
+    processingTime: pass3TotalTime,
+    retryCount: pass3Retries,
+  };
+
+  totalInputTokens += pass3InputTokens;
+  totalOutputTokens += pass3OutputTokens;
+  totalRetries += pass3Retries;
+
+  console.log(`[12-PASS] Pass 3 complete: WC: $${(mergedPass3.key_metrics?.most_recent_working_capital || 0).toLocaleString()}`);
+  context.passOutputs.set(3, mergedPass3);
+
+  await saveToDatabase(supabase, context.reportId, {
+    report_status: 'pass_3_complete',
+    processing_progress: PASS_PROGRESS[3],
+    processing_message: 'Pass 3 complete: Balance Sheet Extraction',
+    pass_3_output: mergedPass3,
+  });
+
+  return {
+    pass1: pass1Result,
+    pass2: pass2Result,
+    pass3: pass3Result,
+    totalInputTokens,
+    totalOutputTokens,
+    totalRetries,
+  };
 }
 
 // =============================================================================
