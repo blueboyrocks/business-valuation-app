@@ -13,7 +13,7 @@
  * - skipPdf=true: Only regenerate report_data, skip PDF generation
  */
 
-export const maxDuration = 120; // PDF generation can take time
+export const maxDuration = 120; // PDF generation can take time - v2
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -61,7 +61,7 @@ export async function POST(
   const { searchParams } = new URL(request.url);
   const skipPdf = searchParams.get('skipPdf') === 'true';
 
-  console.log(`[REGENERATE] Starting regeneration for report ${reportId}`);
+  console.log(`[REGENERATE] v2 - Starting regeneration for report ${reportId}`);
 
   try {
     // 1. Fetch the report with pass_outputs
