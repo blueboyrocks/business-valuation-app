@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Download, Clock, CheckCircle, XCircle, TrendingUp, RefreshCw, StopCircle } from 'lucide-react';
+import { ArrowLeft, Download, Clock, CheckCircle, XCircle, TrendingUp, RefreshCw, StopCircle, FileText, AlertCircle } from 'lucide-react';
 import type { Database } from '@/lib/supabase/types';
 import Link from 'next/link';
 
@@ -41,6 +41,14 @@ interface ProcessingState {
   canRetry: boolean;
 }
 
+interface RegenerationState {
+  canRegenerate: boolean;
+  isRegenerating: boolean;
+  availablePasses: number[];
+  missingPasses: number[];
+  error: string | null;
+}
+
 export default function ReportDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -56,6 +64,13 @@ export default function ReportDetailPage() {
   });
   const processingRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const [regenerationState, setRegenerationState] = useState<RegenerationState>({
+    canRegenerate: false,
+    isRegenerating: false,
+    availablePasses: [],
+    missingPasses: [],
+    error: null,
+  });
 
   const fetchReport = useCallback(async () => {
     if (!params.id || !user) return;
@@ -234,9 +249,81 @@ export default function ReportDetailPage() {
     }));
   };
 
+  // Check if report can be regenerated from existing data
+  const checkRegenerationEligibility = useCallback(async () => {
+    if (!params.id) return;
+
+    try {
+      const response = await fetch(`/api/reports/${params.id}/regenerate`);
+      if (response.ok) {
+        const data = await response.json();
+        setRegenerationState(prev => ({
+          ...prev,
+          canRegenerate: data.canRegenerate,
+          availablePasses: data.availablePasses || [],
+          missingPasses: data.missingPasses || [],
+        }));
+      }
+    } catch (error) {
+      console.error('Error checking regeneration eligibility:', error);
+    }
+  }, [params.id]);
+
+  // Regenerate report from existing pass outputs
+  const regenerateReport = async () => {
+    if (!params.id) return;
+
+    const supabase = createBrowserClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    const token = session?.access_token;
+
+    if (!token) {
+      setRegenerationState(prev => ({ ...prev, error: 'Not authenticated' }));
+      return;
+    }
+
+    setRegenerationState(prev => ({ ...prev, isRegenerating: true, error: null }));
+
+    try {
+      const response = await fetch(`/api/reports/${params.id}/regenerate`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to regenerate report');
+      }
+
+      console.log('[Frontend] Report regenerated successfully:', result);
+
+      // Refresh the report data
+      fetchReport();
+
+      setRegenerationState(prev => ({
+        ...prev,
+        isRegenerating: false,
+        error: null,
+      }));
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error('[Frontend] Regeneration failed:', errorMessage);
+      setRegenerationState(prev => ({
+        ...prev,
+        isRegenerating: false,
+        error: errorMessage,
+      }));
+    }
+  };
+
   useEffect(() => {
     if (user && params.id) {
       fetchReport();
+      checkRegenerationEligibility();
     }
 
     // Cleanup on unmount
@@ -245,7 +332,7 @@ export default function ReportDetailPage() {
         abortControllerRef.current.abort();
       }
     };
-  }, [user, params.id, fetchReport]);
+  }, [user, params.id, fetchReport, checkRegenerationEligibility]);
 
   const getStatusBadge = (status: Report['report_status']) => {
     const variants: Record<string, { variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: React.ReactNode }> = {
@@ -337,48 +424,63 @@ export default function ReportDetailPage() {
               </Link>
             </Button>
             {report.report_status === 'completed' && (
-              <Button
-                variant="outline"
-                onClick={async () => {
-                  try {
-                    const supabase = createBrowserClient();
-                    const { data: { session } } = await supabase.auth.getSession();
-                    const token = session?.access_token;
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={regenerateReport}
+                  disabled={regenerationState.isRegenerating}
+                  title="Regenerate report from saved data (no API cost)"
+                >
+                  {regenerationState.isRegenerating ? (
+                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                  )}
+                  {regenerationState.isRegenerating ? 'Regenerating...' : 'Regenerate'}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      const supabase = createBrowserClient();
+                      const { data: { session } } = await supabase.auth.getSession();
+                      const token = session?.access_token;
 
-                    if (!token) {
-                      alert('Not authenticated');
-                      return;
+                      if (!token) {
+                        alert('Not authenticated');
+                        return;
+                      }
+
+                      const response = await fetch(`/api/reports/${params.id}/download-pdf`, {
+                        method: 'POST',
+                        headers: {
+                          'Authorization': `Bearer ${token}`,
+                        },
+                      });
+
+                      if (!response.ok) {
+                        throw new Error('Failed to generate PDF');
+                      }
+
+                      const blob = await response.blob();
+                      const url = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `${report.company_name.replace(/[^a-z0-9]/gi, '_')}_Valuation_Report.pdf`;
+                      document.body.appendChild(a);
+                      a.click();
+                      window.URL.revokeObjectURL(url);
+                      document.body.removeChild(a);
+                    } catch (error) {
+                      console.error('Error generating PDF:', error);
+                      alert('Failed to generate PDF');
                     }
-
-                    const response = await fetch(`/api/reports/${params.id}/download-pdf`, {
-                      method: 'POST',
-                      headers: {
-                        'Authorization': `Bearer ${token}`,
-                      },
-                    });
-
-                    if (!response.ok) {
-                      throw new Error('Failed to generate PDF');
-                    }
-
-                    const blob = await response.blob();
-                    const url = window.URL.createObjectURL(blob);
-                    const a = document.createElement('a');
-                    a.href = url;
-                    a.download = `${report.company_name.replace(/[^a-z0-9]/gi, '_')}_Valuation_Report.pdf`;
-                    document.body.appendChild(a);
-                    a.click();
-                    window.URL.revokeObjectURL(url);
-                    document.body.removeChild(a);
-                  } catch (error) {
-                    console.error('Error generating PDF:', error);
-                    alert('Failed to generate PDF');
-                  }
-                }}
-              >
-                <Download className="mr-2 h-4 w-4" />
-                Export PDF
-              </Button>
+                  }}
+                >
+                  <Download className="mr-2 h-4 w-4" />
+                  Export PDF
+                </Button>
+              </div>
             )}
           </div>
 
@@ -547,8 +649,58 @@ export default function ReportDetailPage() {
                 <p className="text-slate-600 mb-4 max-w-md mx-auto">
                   {processingState.error || report.error_message || 'An error occurred while processing your report.'}
                 </p>
+
+                {/* Show regeneration option if all passes are complete */}
+                {regenerationState.canRegenerate && (
+                  <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg max-w-md mx-auto">
+                    <div className="flex items-center gap-2 text-green-800 mb-2">
+                      <CheckCircle className="h-5 w-5" />
+                      <span className="font-medium">All 12 passes completed!</span>
+                    </div>
+                    <p className="text-sm text-green-700 mb-3">
+                      The report data is saved. You can regenerate the report without calling the API again.
+                    </p>
+                    <Button
+                      onClick={regenerateReport}
+                      disabled={regenerationState.isRegenerating}
+                      className="bg-green-600 hover:bg-green-700"
+                    >
+                      {regenerationState.isRegenerating ? (
+                        <>
+                          <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                          Regenerating...
+                        </>
+                      ) : (
+                        <>
+                          <FileText className="mr-2 h-4 w-4" />
+                          Regenerate Report (No API Cost)
+                        </>
+                      )}
+                    </Button>
+                    {regenerationState.error && (
+                      <p className="text-sm text-red-600 mt-2">{regenerationState.error}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Show which passes are available */}
+                {!regenerationState.canRegenerate && regenerationState.availablePasses.length > 0 && (
+                  <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg max-w-md mx-auto">
+                    <div className="flex items-center gap-2 text-amber-800 mb-2">
+                      <AlertCircle className="h-5 w-5" />
+                      <span className="font-medium">Partial Progress Saved</span>
+                    </div>
+                    <p className="text-sm text-amber-700">
+                      Passes {regenerationState.availablePasses.join(', ')} are saved.
+                      {regenerationState.missingPasses.length > 0 && (
+                        <> Missing: {regenerationState.missingPasses.join(', ')}.</>
+                      )}
+                    </p>
+                  </div>
+                )}
+
                 {(processingState.canRetry || processingState.completedPasses.length > 0) && (
-                  <div className="flex gap-3 justify-center">
+                  <div className="flex gap-3 justify-center flex-wrap">
                     <Button onClick={retryProcessing}>
                       <RefreshCw className="mr-2 h-4 w-4" />
                       Retry from Pass {Math.max(...processingState.completedPasses, 0) + 1}
