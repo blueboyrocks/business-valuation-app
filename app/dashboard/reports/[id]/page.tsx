@@ -11,7 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Download, Clock, CheckCircle, XCircle, TrendingUp, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Download, Clock, CheckCircle, XCircle, TrendingUp, RefreshCw, StopCircle } from 'lucide-react';
 import type { Database } from '@/lib/supabase/types';
 import Link from 'next/link';
 
@@ -218,6 +218,20 @@ export default function ReportDetailPage() {
       ? Math.max(...processingState.completedPasses) + 1
       : 1;
     startProcessing(nextPass);
+  };
+
+  // Cancel processing
+  const cancelProcessing = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    processingRef.current = false;
+    setProcessingState(prev => ({
+      ...prev,
+      isProcessing: false,
+      error: 'Processing cancelled by user',
+      canRetry: true,
+    }));
   };
 
   useEffect(() => {
@@ -496,6 +510,18 @@ export default function ReportDetailPage() {
                         </div>
                       );
                     })}
+                  </div>
+
+                  {/* Cancel button */}
+                  <div className="mt-8 text-center">
+                    <Button
+                      variant="outline"
+                      onClick={cancelProcessing}
+                      className="text-red-600 border-red-300 hover:bg-red-50"
+                    >
+                      <StopCircle className="h-4 w-4 mr-2" />
+                      Cancel Processing
+                    </Button>
                   </div>
                 </div>
               </CardContent>

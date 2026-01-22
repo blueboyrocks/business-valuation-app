@@ -2143,8 +2143,9 @@ async function saveToDatabase(
 // =============================================================================
 
 /**
- * Clean JSON response by stripping markdown code fences
+ * Clean JSON response by stripping markdown code fences and sanitizing control characters
  * Claude sometimes wraps JSON in ```json ... ``` even when told not to
+ * Claude also sometimes includes unescaped control characters in string literals
  */
 function cleanJsonResponse(response: string): string {
   let cleaned = response.trim();
@@ -2160,7 +2161,26 @@ function cleanJsonResponse(response: string): string {
     cleaned = cleaned.slice(0, -3);
   }
 
-  return cleaned.trim();
+  cleaned = cleaned.trim();
+
+  // Sanitize control characters inside string literals
+  // This regex finds string contents and replaces unescaped control characters
+  cleaned = cleaned.replace(/"([^"\\]|\\.)*"/g, (match) => {
+    return match
+      .replace(/[\x00-\x1F\x7F]/g, (char) => {
+        // Replace control characters with their escaped versions
+        const escapes: Record<string, string> = {
+          '\n': '\\n',
+          '\r': '\\r',
+          '\t': '\\t',
+          '\b': '\\b',
+          '\f': '\\f',
+        };
+        return escapes[char] || '';
+      });
+  });
+
+  return cleaned;
 }
 
 /**
