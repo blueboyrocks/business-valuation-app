@@ -66,6 +66,13 @@ import {
 
 import { FinalValuationReport } from './final-report-schema';
 
+// Import calculation engine for deterministic math
+import {
+  runCalculationEngine,
+  mapPassOutputsToEngineInputs,
+  CalculationEngineOutput,
+} from '../calculations';
+
 // =============================================================================
 // CONSTANTS
 // =============================================================================
@@ -242,11 +249,49 @@ export async function runTwelvePassValuation(
     passOutputs.set(6, pass6Result.output!);
 
     // =========================================================================
-    // PASS 7: Asset Approach Valuation
+    // CALCULATION ENGINE: Run deterministic calculations
+    // =========================================================================
+    console.log('[12-PASS] Running deterministic calculation engine...');
+    onProgress?.(6, 'Running calculation engine...', PASS_PROGRESS[6] + 2);
+
+    // Map pass outputs to calculation engine inputs
+    const passDataForEngine: Record<string, Record<string, unknown>> = {
+      '1': pass1Result.output as unknown as Record<string, unknown>,
+      '2': pass2Result.output as unknown as Record<string, unknown>,
+      '3': pass3Result.output as unknown as Record<string, unknown>,
+      '4': pass4Result.output as unknown as Record<string, unknown>,
+      '5': pass5Result.output as unknown as Record<string, unknown>,
+      '6': pass6Result.output as unknown as Record<string, unknown>,
+    };
+
+    const calculationInputs = mapPassOutputsToEngineInputs(passDataForEngine);
+    const calculationResults = runCalculationEngine(calculationInputs);
+
+    console.log(`[12-PASS] Calculation engine complete:`);
+    console.log(`[12-PASS]   - SDE: $${calculationResults.earnings.weighted_sde.toLocaleString()}`);
+    console.log(`[12-PASS]   - EBITDA: $${calculationResults.earnings.weighted_ebitda.toLocaleString()}`);
+    console.log(`[12-PASS]   - Final Value: $${calculationResults.synthesis.final_concluded_value.toLocaleString()}`);
+    console.log(`[12-PASS]   - Calculation Steps: ${calculationResults.total_steps}`);
+
+    // Save calculation results to database
+    const { error: calcSaveError } = await supabase
+      .from('valuation_reports')
+      .update({
+        calculation_results: calculationResults as unknown as Record<string, unknown>,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', reportId);
+
+    if (calcSaveError) {
+      console.warn('[12-PASS] Warning: Failed to save calculation results:', calcSaveError.message);
+    }
+
+    // =========================================================================
+    // PASS 7: Asset Approach Valuation (Narrative with calculation data)
     // =========================================================================
     const pass7Result = await executePassWithLogging<Pass7Output>(
       client, supabase, context, 7,
-      () => buildPass7Request(pass3Result.output!, pass4Result.output!, pass6Result.output!),
+      () => buildPass7Request(pass3Result.output!, pass4Result.output!, pass6Result.output!, calculationResults),
       'Asset Approach'
     );
     if (!pass7Result.success) throw createPassError(7, pass7Result.error);
@@ -257,11 +302,11 @@ export async function runTwelvePassValuation(
     passOutputs.set(7, pass7Result.output!);
 
     // =========================================================================
-    // PASS 8: Income Approach Valuation
+    // PASS 8: Income Approach Valuation (Narrative with calculation data)
     // =========================================================================
     const pass8Result = await executePassWithLogging<Pass8Output>(
       client, supabase, context, 8,
-      () => buildPass8Request(pass3Result.output!, pass4Result.output!, pass5Result.output!, pass6Result.output!),
+      () => buildPass8Request(pass3Result.output!, pass4Result.output!, pass5Result.output!, pass6Result.output!, calculationResults),
       'Income Approach'
     );
     if (!pass8Result.success) throw createPassError(8, pass8Result.error);
@@ -272,11 +317,11 @@ export async function runTwelvePassValuation(
     passOutputs.set(8, pass8Result.output!);
 
     // =========================================================================
-    // PASS 9: Market Approach Valuation
+    // PASS 9: Market Approach Valuation (Narrative with calculation data)
     // =========================================================================
     const pass9Result = await executePassWithLogging<Pass9Output>(
       client, supabase, context, 9,
-      () => buildPass9Request(pass1Result.output!, pass4Result.output!, pass5Result.output!, pass6Result.output!),
+      () => buildPass9Request(pass1Result.output!, pass4Result.output!, pass5Result.output!, pass6Result.output!, calculationResults),
       'Market Approach'
     );
     if (!pass9Result.success) throw createPassError(9, pass9Result.error);
@@ -287,13 +332,13 @@ export async function runTwelvePassValuation(
     passOutputs.set(9, pass9Result.output!);
 
     // =========================================================================
-    // PASS 10: Value Synthesis & Reconciliation
+    // PASS 10: Value Synthesis & Reconciliation (Narrative with calculation data)
     // =========================================================================
     const pass10Result = await executePassWithLogging<Pass10Output>(
       client, supabase, context, 10,
       () => buildPass10Request(
         pass1Result.output!, pass3Result.output!, pass4Result.output!, pass5Result.output!, pass6Result.output!,
-        pass7Result.output!, pass8Result.output!, pass9Result.output!
+        pass7Result.output!, pass8Result.output!, pass9Result.output!, calculationResults
       ),
       'Value Synthesis'
     );
@@ -1672,10 +1717,30 @@ ${capRateKnowledge}
 }
 
 /**
- * Build Pass 7 request - Asset Approach (no PDFs, uses Pass 3, 4, 6)
+ * Build Pass 7 request - Asset Approach (no PDFs, uses Pass 3, 4, 6 + Calculation Engine)
  */
-function buildPass7Request(pass3: Pass3Output, pass4: Pass4Output, pass6: Pass6Output): { system: string; prompt: string } {
+function buildPass7Request(
+  pass3: Pass3Output,
+  pass4: Pass4Output,
+  pass6: Pass6Output,
+  calculationResults?: CalculationEngineOutput
+): { system: string; prompt: string } {
   const config = getPromptConfig(7)!;
+
+  // Build calculation data section if available
+  const calcData = calculationResults ? `
+## DETERMINISTIC CALCULATION RESULTS (Use These Exact Numbers)
+
+### Asset Approach Values (Pre-Calculated)
+${calculationResults.formatted_tables.asset_approach}
+
+### Calculation Steps
+${calculationResults.asset_approach.calculation_steps.map(s =>
+  `${s.step_number}. ${s.description}: ${typeof s.result === 'number' ? '$' + s.result.toLocaleString() : s.result}`
+).join('\n')}
+
+**IMPORTANT**: Use the above calculated values in your narrative. Do NOT recalculate - these are the authoritative figures.
+` : '';
 
   const priorContext = `
 ## PRIOR PASS DATA
@@ -1692,7 +1757,7 @@ Industry SDE Multiple: ${pass4.valuation_multiples?.transaction_multiples?.sde_m
 
 ### Pass 6 Output (Risk Factors)
 Overall Risk Score: ${pass6.risk_summary?.overall_risk_score?.toFixed(2) || 'N/A'}
-`;
+${calcData}`;
 
   return {
     system: config.systemPrompt,
@@ -1703,8 +1768,32 @@ Overall Risk Score: ${pass6.risk_summary?.overall_risk_score?.toFixed(2) || 'N/A
 /**
  * Build Pass 8 request - Income Approach (no PDFs, uses Pass 3-6)
  */
-function buildPass8Request(pass3: Pass3Output, pass4: Pass4Output, pass5: Pass5Output, pass6: Pass6Output): { system: string; prompt: string } {
+function buildPass8Request(
+  pass3: Pass3Output,
+  pass4: Pass4Output,
+  pass5: Pass5Output,
+  pass6: Pass6Output,
+  calculationResults?: CalculationEngineOutput
+): { system: string; prompt: string } {
   const config = getPromptConfig(8)!;
+
+  // Build calculation data section if available
+  const calcData = calculationResults ? `
+## DETERMINISTIC CALCULATION RESULTS (Use These Exact Numbers)
+
+### Normalized Earnings (Pre-Calculated)
+${calculationResults.formatted_tables.earnings_summary}
+
+### Income Approach Values (Pre-Calculated)
+${calculationResults.formatted_tables.income_approach}
+
+### Calculation Steps
+${calculationResults.income_approach.calculation_steps.map(s =>
+  `${s.step_number}. ${s.description}: ${typeof s.result === 'number' ? (s.result < 1 ? (s.result * 100).toFixed(2) + '%' : '$' + s.result.toLocaleString()) : s.result}`
+).join('\n')}
+
+**IMPORTANT**: Use the above calculated values in your narrative. Do NOT recalculate - these are the authoritative figures.
+` : '';
 
   // Inject detailed cap rate knowledge
   const treasuryRate8 = CAPITALIZATION_RATE_DATA.riskFreeRates.rates.find(r => r.maturity === '20-Year Treasury')?.rate || 0.045;
@@ -1749,7 +1838,7 @@ Normalized EBITDA: $${(pass5.summary?.most_recent_ebitda || 0).toLocaleString()}
 Recommended Cap Rate: ${((pass6.risk_premium_calculation?.capitalization_rate || 0) * 100).toFixed(1)}%
 Company-Specific Risk Premium: ${((pass6.risk_premium_calculation?.company_specific_risk_premium?.total_company_specific || 0) * 100).toFixed(1)}%
 Risk Score: ${pass6.risk_summary?.overall_risk_score?.toFixed(2) || 'N/A'}
-
+${calcData}
 ${capRateKnowledge}
 `;
 
@@ -1760,10 +1849,31 @@ ${capRateKnowledge}
 }
 
 /**
- * Build Pass 9 request - Market Approach (no PDFs, uses Pass 1, 4, 5, 6)
+ * Build Pass 9 request - Market Approach (no PDFs, uses Pass 1, 4, 5, 6 + Calculation Engine)
  */
-function buildPass9Request(pass1: Pass1Output, pass4: Pass4Output, pass5: Pass5Output, pass6: Pass6Output): { system: string; prompt: string } {
+function buildPass9Request(
+  pass1: Pass1Output,
+  pass4: Pass4Output,
+  pass5: Pass5Output,
+  pass6: Pass6Output,
+  calculationResults?: CalculationEngineOutput
+): { system: string; prompt: string } {
   const config = getPromptConfig(9)!;
+
+  // Build calculation data section if available
+  const calcData = calculationResults ? `
+## DETERMINISTIC CALCULATION RESULTS (Use These Exact Numbers)
+
+### Market Approach Values (Pre-Calculated)
+${calculationResults.formatted_tables.market_approach}
+
+### Calculation Steps
+${calculationResults.market_approach.calculation_steps.map(s =>
+  `${s.step_number}. ${s.description}: ${typeof s.result === 'number' ? (s.result < 10 ? s.result.toFixed(2) + 'x' : '$' + s.result.toLocaleString()) : s.result}`
+).join('\n')}
+
+**IMPORTANT**: Use the above calculated values in your narrative. Do NOT recalculate - these are the authoritative figures.
+` : '';
 
   const priorContext = `
 ## PRIOR PASS DATA
@@ -1789,7 +1899,7 @@ Overall Risk Score: ${pass6.risk_summary?.overall_risk_score?.toFixed(2) || 'N/A
 Risk Rating: ${pass6.risk_summary?.overall_risk_level || 'N/A'}
 Recommended Multiple Adjustment: ${pass6.multiple_adjustment?.risk_adjustment_factor || 1}x
 Key Risk Factors: ${pass6.risk_summary?.top_risk_factors?.slice(0, 5).map(rf => rf.factor).join(', ') || 'N/A'}
-`;
+${calcData}`;
 
   return {
     system: config.systemPrompt,
@@ -1798,13 +1908,37 @@ Key Risk Factors: ${pass6.risk_summary?.top_risk_factors?.slice(0, 5).map(rf => 
 }
 
 /**
- * Build Pass 10 request - Value Synthesis (uses Pass 1, 3, 4, 5, 6, 7, 8, 9)
+ * Build Pass 10 request - Value Synthesis (uses Pass 1, 3, 4, 5, 6, 7, 8, 9 + Calculation Engine)
  */
 function buildPass10Request(
   pass1: Pass1Output, pass3: Pass3Output, pass4: Pass4Output, pass5: Pass5Output,
-  pass6: Pass6Output, pass7: Pass7Output, pass8: Pass8Output, pass9: Pass9Output
+  pass6: Pass6Output, pass7: Pass7Output, pass8: Pass8Output, pass9: Pass9Output,
+  calculationResults?: CalculationEngineOutput
 ): { system: string; prompt: string } {
   const config = getPromptConfig(10)!;
+
+  // Build calculation data section if available (THIS IS THE AUTHORITATIVE DATA)
+  const calcData = calculationResults ? `
+## DETERMINISTIC CALCULATION RESULTS (Use These Exact Numbers - AUTHORITATIVE)
+
+### Final Valuation Synthesis (Pre-Calculated)
+${calculationResults.formatted_tables.synthesis}
+
+### All Calculation Steps (${calculationResults.total_steps} total)
+${calculationResults.synthesis.calculation_steps.map(s =>
+  `${s.step_number}. ${s.description}: ${typeof s.result === 'number' ? '$' + s.result.toLocaleString() : s.result}`
+).join('\n')}
+
+### Summary Values
+- **Asset Approach Value:** $${calculationResults.asset_approach.adjusted_net_asset_value.toLocaleString()}
+- **Income Approach Value:** $${calculationResults.income_approach.income_approach_value.toLocaleString()}
+- **Market Approach Value:** $${calculationResults.market_approach.market_approach_value.toLocaleString()}
+- **Preliminary Weighted Value:** $${calculationResults.synthesis.preliminary_value.toLocaleString()}
+- **Final Concluded Value:** $${calculationResults.synthesis.final_concluded_value.toLocaleString()}
+- **Value Range:** $${calculationResults.synthesis.value_range.low.toLocaleString()} - $${calculationResults.synthesis.value_range.high.toLocaleString()}
+
+**CRITICAL**: Use the above calculated values EXACTLY in your narrative. Do NOT recalculate any figures. These are the authoritative, auditable values from the deterministic calculation engine.
+` : '';
 
   // Inject DLOM studies
   const dlomKnowledge = `
@@ -1823,7 +1957,7 @@ ${DLOM_STUDIES.factorsAffectingDLOM.slice(0, 6).map(f =>
 
   const priorContext = `
 ## PRIOR PASS DATA
-
+${calcData}
 ### Pass 1 Output (Ownership)
 Ownership Being Valued: ${Array.isArray(pass1.ownership_info?.owners) && pass1.ownership_info.owners[0]?.ownership_percentage || 100}%
 Entity Type: ${pass1.ownership_info?.ownership_type || 'Unknown'}
@@ -1841,7 +1975,7 @@ Normalized EBITDA: $${(pass5.summary?.most_recent_ebitda || 0).toLocaleString()}
 ### Pass 6 Output (Risk Assessment)
 Overall Risk Score: ${pass6.risk_summary?.overall_risk_score?.toFixed(2) || 'N/A'}
 
-### VALUATION APPROACH RESULTS
+### VALUATION APPROACH RESULTS (For Reference - Use Calculation Engine Values)
 
 ### Pass 7 Output (Asset Approach)
 Adjusted Book Value: $${(pass7.asset_approach?.adjusted_book_value || 0).toLocaleString()}
