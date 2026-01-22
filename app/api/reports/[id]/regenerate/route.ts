@@ -61,7 +61,7 @@ export async function POST(
   const { searchParams } = new URL(request.url);
   const skipPdf = searchParams.get('skipPdf') === 'true';
 
-  console.log(`[REGENERATE] v2 - Starting regeneration for report ${reportId}`);
+  console.log(`[REGENERATE] v3 - Starting regeneration for report ${reportId}`);
 
   try {
     // 1. Fetch the report with pass_outputs
