@@ -64,10 +64,10 @@ export async function POST(
   console.log(`[REGENERATE] Starting regeneration for report ${reportId}`);
 
   try {
-    // 1. Fetch the report
+    // 1. Fetch the report with pass_outputs
     const { data: reportData, error: reportError } = await getSupabaseClient()
       .from('reports')
-      .select('id, company_name, report_status')
+      .select('id, company_name, report_status, pass_outputs')
       .eq('id', reportId)
       .maybeSingle();
 
@@ -86,24 +86,18 @@ export async function POST(
       );
     }
 
-    const report = reportData as { id: string; company_name: string; report_status: string };
+    const report = reportData as {
+      id: string;
+      company_name: string;
+      report_status: string;
+      pass_outputs: Record<string, unknown> | null;
+    };
 
-    // 2. Fetch all pass outputs
-    const { data: passOutputs, error: passError } = await getSupabaseClient()
-      .from('pass_outputs')
-      .select('pass_number, output_data')
-      .eq('report_id', reportId)
-      .order('pass_number', { ascending: true });
+    // 2. Get pass outputs from the report's pass_outputs JSONB column
+    const passOutputsData = report.pass_outputs || {};
+    console.log(`[REGENERATE] Pass outputs keys: ${Object.keys(passOutputsData).join(', ')}`);
 
-    if (passError) {
-      console.error(`[REGENERATE] Error fetching pass outputs: ${passError.message}`);
-      return NextResponse.json(
-        { success: false, error: `Error fetching pass outputs: ${passError.message}` },
-        { status: 500 }
-      );
-    }
-
-    if (!passOutputs || passOutputs.length === 0) {
+    if (Object.keys(passOutputsData).length === 0) {
       return NextResponse.json({
         success: false,
         error: 'No pass outputs found. The valuation passes must complete first.',
@@ -112,7 +106,10 @@ export async function POST(
     }
 
     // 3. Check which passes are available
-    const availablePasses = (passOutputs as PassOutputRow[]).map(p => p.pass_number);
+    const availablePasses = Object.keys(passOutputsData)
+      .map(k => parseInt(k))
+      .filter(n => !isNaN(n))
+      .sort((a, b) => a - b);
     const missingPasses = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].filter(
       p => !availablePasses.includes(p)
     );
@@ -129,9 +126,10 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // 4. Build PassOutputs object
+    // 4. Build PassOutputs object from the JSONB column
+    // The pass_outputs column stores data as { "1": {...}, "2": {...}, ... }
     const passMap = new Map(
-      (passOutputs as PassOutputRow[]).map(p => [p.pass_number, p.output_data])
+      Object.entries(passOutputsData).map(([k, v]) => [parseInt(k), v])
     );
 
     const passes: PassOutputs = {
@@ -278,11 +276,12 @@ export async function GET(
   const { id: reportId } = await params;
 
   try {
-    // Fetch pass outputs to check status
-    const { data: passOutputs, error } = await getSupabaseClient()
-      .from('pass_outputs')
-      .select('pass_number')
-      .eq('report_id', reportId);
+    // Fetch the report's pass_outputs JSONB column
+    const { data: reportData, error } = await getSupabaseClient()
+      .from('reports')
+      .select('id, pass_outputs, report_status')
+      .eq('id', reportId)
+      .maybeSingle();
 
     if (error) {
       return NextResponse.json(
@@ -291,7 +290,26 @@ export async function GET(
       );
     }
 
-    const availablePasses = (passOutputs || []).map((p: { pass_number: number }) => p.pass_number);
+    if (!reportData) {
+      return NextResponse.json(
+        { success: false, error: 'Report not found' },
+        { status: 404 }
+      );
+    }
+
+    const report = reportData as {
+      id: string;
+      pass_outputs: Record<string, unknown> | null;
+      report_status: string;
+    };
+
+    // Extract available passes from the JSONB column keys
+    const passOutputsData = report.pass_outputs || {};
+    const availablePasses = Object.keys(passOutputsData)
+      .map(k => parseInt(k))
+      .filter(n => !isNaN(n))
+      .sort((a, b) => a - b);
+
     const missingPasses = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12].filter(
       p => !availablePasses.includes(p)
     );
@@ -299,6 +317,7 @@ export async function GET(
     return NextResponse.json({
       success: true,
       reportId,
+      reportStatus: report.report_status,
       canRegenerate: missingPasses.length === 0,
       availablePasses,
       missingPasses,
