@@ -97,9 +97,9 @@ export function transformToFinalReport(
 // =============================================================================
 
 function transformCompanyProfile(pass1: Pass1Output): CompanyProfileFinal {
-  const profile = pass1.company_profile;
-  const industry = pass1.industry_classification;
-  const docInfo = pass1.document_info;
+  const profile = pass1?.company_profile || {} as any;
+  const industry = pass1?.industry_classification || {} as any;
+  const docInfo = pass1?.document_info || {} as any;
 
   // Map entity type to schema format
   const entityTypeMap: Record<string, CompanyProfileFinal['entity_type']> = {
@@ -412,9 +412,9 @@ function transformEBITDAPeriod(ebitda: Pass5Output['ebitda_calculations'][0]): E
 // =============================================================================
 
 function transformIndustryAnalysis(pass4: Pass4Output): IndustryAnalysisFinal {
-  const overview = pass4.industry_overview;
-  const benchmarks = pass4.industry_benchmarks;
-  const multiples = pass4.valuation_multiples;
+  const overview = pass4?.industry_overview || {} as any;
+  const benchmarks = pass4?.industry_benchmarks || {} as any;
+  const multiples = pass4?.valuation_multiples || {} as any;
 
   // Map growth outlook
   const growthOutlookMap: Record<string, IndustryAnalysisFinal['growth_outlook']> = {
@@ -487,6 +487,12 @@ function transformIndustryAnalysis(pass4: Pass4Output): IndustryAnalysisFinal {
 // =============================================================================
 
 function transformRiskAssessment(pass6: Pass6Output): RiskAssessmentFinal {
+  // Add null checks for pass6 sub-objects
+  const companyRisks = pass6?.company_risks || {} as any;
+  const riskSummary = pass6?.risk_summary || {} as any;
+  const companyStrengths = pass6?.company_strengths || {} as any;
+  const multipleAdj = pass6?.multiple_adjustment || {} as any;
+
   // Map risk level to schema format
   const riskLevelMap: Record<string, RiskAssessmentFinal['overall_risk_rating']> = {
     'low': 'Low',
@@ -500,51 +506,51 @@ function transformRiskAssessment(pass6: Pass6Output): RiskAssessmentFinal {
   const riskFactors: RiskFactorFinal[] = [];
 
   // Customer Concentration
-  if (pass6.company_risks.operational_risks?.customer_concentration_risk) {
-    const risk = pass6.company_risks.operational_risks.customer_concentration_risk;
+  if (companyRisks.operational_risks?.customer_concentration_risk) {
+    const risk = companyRisks.operational_risks.customer_concentration_risk;
     riskFactors.push(transformRiskFactor('Customer Concentration', risk));
   }
 
   // Owner Dependence
-  if (pass6.company_risks.operational_risks?.owner_dependence_risk) {
-    const risk = pass6.company_risks.operational_risks.owner_dependence_risk;
+  if (companyRisks.operational_risks?.owner_dependence_risk) {
+    const risk = companyRisks.operational_risks.owner_dependence_risk;
     riskFactors.push(transformRiskFactor('Owner Dependence', risk));
   }
 
   // Industry Risk
-  if (pass6.company_risks.strategic_risks?.industry_risk) {
-    const risk = pass6.company_risks.strategic_risks.industry_risk;
+  if (companyRisks.strategic_risks?.industry_risk) {
+    const risk = companyRisks.strategic_risks.industry_risk;
     riskFactors.push(transformRiskFactor('Industry Risk', risk));
   }
 
   // Financial Risk (use profitability as proxy)
-  if (pass6.company_risks.financial_risks?.profitability_risk) {
-    const risk = pass6.company_risks.financial_risks.profitability_risk;
+  if (companyRisks.financial_risks?.profitability_risk) {
+    const risk = companyRisks.financial_risks.profitability_risk;
     riskFactors.push(transformRiskFactor('Financial Risk', risk));
   }
 
   // Operational Risk (use facility risk as proxy)
-  if (pass6.company_risks.operational_risks?.facility_risk) {
-    const risk = pass6.company_risks.operational_risks.facility_risk;
+  if (companyRisks.operational_risks?.facility_risk) {
+    const risk = companyRisks.operational_risks.facility_risk;
     riskFactors.push(transformRiskFactor('Operational Risk', risk));
   }
 
   // Market/Economic Risk
-  if (pass6.company_risks.external_risks?.economic_sensitivity_risk) {
-    const risk = pass6.company_risks.external_risks.economic_sensitivity_risk;
+  if (companyRisks.external_risks?.economic_sensitivity_risk) {
+    const risk = companyRisks.external_risks.economic_sensitivity_risk;
     riskFactors.push(transformRiskFactor('Market/Economic Risk', risk));
   }
 
   return {
-    overall_risk_rating: riskLevelMap[pass6.risk_summary.overall_risk_level] || 'Moderate',
-    overall_risk_score: pass6.risk_summary.overall_risk_score,
+    overall_risk_rating: riskLevelMap[riskSummary.overall_risk_level] || 'Moderate',
+    overall_risk_score: riskSummary.overall_risk_score || 50,
     risk_factors: riskFactors,
-    company_specific_risks: pass6.risk_summary.top_risk_factors?.map(rf => rf.description) || [],
-    company_specific_strengths: pass6.company_strengths?.strengths?.map(s => s.strength) || [],
+    company_specific_risks: riskSummary.top_risk_factors?.map((rf: any) => rf.description) || [],
+    company_specific_strengths: companyStrengths.strengths?.map((s: any) => s.strength) || [],
     risk_adjusted_multiple: {
-      base_multiple: pass6.multiple_adjustment?.base_multiple || 0,
-      total_risk_adjustment: (1 - (pass6.multiple_adjustment?.risk_adjustment_factor || 1)),
-      adjusted_multiple: pass6.multiple_adjustment?.adjusted_multiple || 0,
+      base_multiple: multipleAdj.base_multiple || 0,
+      total_risk_adjustment: (1 - (multipleAdj.risk_adjustment_factor || 1)),
+      adjusted_multiple: multipleAdj.adjusted_multiple || 0,
     },
   };
 }
@@ -579,9 +585,11 @@ function transformKPIAnalysis(
   pass3: Pass3Output,
   pass5: Pass5Output
 ): KPIAnalysisFinal {
-  const mostRecent = pass2.income_statements[0];
-  const priorYear = pass2.income_statements[1];
-  const mostRecentBS = pass3.balance_sheets[0];
+  const incomeStatements = pass2?.income_statements || [];
+  const balanceSheets = pass3?.balance_sheets || [];
+  const mostRecent = incomeStatements[0] || {} as any;
+  const priorYear = incomeStatements[1] || {} as any;
+  const mostRecentBS = balanceSheets[0] || {} as any;
 
   const revenue = mostRecent?.revenue?.total_revenue || 0;
   const grossProfit = mostRecent?.gross_profit || 0;
@@ -733,45 +741,47 @@ function transformValuationApproaches(
 }
 
 function transformAssetApproach(pass7: Pass7Output): ValuationApproachesFinal['asset_approach'] {
-  const asset = pass7.asset_approach;
+  const asset = pass7?.asset_approach || {} as any;
+  const assetAdj = asset.asset_adjustments || {} as any;
+  const liabilityAdj = asset.liability_adjustments || {} as any;
 
   // Flatten asset adjustments
   const assetAdjustments: AssetAdjustmentFinal[] = [];
 
-  if (asset.asset_adjustments.receivables_adjustment) {
+  if (assetAdj.receivables_adjustment) {
     assetAdjustments.push({
       asset: 'Accounts Receivable',
-      book_value: asset.asset_adjustments.receivables_adjustment.book_value,
-      fair_market_value: asset.asset_adjustments.receivables_adjustment.fair_market_value,
-      adjustment: asset.asset_adjustments.receivables_adjustment.adjustment_amount,
-      rationale: asset.asset_adjustments.receivables_adjustment.adjustment_rationale,
+      book_value: assetAdj.receivables_adjustment.book_value || 0,
+      fair_market_value: assetAdj.receivables_adjustment.fair_market_value || 0,
+      adjustment: assetAdj.receivables_adjustment.adjustment_amount || 0,
+      rationale: assetAdj.receivables_adjustment.adjustment_rationale || '',
     });
   }
 
-  if (asset.asset_adjustments.inventory_adjustment) {
+  if (assetAdj.inventory_adjustment) {
     assetAdjustments.push({
       asset: 'Inventory',
-      book_value: asset.asset_adjustments.inventory_adjustment.book_value,
-      fair_market_value: asset.asset_adjustments.inventory_adjustment.fair_market_value,
-      adjustment: asset.asset_adjustments.inventory_adjustment.adjustment_amount,
-      rationale: asset.asset_adjustments.inventory_adjustment.adjustment_rationale,
+      book_value: assetAdj.inventory_adjustment.book_value || 0,
+      fair_market_value: assetAdj.inventory_adjustment.fair_market_value || 0,
+      adjustment: assetAdj.inventory_adjustment.adjustment_amount || 0,
+      rationale: assetAdj.inventory_adjustment.adjustment_rationale || '',
     });
   }
 
-  if (asset.asset_adjustments.equipment_adjustment) {
+  if (assetAdj.equipment_adjustment) {
     assetAdjustments.push({
       asset: 'Fixed Assets',
-      book_value: asset.asset_adjustments.equipment_adjustment.book_value,
-      fair_market_value: asset.asset_adjustments.equipment_adjustment.fair_market_value,
-      adjustment: asset.asset_adjustments.equipment_adjustment.adjustment_amount,
-      rationale: asset.asset_adjustments.equipment_adjustment.adjustment_rationale,
+      book_value: assetAdj.equipment_adjustment.book_value || 0,
+      fair_market_value: assetAdj.equipment_adjustment.fair_market_value || 0,
+      adjustment: assetAdj.equipment_adjustment.adjustment_amount || 0,
+      rationale: assetAdj.equipment_adjustment.adjustment_rationale || '',
     });
   }
 
   // Liability adjustments
   const liabilityAdjustments: LiabilityAdjustmentFinal[] = [];
 
-  asset.liability_adjustments.contingent_liabilities?.forEach(adj => {
+  liabilityAdj.contingent_liabilities?.forEach((adj: any) => {
     liabilityAdjustments.push({
       liability: adj.asset_description,
       book_value: adj.book_value,
@@ -797,8 +807,8 @@ function transformAssetApproach(pass7: Pass7Output): ValuationApproachesFinal['a
 }
 
 function transformIncomeApproach(pass8: Pass8Output): ValuationApproachesFinal['income_approach'] {
-  const income = pass8.income_approach;
-  const capRate = income.capitalization_rate_buildup;
+  const income = pass8?.income_approach || {} as any;
+  const capRate = income.capitalization_rate_buildup || {} as any;
 
   return {
     methodology: 'Capitalization of Earnings',
@@ -824,8 +834,8 @@ function transformIncomeApproach(pass8: Pass8Output): ValuationApproachesFinal['
 }
 
 function transformMarketApproach(pass9: Pass9Output): ValuationApproachesFinal['market_approach'] {
-  const market = pass9.market_approach;
-  const gtm = market.guideline_transaction_method;
+  const market = pass9?.market_approach || {} as any;
+  const gtm = market.guideline_transaction_method || {} as any;
 
   return {
     methodology: 'Guideline Transaction Method',
@@ -835,8 +845,8 @@ function transformMarketApproach(pass9: Pass9Output): ValuationApproachesFinal['
       source: gtm?.method_name || 'Industry transaction databases',
       number_of_comparables: gtm?.transactions_or_companies?.length || 0,
       selection_criteria: 'Transactions selected based on industry, size, and recency.',
-      comparable_summary: gtm?.transactions_or_companies?.slice(0, 5).map(t => ({
-        industry: 'comparable' in t ? (t as { industry?: string }).industry || 'Similar Industry' : 'Similar Industry',
+      comparable_summary: gtm?.transactions_or_companies?.slice(0, 5).map((t: any) => ({
+        industry: t?.industry || 'Similar Industry',
         revenue_range: 'Comparable size',
         sde_multiple: gtm?.multiples_median || 0,
         ebitda_multiple: 0,
@@ -931,7 +941,7 @@ function transformNarratives(
   pass8: Pass8Output,
   pass9: Pass9Output
 ): NarrativesFinal {
-  const narratives = pass11.report_narratives;
+  const narratives = pass11?.report_narratives || {} as any;
 
   return {
     executive_summary: {
