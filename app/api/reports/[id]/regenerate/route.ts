@@ -161,22 +161,74 @@ export async function POST(
       console.warn(`[REGENERATE] Validation warnings: ${validation.warnings.join(', ')}`);
     }
 
-    // 7. Extract key values for database
-    const concludedValue = finalReport.valuation_synthesis?.final_valuation?.concluded_value || null;
+    // 7. Extract key values for database and PDF generator
+    // Read values directly from passes (more reliable than relying on transform)
+    const assetValue = passes.pass7?.summary?.adjusted_net_asset_value ||
+                       passes.pass7?.asset_approach?.adjusted_book_value || 0;
+    const incomeValue = passes.pass8?.income_approach?.indicated_value_point ||
+                        passes.pass8?.income_approach?.single_period_capitalization?.adjusted_indicated_value || 0;
+    const marketValue = passes.pass9?.market_approach?.indicated_value_point ||
+                        passes.pass9?.market_approach?.guideline_transaction_method?.indicated_value_after_adjustments || 0;
+
+    // Get concluded value from pass10, or calculate weighted average
+    const pass10Conclusion = passes.pass10?.conclusion?.concluded_value;
+    const calculatedConclusion = pass10Conclusion || (
+      (assetValue * 0.20) + (incomeValue * 0.40) + (marketValue * 0.40)
+    );
+    const concludedValue = calculatedConclusion || null;
+
+    // Get financial data from passes (cast to any for flexible property access)
+    const incomeStmt = (passes.pass2?.income_statements?.[0] || {}) as any;
+    const balanceSheet = (passes.pass3?.balance_sheets?.[0] || {}) as any;
+    const opExpenses = incomeStmt.operating_expenses || {} as any;
+
     const qualityGrade = passes.pass12?.quality_summary?.quality_grade || 'B';
     const qualityScore = passes.pass12?.quality_summary?.overall_quality_score || 75;
 
-    // Add quality metrics to final report
+    console.log(`[REGENERATE] Extracted values - Asset: ${assetValue}, Income: ${incomeValue}, Market: ${marketValue}, Concluded: ${concludedValue}`);
+
+    // Add quality metrics AND flat properties for PDF generator
     const reportWithQuality = {
       ...finalReport,
+      // Quality metrics
       quality_grade: qualityGrade,
       quality_score: qualityScore,
       valuation_conclusion: {
         concluded_value: concludedValue,
-        value_range_low: finalReport.valuation_synthesis?.final_valuation?.valuation_range_low,
-        value_range_high: finalReport.valuation_synthesis?.final_valuation?.valuation_range_high,
-        confidence_level: finalReport.valuation_synthesis?.final_valuation?.confidence_level,
+        value_range_low: finalReport.valuation_synthesis?.final_valuation?.valuation_range_low || (concludedValue ? concludedValue * 0.85 : 0),
+        value_range_high: finalReport.valuation_synthesis?.final_valuation?.valuation_range_high || (concludedValue ? concludedValue * 1.15 : 0),
+        confidence_level: finalReport.valuation_synthesis?.final_valuation?.confidence_level || 'Moderate',
       },
+      // Flat properties for PDF generator
+      valuation_amount: concludedValue,
+      asset_approach_value: assetValue,
+      income_approach_value: incomeValue,
+      market_approach_value: marketValue,
+      // Financial data (flat) for PDF generator
+      annual_revenue: incomeStmt.revenue?.total_revenue || 0,
+      pretax_income: incomeStmt.net_income || 0,
+      owner_compensation: (passes.pass5?.sde_calculations?.[0] as any)?.owner_compensation?.amount || 0,
+      interest_expense: opExpenses.interest_expense || incomeStmt.interest_expense || 0,
+      depreciation_amortization: opExpenses.depreciation_amortization || opExpenses.depreciation || 0,
+      non_cash_expenses: opExpenses.depreciation_amortization || opExpenses.depreciation || 0,
+      // Balance sheet data
+      cash: balanceSheet.current_assets?.cash || 0,
+      accounts_receivable: balanceSheet.current_assets?.accounts_receivable || 0,
+      inventory: balanceSheet.current_assets?.inventory || 0,
+      other_current_assets: balanceSheet.current_assets?.other_current_assets || 0,
+      fixed_assets: balanceSheet.fixed_assets?.total_fixed_assets || balanceSheet.fixed_assets?.net_fixed_assets || 0,
+      intangible_assets: balanceSheet.intangible_assets?.total_intangibles || 0,
+      total_assets: balanceSheet.total_assets || 0,
+      accounts_payable: balanceSheet.current_liabilities?.accounts_payable || 0,
+      other_short_term_liabilities: (balanceSheet.current_liabilities?.total_current_liabilities || 0) - (balanceSheet.current_liabilities?.accounts_payable || 0),
+      bank_loans: balanceSheet.long_term_liabilities?.notes_payable || 0,
+      other_long_term_liabilities: balanceSheet.long_term_liabilities?.total_long_term_liabilities || 0,
+      total_liabilities: balanceSheet.total_liabilities || 0,
+      // Narrative sections (flat) for PDF generator
+      executive_summary: finalReport.narratives?.executive_summary?.content || '',
+      asset_approach_analysis: finalReport.narratives?.asset_approach_narrative?.content || passes.pass7?.narrative?.content || '',
+      income_approach_analysis: finalReport.narratives?.income_approach_narrative?.content || passes.pass8?.narrative?.content || '',
+      market_approach_analysis: finalReport.narratives?.market_approach_narrative?.content || passes.pass9?.narrative?.content || '',
     };
 
     // 8. Update the report in database
