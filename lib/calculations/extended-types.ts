@@ -240,6 +240,76 @@ export interface DataQualityAssessment {
   calculated_at: string;
 }
 
+/**
+ * Missing data item (used by data quality scorer)
+ */
+export interface MissingDataItem {
+  field_name: string;
+  category: string;
+  importance: 'critical' | 'high' | 'medium' | 'low';
+  impact_on_valuation: string;
+  how_to_provide: string;
+}
+
+/**
+ * Improvement recommendation for data quality
+ */
+export interface ImprovementRecommendation {
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  action: string;
+  description: string;
+  impact_on_accuracy: string;
+  effort_level: 'low' | 'medium' | 'high';
+}
+
+/**
+ * Document type definition
+ */
+export interface DocumentType {
+  type: string;
+  name: string;
+  importance: 'critical' | 'high' | 'medium' | 'low';
+  impact_description: string;
+  years_preferred: number;
+}
+
+/**
+ * Category score for data quality
+ */
+export interface DataQualityCategoryScore {
+  score: number;
+  present: number;
+  total: number;
+  label: string;
+}
+
+/**
+ * Data quality result (used by data quality scorer)
+ */
+export interface DataQualityResult {
+  overall_score: number;
+  confidence_level: 'High' | 'Moderate' | 'Low' | 'Insufficient';
+  can_proceed_with_valuation: boolean;
+
+  category_scores: {
+    critical_data: DataQualityCategoryScore;
+    important_data: DataQualityCategoryScore;
+    balance_sheet: DataQualityCategoryScore;
+    multi_year: DataQualityCategoryScore;
+  };
+
+  missing_data: MissingDataItem[];
+  document_coverage: {
+    documents_provided: string[];
+    documents_missing: DocumentType[];
+    coverage_score: number;
+  };
+  recommendations: ImprovementRecommendation[];
+
+  quality_narrative: string;
+  calculated_at: string;
+}
+
 // ============================================
 // WORKING CAPITAL TYPES
 // ============================================
@@ -286,6 +356,70 @@ export interface WorkingCapitalAnalysis {
   calculated_at: string;
 }
 
+/**
+ * Working capital component detail
+ */
+export interface WorkingCapitalComponent {
+  name: string;
+  amount: number;
+  as_percent_of_revenue: number;
+  days_outstanding: number;
+  included_in_operating_wc: boolean;
+  notes: string;
+}
+
+/**
+ * Working capital trend data
+ */
+export interface WorkingCapitalTrend {
+  periods: Array<{
+    period: string;
+    operating_wc: number;
+    as_percent_of_revenue: number;
+  }>;
+  trend_direction: 'improving' | 'stable' | 'declining';
+  average_wc_to_revenue: number;
+}
+
+/**
+ * Working capital result (used by working capital calculator)
+ */
+export interface WorkingCapitalResult {
+  gross_working_capital: number;
+  net_working_capital: number;
+  operating_working_capital: number;
+
+  normal_working_capital: {
+    amount: number;
+    as_percent_of_revenue: number;
+    calculation_method: string;
+    industry_benchmark: {
+      typical_range: [number, number];
+      average: number;
+    };
+  };
+
+  working_capital_adjustment: {
+    amount: number;
+    direction: string;
+    explanation: string;
+  };
+
+  components: WorkingCapitalComponent[];
+
+  current_ratio: number;
+  quick_ratio: number;
+  working_capital_to_revenue: number;
+
+  quality: 'Adequate' | 'Above Target' | 'Below Target' | 'Critical';
+  quality_description: string;
+
+  trend: WorkingCapitalTrend;
+  narrative: string;
+
+  calculated_at: string;
+}
+
 // ============================================
 // TAX FORM VALIDATION TYPES
 // ============================================
@@ -300,7 +434,10 @@ export type TaxFormType =
   | 'Schedule_C'
   | 'Schedule_K1'
   | 'Form_4562'
-  | 'Schedule_L';
+  | 'Schedule_L'
+  | '1120'
+  | '1120-S'
+  | '1065';
 
 /**
  * Single validation rule
@@ -350,6 +487,68 @@ export interface TaxFormValidation {
   // Recommendations
   recommended_reviews: string[];
 
+  validated_at: string;
+}
+
+/**
+ * Validation rule (used by tax form validator)
+ */
+export interface ValidationRule {
+  id: string;
+  name: string;
+  description: string;
+  severity: 'error' | 'warning';
+  formula: string;
+  tolerance_percent: number;
+  validate: (data: Record<string, number>) => boolean;
+  getExpected: (data: Record<string, number>) => number | null;
+}
+
+/**
+ * Validation error
+ */
+export interface ValidationError {
+  rule_id: string;
+  rule_name: string;
+  description: string;
+  expected_value: string;
+  actual_value: string;
+  correction_guidance: string;
+}
+
+/**
+ * Validation warning
+ */
+export interface ValidationWarning {
+  rule_id: string;
+  rule_name: string;
+  description: string;
+  expected_value: string;
+  actual_value: string;
+  correction_guidance: string;
+}
+
+/**
+ * Tax form validation result (used by tax form validator)
+ */
+export interface TaxFormValidationResult {
+  form_type: TaxFormType;
+  is_valid: boolean;
+  confidence_score: number;
+
+  summary: {
+    total_rules_checked: number;
+    rules_passed: number;
+    errors_found: number;
+    warnings_found: number;
+  };
+
+  errors: ValidationError[];
+  warnings: ValidationWarning[];
+  passed_rules: string[];
+
+  recommended_actions: string[];
+  validation_narrative: string;
   validated_at: string;
 }
 

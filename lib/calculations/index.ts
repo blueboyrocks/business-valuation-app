@@ -47,6 +47,48 @@ export {
 // Data mapper
 export { mapPassOutputsToEngineInputs, safeGet } from './pass-data-mapper';
 
+// Extended calculators
+export {
+  calculateAllKPIs,
+  formatKPITable,
+  type KPICalculatorInputs,
+} from './kpi-calculator';
+
+export {
+  calculateRiskScoring,
+  scoreRiskFactor,
+  RISK_RUBRICS,
+  type RiskScoringInputs,
+} from './risk-scoring-calculator';
+
+export {
+  calculateDataQuality,
+  VALUABLE_DOCUMENTS,
+  CRITICAL_FIELDS,
+  IMPORTANT_FIELDS,
+  type DataQualityInputs,
+} from './data-quality-scorer';
+
+export {
+  calculateWorkingCapital,
+  INDUSTRY_WC_BENCHMARKS,
+  type WorkingCapitalInputs,
+} from './working-capital-calculator';
+
+export {
+  validateTaxFormData,
+  FORM_1120S_RULES,
+  FORM_1120_RULES,
+  FORM_1065_RULES,
+  SCHEDULE_C_RULES,
+  UNIVERSAL_RULES,
+  type TaxFormValidationInputs,
+} from './tax-form-validator';
+
+export {
+  runCalculationOrchestrator,
+} from './calculation-orchestrator';
+
 // Utilities
 export {
   formatCurrency,
@@ -110,3 +152,51 @@ export type {
   ValidationResult,
   FormatOptions,
 } from './types';
+
+// Extended types
+export type {
+  // KPI types
+  IndustryBenchmark,
+  KPIRating,
+  KPIResult,
+  KPICategory,
+  KPICalculationResult,
+  ChartDataPoint,
+  // Risk scoring types
+  RiskScoringRubric,
+  ScoredRiskFactor,
+  RiskScoringResult,
+  // Data quality types
+  FieldStatus,
+  DocumentStatus,
+  DataImprovementRecommendation,
+  DataQualityAssessment,
+  MissingDataItem,
+  ImprovementRecommendation,
+  DocumentType,
+  DataQualityCategoryScore,
+  DataQualityResult,
+  // Working capital types
+  WorkingCapitalAnalysis,
+  WorkingCapitalComponent,
+  WorkingCapitalTrend,
+  WorkingCapitalResult,
+  // Tax validation types
+  TaxFormType,
+  TaxValidationRule,
+  TaxValidationResult,
+  TaxFormValidation,
+  ValidationRule,
+  ValidationError,
+  ValidationWarning,
+  TaxFormValidationResult,
+  // Extended output
+  ExtendedCalculationOutput,
+} from './extended-types';
+
+// Orchestrator types
+export type {
+  OrchestratorInputs,
+  OrchestratorResult,
+  OrchestratorSummary,
+} from './calculation-orchestrator';
