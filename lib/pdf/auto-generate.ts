@@ -63,45 +63,53 @@ export async function generateAndStorePDF(
     const timestamp = Date.now();
     const filename = `${reportId}/${safeCompanyName}_Valuation_${timestamp}.pdf`;
 
-    console.log(`[AUTO-PDF] Uploading to Supabase storage: ${filename}`);
+    // Try to upload to Supabase storage (optional - bucket may not exist)
+    let pdfPath: string | null = null;
 
-    // Upload to Supabase storage
-    const { data: uploadData, error: uploadError } = await getSupabaseClient()
-      .storage
-      .from('reports')
-      .upload(filename, pdfBuffer, {
-        contentType: 'application/pdf',
-        upsert: true,
-      });
+    console.log(`[AUTO-PDF] Attempting upload to Supabase storage: ${filename}`);
 
-    if (uploadError) {
-      console.error(`[AUTO-PDF] ❌ Upload failed:`, uploadError.message);
-      throw new Error(`PDF upload failed: ${uploadError.message}`);
-    }
+    try {
+      const { data: uploadData, error: uploadError } = await getSupabaseClient()
+        .storage
+        .from('reports')
+        .upload(filename, pdfBuffer, {
+          contentType: 'application/pdf',
+          upsert: true,
+        });
 
-    console.log(`[AUTO-PDF] ✓ PDF uploaded successfully`);
+      if (uploadError) {
+        // Storage upload failed - log but don't fail the whole operation
+        // PDFs can still be generated on-demand via the download endpoint
+        console.warn(`[AUTO-PDF] ⚠️ Storage upload skipped: ${uploadError.message}`);
+        console.log(`[AUTO-PDF] Note: PDF can still be downloaded on-demand`);
+      } else {
+        pdfPath = uploadData.path;
+        console.log(`[AUTO-PDF] ✓ PDF uploaded to storage`);
 
-    // Update the report with the PDF path
-    const pdfPath = uploadData.path;
-    const { error: updateError } = await getSupabaseClient()
-      .from('reports')
-      .update({ pdf_path: pdfPath })
-      .eq('id', reportId);
+        // Update the report with the PDF path
+        const { error: updateError } = await getSupabaseClient()
+          .from('reports')
+          .update({ pdf_path: pdfPath })
+          .eq('id', reportId);
 
-    if (updateError) {
-      console.error(`[AUTO-PDF] ⚠️ Failed to update report with PDF path:`, updateError.message);
-      // Don't throw - PDF was generated successfully, just path wasn't saved
-    } else {
-      console.log(`[AUTO-PDF] ✓ Report updated with PDF path`);
+        if (updateError) {
+          console.warn(`[AUTO-PDF] ⚠️ Failed to save PDF path to report:`, updateError.message);
+        } else {
+          console.log(`[AUTO-PDF] ✓ Report updated with PDF path`);
+        }
+      }
+    } catch (storageError) {
+      // Catch any unexpected storage errors
+      console.warn(`[AUTO-PDF] ⚠️ Storage error (non-fatal):`, storageError);
     }
 
     const duration = Date.now() - startTime;
-    console.log(`[AUTO-PDF] ✓ Complete! Total time: ${duration}ms`);
+    console.log(`[AUTO-PDF] ✓ PDF generation complete! Total time: ${duration}ms`);
     console.log(`[AUTO-PDF] ========================================`);
 
     return {
       success: true,
-      pdfPath,
+      pdfPath: pdfPath || undefined,
       pdfSize: pdfBuffer.length,
       generationTimeMs: duration,
     };
