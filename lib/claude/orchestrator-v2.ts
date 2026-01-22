@@ -275,7 +275,7 @@ export async function runTwelvePassValuation(
 
     // Save calculation results to database
     const { error: calcSaveError } = await supabase
-      .from('valuation_reports')
+      .from('reports')
       .update({
         calculation_results: calculationResults as unknown as Record<string, unknown>,
         updated_at: new Date().toISOString(),
