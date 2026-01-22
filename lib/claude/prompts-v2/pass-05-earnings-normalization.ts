@@ -722,7 +722,7 @@ export const pass5PromptConfig = {
   systemPrompt: PASS_5_SYSTEM_PROMPT,
   userPrompt: PASS_5_USER_PROMPT,
   expectedOutputType: 'Pass5Output' as const,
-  maxTokens: 8192,
+  maxTokens: 12288, // Increased from 8192 - detailed multi-year add-backs require more tokens
   temperature: 0.2,
 };
 
