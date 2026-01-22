@@ -221,17 +221,51 @@ export class ProfessionalPDFGenerator {
       return `$${Math.round(val).toLocaleString()}`;
     };
 
+    // Helper to extract string content from either string or object with content property
+    const getContent = (value: unknown): string => {
+      if (!value) return '';
+      if (typeof value === 'string') return value;
+      if (typeof value === 'object' && value !== null && 'content' in value) {
+        return (value as { content: string }).content || '';
+      }
+      return '';
+    };
+
     // Convert markdown to HTML for narratives
-    const execSummary = reportData.executive_summary ? await marked(reportData.executive_summary) : '<p>No executive summary available.</p>';
-    const companyProfile = reportData.company_profile ? await marked(reportData.company_profile) : '';
-    const industryAnalysis = reportData.industry_analysis ? await marked(reportData.industry_analysis) : '';
-    const financialAnalysis = reportData.financial_analysis ? await marked(reportData.financial_analysis) : '';
-    const assetAnalysis = reportData.asset_approach_analysis ? await marked(reportData.asset_approach_analysis) : '';
-    const incomeAnalysis = reportData.income_approach_analysis ? await marked(reportData.income_approach_analysis) : '';
-    const marketAnalysis = reportData.market_approach_analysis ? await marked(reportData.market_approach_analysis) : '';
-    const valuationRecon = reportData.valuation_reconciliation ? await marked(reportData.valuation_reconciliation) : '';
-    const riskAssessment = reportData.risk_assessment ? await marked(reportData.risk_assessment) : '';
-    const strategicInsights = reportData.strategic_insights ? await marked(reportData.strategic_insights) : '';
+    // Handle both string format and object format { content: string, word_count_target: number }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = reportData as any;
+    const narratives = data.narratives || {};
+
+    const execContent = getContent(data.executive_summary) || getContent(narratives.executive_summary);
+    const execSummary = execContent ? await marked(execContent) : '<p>No executive summary available.</p>';
+
+    const companyContent = getContent(data.company_profile) || getContent(narratives.company_overview);
+    const companyProfile = companyContent ? await marked(companyContent) : '';
+
+    const industryContent = getContent(data.industry_analysis) || getContent(narratives.industry_analysis);
+    const industryAnalysis = industryContent ? await marked(industryContent) : '';
+
+    const financialContent = getContent(data.financial_analysis) || getContent(narratives.financial_analysis);
+    const financialAnalysis = financialContent ? await marked(financialContent) : '';
+
+    const assetContent = getContent(data.asset_approach_analysis) || getContent(narratives.asset_approach_narrative);
+    const assetAnalysis = assetContent ? await marked(assetContent) : '';
+
+    const incomeContent = getContent(data.income_approach_analysis) || getContent(narratives.income_approach_narrative);
+    const incomeAnalysis = incomeContent ? await marked(incomeContent) : '';
+
+    const marketContent = getContent(data.market_approach_analysis) || getContent(narratives.market_approach_narrative);
+    const marketAnalysis = marketContent ? await marked(marketContent) : '';
+
+    const reconContent = getContent(data.valuation_reconciliation) || getContent(narratives.valuation_synthesis_narrative);
+    const valuationRecon = reconContent ? await marked(reconContent) : '';
+
+    const riskContent = getContent(data.risk_assessment) || getContent(narratives.risk_assessment);
+    const riskAssessment = riskContent ? await marked(riskContent) : '';
+
+    const strategicContent = getContent(data.strategic_insights) || getContent(narratives.value_enhancement_recommendations);
+    const strategicInsights = strategicContent ? await marked(strategicContent) : '';
 
     return `
 <!DOCTYPE html>

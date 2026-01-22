@@ -153,13 +153,15 @@ function transformFinancialData(
   pass2: Pass2Output,
   pass3: Pass3Output
 ): FinancialDataFinal {
-  const periods = pass2.income_statements.map(is => String(is.fiscal_year));
+  const incomeStatements = pass2?.income_statements || [];
+  const balanceSheets = pass3?.balance_sheets || [];
+  const periods = incomeStatements.map(is => String(is.fiscal_year));
 
   return {
     periods_analyzed: periods,
     currency: 'USD',
-    income_statements: pass2.income_statements.map(transformIncomeStatement),
-    balance_sheets: pass3.balance_sheets.map(transformBalanceSheet),
+    income_statements: incomeStatements.map(transformIncomeStatement),
+    balance_sheets: balanceSheets.map(transformBalanceSheet),
   };
 }
 
@@ -270,22 +272,26 @@ function transformBalanceSheet(bs: Pass3Output['balance_sheets'][0]): BalanceShe
 // =============================================================================
 
 function transformNormalizedEarnings(pass5: Pass5Output): NormalizedEarningsFinal {
+  const sdeCalculations = pass5?.sde_calculations || [];
+  const ebitdaCalculations = pass5?.ebitda_calculations || [];
+  const summary = pass5?.summary || {};
+
   return {
-    methodology_notes: pass5.normalization_confidence?.major_assumptions?.join('; ') ||
+    methodology_notes: pass5?.normalization_confidence?.major_assumptions?.join('; ') ||
       'Normalized using standard SDE and EBITDA methodologies.',
     sde_calculation: {
-      periods: pass5.sde_calculations.map(transformSDEPeriod),
+      periods: sdeCalculations.map(transformSDEPeriod),
       weighted_average_sde: {
-        calculation_method: pass5.summary.sde_weighting_method === 'recent_weighted'
+        calculation_method: summary.sde_weighting_method === 'recent_weighted'
           ? '3-year weighted average (3x most recent, 2x prior, 1x earliest)'
           : 'Equal weighted average',
-        weights: pass5.summary.sde_weights?.map(w => w.weight) || [1, 1, 1],
-        weighted_sde: pass5.summary.weighted_average_sde,
+        weights: summary.sde_weights?.map(w => w.weight) || [1, 1, 1],
+        weighted_sde: summary.weighted_average_sde || 0,
       },
     },
     ebitda_calculation: {
-      periods: pass5.ebitda_calculations.map(transformEBITDAPeriod),
-      weighted_average_ebitda: pass5.summary.weighted_average_ebitda,
+      periods: ebitdaCalculations.map(transformEBITDAPeriod),
+      weighted_average_ebitda: summary.weighted_average_ebitda || 0,
     },
   };
 }
@@ -858,18 +864,20 @@ function transformValuationSynthesis(
   pass10: Pass10Output,
   pass3: Pass3Output
 ): ValuationSynthesisFinal {
-  const synthesis = pass10.value_synthesis;
-  const conclusion = pass10.conclusion;
+  const synthesis = pass10?.value_synthesis || {};
+  const conclusion = pass10?.conclusion || {};
+  const approachSummaries = synthesis.approach_summaries || [];
+  const valueRange = conclusion.value_range || { low: 0, high: 0 };
 
   return {
-    approach_summary: synthesis.approach_summaries.map(a => ({
+    approach_summary: approachSummaries.map(a => ({
       approach: a.approach_name === 'asset' ? 'Asset Approach' :
                 a.approach_name === 'income' ? 'Income Approach' : 'Market Approach',
-      value: a.indicated_value_point,
-      weight: a.weight,
-      weighted_value: a.weighted_value,
+      value: a.indicated_value_point || 0,
+      weight: a.weight || 0,
+      weighted_value: a.weighted_value || 0,
     })),
-    preliminary_value: synthesis.preliminary_value_point,
+    preliminary_value: synthesis.preliminary_value_point || 0,
     discounts_and_premiums: {
       dlom: {
         applicable: synthesis.discounts_premiums?.some(dp => dp.name.toLowerCase().includes('marketability')) || false,
@@ -893,21 +901,21 @@ function transformValuationSynthesis(
           percentage: dp.rate,
           rationale: dp.rationale,
         })) || [],
-      total_discount_premium: synthesis.total_discount_premium_adjustment,
+      total_discount_premium: synthesis.total_discount_premium_adjustment || 0,
     },
     final_valuation: {
-      concluded_value: conclusion.concluded_value,
-      valuation_range_low: conclusion.value_range.low,
-      valuation_range_high: conclusion.value_range.high,
+      concluded_value: conclusion.concluded_value || 0,
+      valuation_range_low: valueRange.low || 0,
+      valuation_range_high: valueRange.high || 0,
       confidence_level: conclusion.confidence_level === 'high' ? 'High' :
                        conclusion.confidence_level === 'low' ? 'Low' : 'Moderate',
-      confidence_rationale: conclusion.confidence_rationale,
+      confidence_rationale: conclusion.confidence_rationale || '',
     },
     working_capital_analysis: {
-      normal_working_capital: pass3.key_metrics?.most_recent_working_capital || 0,
-      actual_working_capital: pass3.working_capital_analysis?.[0]?.net_working_capital || 0,
-      working_capital_adjustment: (pass3.working_capital_analysis?.[0]?.net_working_capital || 0) -
-                                  (pass3.key_metrics?.most_recent_working_capital || 0),
+      normal_working_capital: pass3?.key_metrics?.most_recent_working_capital || 0,
+      actual_working_capital: pass3?.working_capital_analysis?.[0]?.net_working_capital || 0,
+      working_capital_adjustment: (pass3?.working_capital_analysis?.[0]?.net_working_capital || 0) -
+                                  (pass3?.key_metrics?.most_recent_working_capital || 0),
       notes: 'Working capital normalized to industry standard percentage of revenue.',
     },
   };
@@ -985,8 +993,9 @@ function transformNarratives(
 // =============================================================================
 
 function transformDataQuality(pass1: Pass1Output, pass12: Pass12Output): DataQualityFinal {
-  const quality = pass1.data_quality_assessment;
-  const review = pass12.quality_summary;
+  const quality = pass1?.data_quality_assessment || {};
+  const documentInfo = pass1?.document_info || {};
+  const missingCriticalData = quality.missing_critical_data || [];
 
   // Map extraction quality to confidence
   const confidenceMap: Record<string, DataQualityFinal['extraction_confidence']> = {
@@ -997,15 +1006,15 @@ function transformDataQuality(pass1: Pass1Output, pass12: Pass12Output): DataQua
   };
 
   return {
-    extraction_confidence: confidenceMap[pass1.document_info.extraction_quality] || 'Moderate',
-    data_completeness_score: quality.completeness_score,
-    missing_data_flags: quality.missing_critical_data.map(field => ({
+    extraction_confidence: confidenceMap[documentInfo.extraction_quality || ''] || 'Moderate',
+    data_completeness_score: quality.completeness_score || 0,
+    missing_data_flags: missingCriticalData.map(field => ({
       field,
       impact: 'May affect valuation accuracy',
       assumption_made: quality.assumptions_required?.find(a => a.includes(field)) || 'Standard industry assumptions applied',
     })),
     data_quality_notes: quality.data_limitations?.join('. ') || '',
-    recommendations_for_improvement: pass12.report_status?.warnings || [],
+    recommendations_for_improvement: pass12?.report_status?.warnings || [],
   };
 }
 
@@ -1014,16 +1023,19 @@ function transformDataQuality(pass1: Pass1Output, pass12: Pass12Output): DataQua
 // =============================================================================
 
 function transformMetadata(pass1: Pass1Output, pass12: Pass12Output): MetadataFinal {
+  const documentInfo = pass1?.document_info || {};
+  const qualitySummary = pass12?.quality_summary || {};
+
   return {
     documents_analyzed: [{
-      filename: pass1.document_info.document_type,
-      document_type: pass1.document_info.document_subtype || pass1.document_info.document_type,
-      tax_year: String(pass1.document_info.tax_year || new Date().getFullYear()),
-      pages: pass1.document_info.pages_analyzed,
+      filename: documentInfo.document_type || 'Unknown',
+      document_type: documentInfo.document_subtype || documentInfo.document_type || 'Unknown',
+      tax_year: String(documentInfo.tax_year || new Date().getFullYear()),
+      pages: documentInfo.pages_analyzed || 0,
     }],
-    processing_notes: `Quality Grade: ${pass12.quality_summary?.quality_grade || 'N/A'}. ` +
-                      `Checks passed: ${pass12.quality_summary?.passed_checks || 0}/${pass12.quality_summary?.total_checks || 0}.`,
-    analyst_notes: pass12.report_status?.review_notes?.join('; ') || '',
+    processing_notes: `Quality Grade: ${qualitySummary.quality_grade || 'N/A'}. ` +
+                      `Checks passed: ${qualitySummary.passed_checks || 0}/${qualitySummary.total_checks || 0}.`,
+    analyst_notes: pass12?.report_status?.review_notes?.join('; ') || '',
   };
 }
 
