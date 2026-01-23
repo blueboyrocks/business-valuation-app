@@ -44,10 +44,10 @@ Write a comprehensive Company Overview (600-800 words) for this valuation report
 **NAICS Code**: ${companyProfile.naics_code || 'N/A'}
 
 **Ownership**:
-${companyProfile.owners?.map((o: any) => `- ${o.name}: ${o.percentage}%`).join('\n') || '- Single owner - 100%'}
+${Array.isArray(companyProfile.owners) ? companyProfile.owners.map((o: any) => `- ${o.name}: ${o.percentage}%`).join('\n') : '- Single owner - 100%'}
 
 **Key Personnel**:
-${companyProfile.key_personnel?.map((p: any) => `- ${p.name}: ${p.title}`).join('\n') || '- Owner/Operator'}
+${Array.isArray(companyProfile.key_personnel) ? companyProfile.key_personnel.map((p: any) => `- ${p.name}: ${p.title}`).join('\n') : '- Owner/Operator'}
 
 ## OPERATIONAL DATA
 

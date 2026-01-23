@@ -22,11 +22,15 @@
     },
     "app/api/reports/[id]/process-claude/route.ts": {
       "memory": 1024,
-      "maxDuration": 300
+      "maxDuration": 800
     },
     "app/api/reports/[id]/extract-documents/route.ts": {
       "memory": 1024,
       "maxDuration": 300
+    },
+    "app/api/reports/[id]/rerun-passes/route.ts": {
+      "memory": 1024,
+      "maxDuration": 800
     }
   },
   "regions": ["iad1"]

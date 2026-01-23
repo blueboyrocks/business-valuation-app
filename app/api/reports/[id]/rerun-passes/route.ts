@@ -13,7 +13,7 @@ import { aggregatePassOutputsToReportData } from '@/lib/report-aggregator';
 import { NARRATIVE_EXECUTION_ORDER } from '@/lib/claude/prompts-v2';
 import { checkReportQuality, formatQualityReport } from '@/lib/validation/quality-checker';
 
-export const maxDuration = 300; // 5 minutes
+export const maxDuration = 800; // Vercel Pro max - re-running multiple passes can take time
 export const dynamic = 'force-dynamic';
 
 // Lazy-initialize Supabase client
