@@ -72,11 +72,13 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
   const [useWebSearch, setUseWebSearch] = useState(true);
   const [isRunning, setIsRunning] = useState(false);
   const [currentPass, setCurrentPass] = useState<number | string | null>(null);
+  const [progressMessage, setProgressMessage] = useState<string>('');
   const [completedPasses, setCompletedPasses] = useState<(number | string)[]>([]);
   const [failedPasses, setFailedPasses] = useState<(number | string)[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [availablePasses, setAvailablePasses] = useState<(number | string)[]>([]);
   const [showNarratives, setShowNarratives] = useState(false);
+  const [regenerateAfter, setRegenerateAfter] = useState(true);
 
   // Fetch available passes on mount
   useEffect(() => {
@@ -147,6 +149,7 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
     setError(null);
     setCompletedPasses([]);
     setFailedPasses([]);
+    setProgressMessage('Starting re-run...');
 
     const supabase = createBrowserClient();
     const { data: { session } } = await supabase.auth.getSession();
@@ -157,6 +160,37 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
       setIsRunning(false);
       return;
     }
+
+    // Start polling for progress
+    let pollInterval: NodeJS.Timeout | null = null;
+    const pollProgress = async () => {
+      try {
+        const { data } = await supabase
+          .from('reports')
+          .select('processing_message, report_status')
+          .eq('id', reportId)
+          .single();
+
+        const reportData = data as { processing_message?: string; report_status?: string } | null;
+        if (reportData?.processing_message) {
+          setProgressMessage(reportData.processing_message);
+
+          // Extract current pass from message (e.g., "Running Pass 4: Industry Analysis...")
+          const passMatch = reportData.processing_message.match(/Pass (\d+|11[a-k]):/);
+          if (passMatch) {
+            const passId = passMatch[1].match(/^\d+$/) ? parseInt(passMatch[1]) : passMatch[1];
+            setCurrentPass(passId);
+          }
+        }
+      } catch (pollError) {
+        console.error('Error polling progress:', pollError);
+      }
+    };
+
+    // Poll every 2 seconds
+    pollInterval = setInterval(pollProgress, 2000);
+    // Poll immediately
+    pollProgress();
 
     try {
       // Separate numeric and narrative passes
@@ -177,6 +211,7 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
           narrativePasses: narrativePasses,
           options: {
             useWebSearch,
+            regenerateAfter,
           },
         }),
       });
@@ -195,6 +230,7 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
         ...(result.passesFailed || []),
         ...(result.narrativePassesFailed || [])
       ]);
+      setProgressMessage(`Completed ${result.passesCompleted?.length || 0} passes`);
 
       const allFailed = [...(result.passesFailed || []), ...(result.narrativePassesFailed || [])];
       if (allFailed.length > 0) {
@@ -210,6 +246,10 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error';
       setError(errorMessage);
     } finally {
+      // Stop polling
+      if (pollInterval) {
+        clearInterval(pollInterval);
+      }
       setIsRunning(false);
       setCurrentPass(null);
     }
@@ -442,6 +482,26 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
           </div>
         </div>
 
+        {/* Regenerate Option */}
+        <div className="flex items-center justify-between p-3 bg-green-50 rounded-lg border-t">
+          <div className="flex items-center gap-2">
+            <CheckCircle className="h-4 w-4 text-green-600" />
+            <div>
+              <Label htmlFor="regenerate-after" className="text-sm font-medium">
+                Regenerate Report After
+              </Label>
+              <p className="text-xs text-slate-500">
+                Run quality check and update final report data after passes complete
+              </p>
+            </div>
+          </div>
+          <Switch
+            id="regenerate-after"
+            checked={regenerateAfter}
+            onCheckedChange={setRegenerateAfter}
+          />
+        </div>
+
         {/* Selection Summary */}
         <div className="flex items-center justify-between text-sm text-slate-600 pt-2 border-t">
           <span>
@@ -467,6 +527,21 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
           </div>
         )}
 
+        {/* Progress Display */}
+        {isRunning && progressMessage && (
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <div className="flex items-center gap-3">
+              <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-blue-900">{progressMessage}</p>
+                <p className="text-xs text-blue-600 mt-1">
+                  This may take several minutes. Please don&apos;t close this page.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Run Button */}
         <Button
           onClick={runSelectedPasses}
@@ -476,7 +551,7 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
           {isRunning ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Running Pass {currentPass || '...'}
+              {currentPass ? `Running Pass ${currentPass}...` : 'Processing...'}
             </>
           ) : (
             <>

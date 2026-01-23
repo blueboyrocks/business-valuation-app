@@ -11,6 +11,7 @@ import { createClient } from '@supabase/supabase-js';
 import { executePass, executeNarrativePass, executeAllNarrativePasses } from '@/lib/claude/pass-executor';
 import { aggregatePassOutputsToReportData } from '@/lib/report-aggregator';
 import { NARRATIVE_EXECUTION_ORDER } from '@/lib/claude/prompts-v2';
+import { checkReportQuality, formatQualityReport } from '@/lib/validation/quality-checker';
 
 export const maxDuration = 300; // 5 minutes
 export const dynamic = 'force-dynamic';
@@ -34,6 +35,7 @@ interface RerunRequest {
   options?: {
     useWebSearch?: boolean;
     forceRegenerate?: boolean;
+    regenerateAfter?: boolean; // Run quality check and regenerate report after passes
   };
 }
 
@@ -100,10 +102,11 @@ export async function POST(
       document_text?: string;
     };
 
-    // Update status to processing
+    // Update status to processing with initial message
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (getSupabaseClient().from('reports') as any).update({
       report_status: 'processing',
+      processing_message: `Starting re-run of ${passes.length + narrativePasses.length} passes...`,
     }).eq('id', reportId);
 
     const results: Record<number, unknown> = {};
@@ -121,9 +124,33 @@ export async function POST(
     console.log(`[RERUN] Will execute narrative passes: ${validNarrativePasses.join(', ') || 'none'}`);
     console.log(`[RERUN] Web search enabled: ${options.useWebSearch}`);
 
+    // Get pass names for progress messages
+    const passNames: Record<number, string> = {
+      1: 'Document Classification',
+      2: 'Income Statement',
+      3: 'Balance Sheet',
+      4: 'Industry Analysis',
+      5: 'Earnings Normalization',
+      6: 'Risk Assessment',
+      7: 'Asset Approach',
+      8: 'Income Approach',
+      9: 'Market Approach',
+      10: 'Value Synthesis',
+      11: 'Narratives',
+      12: 'Economic Conditions',
+      13: 'Comparable Transactions',
+    };
+
     // Execute numeric passes first
     for (const passNumber of sortedPasses) {
       console.log(`[RERUN] Starting Pass ${passNumber} for report ${reportId}`);
+
+      // Update progress message
+      const webSearchIndicator = options.useWebSearch && [4, 12, 13].includes(passNumber) ? ' (with web search)' : '';
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (getSupabaseClient().from('reports') as any).update({
+        processing_message: `Running Pass ${passNumber}: ${passNames[passNumber] || 'Processing'}${webSearchIndicator}...`,
+      }).eq('id', reportId);
 
       try {
         const passResult = await executePass(
@@ -142,10 +169,11 @@ export async function POST(
         // Update pass outputs with new result (use string key)
         existingPassOutputs[String(passNumber)] = passResult;
 
-        // Save intermediate result
+        // Save intermediate result with completion message
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         await (getSupabaseClient().from('reports') as any).update({
           pass_outputs: existingPassOutputs,
+          processing_message: `Completed Pass ${passNumber}: ${passNames[passNumber] || 'Processing'}`,
         }).eq('id', reportId);
 
         console.log(`[RERUN] Completed Pass ${passNumber}`);
@@ -157,6 +185,21 @@ export async function POST(
       }
     }
 
+    // Narrative pass names for progress messages
+    const narrativePassNames: Record<string, string> = {
+      '11a': 'Executive Summary',
+      '11b': 'Company Overview',
+      '11c': 'Financial Analysis',
+      '11d': 'Industry Analysis',
+      '11e': 'Risk Assessment',
+      '11f': 'Asset Approach',
+      '11g': 'Income Approach',
+      '11h': 'Market Approach',
+      '11i': 'Valuation Synthesis',
+      '11j': 'Assumptions & Conditions',
+      '11k': 'Value Enhancement',
+    };
+
     // Execute narrative passes (11a-11k)
     if (validNarrativePasses.length > 0) {
       console.log(`[RERUN] Starting narrative passes...`);
@@ -165,13 +208,29 @@ export async function POST(
       const allNarrativesSelected = validNarrativePasses.length === 11;
 
       if (allNarrativesSelected) {
-        // Run all narratives in the correct order
+        // Run all narratives in the correct order with progress updates
         console.log(`[RERUN] Running all narratives in execution order...`);
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        await (getSupabaseClient().from('reports') as any).update({
+          processing_message: `Running all 11 narrative passes with expert personas...`,
+        }).eq('id', reportId);
+
         try {
           const combinedNarratives = await executeAllNarrativePasses(
             reportId,
             report,
-            existingPassOutputs
+            existingPassOutputs,
+            // Progress callback for each narrative pass
+            async (passId: string, status: 'started' | 'completed' | 'error') => {
+              const passName = narrativePassNames[passId] || passId;
+              if (status === 'started') {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                await (getSupabaseClient().from('reports') as any).update({
+                  processing_message: `Running Narrative ${passId}: ${passName}...`,
+                }).eq('id', reportId);
+              }
+            }
           );
 
           // Store combined results
@@ -187,6 +246,7 @@ export async function POST(
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
           await (getSupabaseClient().from('reports') as any).update({
             pass_outputs: existingPassOutputs,
+            processing_message: 'Completed all narrative passes',
           }).eq('id', reportId);
 
           console.log(`[RERUN] Completed all narratives`);
@@ -204,6 +264,13 @@ export async function POST(
 
         for (const passId of orderedPasses) {
           console.log(`[RERUN] Starting Narrative Pass ${passId}`);
+
+          // Update progress message
+          const passName = narrativePassNames[passId] || passId;
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (getSupabaseClient().from('reports') as any).update({
+            processing_message: `Running Narrative ${passId}: ${passName}...`,
+          }).eq('id', reportId);
 
           try {
             const narrativeResult = await executeNarrativePass(
@@ -226,10 +293,11 @@ export async function POST(
               },
             };
 
-            // Save intermediate
+            // Save intermediate with completion message
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             await (getSupabaseClient().from('reports') as any).update({
               pass_outputs: existingPassOutputs,
+              processing_message: `Completed Narrative ${passId}: ${passName}`,
             }).eq('id', reportId);
 
             console.log(`[RERUN] Completed Narrative Pass ${passId}`);
@@ -246,6 +314,11 @@ export async function POST(
     // After all passes complete, aggregate data to report_data
     console.log(`[RERUN] Aggregating pass outputs to report data...`);
 
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (getSupabaseClient().from('reports') as any).update({
+      processing_message: 'Aggregating data and running quality check...',
+    }).eq('id', reportId);
+
     const aggregatedData = aggregatePassOutputsToReportData(
       existingPassOutputs,
       report.report_data || {}
@@ -255,18 +328,37 @@ export async function POST(
     const totalErrors = Object.keys(errors).length + Object.keys(narrativeErrors).length;
     const totalCompleted = Object.keys(results).length + Object.keys(narrativeResults).length;
 
+    // Run quality check
+    let qualityResult = null;
+    if (options.regenerateAfter !== false) {
+      console.log(`[RERUN] Running quality check...`);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (getSupabaseClient().from('reports') as any).update({
+        processing_message: 'Running final quality check...',
+      }).eq('id', reportId);
+
+      qualityResult = checkReportQuality(aggregatedData);
+      console.log(formatQualityReport(qualityResult));
+      console.log(`[RERUN] Quality Score: ${qualityResult.score}/100 (Grade: ${qualityResult.grade})`);
+
+      // Add quality metrics to aggregated data
+      aggregatedData.quality_score = qualityResult.score;
+      aggregatedData.quality_grade = qualityResult.grade;
+      aggregatedData.is_premium_ready = qualityResult.isPremiumReady;
+    }
+
     // Update final report data
     const finalStatus = totalErrors > 0 ? 'partial_error' : 'completed';
     const allErrorKeys = [...Object.keys(errors), ...Object.keys(narrativeErrors)];
-    const finalMessage = totalErrors > 0
-      ? `Completed with errors in passes: ${allErrorKeys.join(', ')}`
-      : 'Re-run completed successfully';
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     await (getSupabaseClient().from('reports') as any).update({
       report_data: aggregatedData,
       pass_outputs: existingPassOutputs,
       report_status: finalStatus,
+      processing_message: totalErrors > 0
+        ? `Completed with errors in passes: ${allErrorKeys.join(', ')}`
+        : `Complete! Quality: ${qualityResult?.grade || 'N/A'} (${qualityResult?.score || 0}/100)`,
       valuation_amount: aggregatedData.valuation_amount || null,
       updated_at: new Date().toISOString(),
     }).eq('id', reportId);
@@ -284,6 +376,11 @@ export async function POST(
       passesFailed: Object.keys(errors).map(Number),
       narrativePassesCompleted: Object.keys(narrativeResults),
       narrativePassesFailed: Object.keys(narrativeErrors),
+      quality: qualityResult ? {
+        score: qualityResult.score,
+        grade: qualityResult.grade,
+        isPremiumReady: qualityResult.isPremiumReady,
+      } : undefined,
     });
 
   } catch (error: unknown) {
