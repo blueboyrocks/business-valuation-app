@@ -14,14 +14,91 @@ function getPass(passOutputs: Record<string, unknown>, num: number): Record<stri
 
 /**
  * Helper to safely get nested narrative content
+ * Handles multiple storage locations:
+ * 1. New 11a-11k system: passOutputs.narratives.pass_results['11a'].content
+ * 2. New 11a-11k combined: passOutputs.narratives.narratives.key
+ * 3. Old Pass 11 system: passOutputs['11'].report_narratives.key
  */
 function getNarrative(passData: Record<string, unknown>, key: string): string {
-  const narratives = (passData?.narratives || passData) as Record<string, unknown>;
+  // First, check if passData has narratives directly (covers old system)
+  const narratives = (passData?.narratives || passData?.report_narratives || passData) as Record<string, unknown>;
   const section = narratives?.[key];
   if (typeof section === 'string') return section;
   if (section && typeof section === 'object' && 'content' in section) {
     return (section as { content: string }).content || '';
   }
+
+  // Also check report_narratives for nested structures (old Pass 11 output)
+  const reportNarratives = passData?.report_narratives as Record<string, unknown>;
+  if (reportNarratives) {
+    const reportSection = reportNarratives[key];
+    if (typeof reportSection === 'string') return reportSection;
+    if (reportSection && typeof reportSection === 'object' && 'content' in reportSection) {
+      return (reportSection as { content: string }).content || '';
+    }
+    // Check nested structures for financial_analysis and valuation_approaches
+    if (key === 'financial_analysis' && reportNarratives.financial_analysis) {
+      const finAnalysis = reportNarratives.financial_analysis as Record<string, unknown>;
+      // Combine sub-sections if they exist
+      const parts = ['income_statement_analysis', 'balance_sheet_analysis', 'cash_flow_analysis', 'ratio_analysis', 'trend_analysis'];
+      const combined = parts.map(p => {
+        const sub = finAnalysis[p];
+        if (typeof sub === 'string') return sub;
+        if (sub && typeof sub === 'object' && 'content' in sub) return (sub as { content: string }).content;
+        return '';
+      }).filter(Boolean).join('\n\n');
+      if (combined) return combined;
+    }
+    if (key.includes('approach_narrative') && reportNarratives.valuation_approaches) {
+      const valApproaches = reportNarratives.valuation_approaches as Record<string, unknown>;
+      const section = valApproaches[key];
+      if (typeof section === 'string') return section;
+      if (section && typeof section === 'object' && 'content' in section) {
+        return (section as { content: string }).content || '';
+      }
+    }
+  }
+
+  return '';
+}
+
+/**
+ * Helper to get narrative from new 11a-11k pass_results structure
+ */
+function getNarrativeFromPassResults(passOutputs: Record<string, unknown>, passId: string): string {
+  const narrativesWrapper = passOutputs?.narratives as Record<string, unknown>;
+  if (!narrativesWrapper) return '';
+
+  // Check pass_results first (individual pass outputs)
+  const passResults = narrativesWrapper?.pass_results as Record<string, unknown>;
+  if (passResults?.[passId]) {
+    const passResult = passResults[passId] as Record<string, unknown>;
+    if (typeof passResult?.content === 'string') return passResult.content;
+  }
+
+  // Check combined narratives object
+  const combinedNarratives = narrativesWrapper?.narratives as Record<string, unknown>;
+  if (combinedNarratives) {
+    // Map passId to key name
+    const keyMap: Record<string, string> = {
+      '11a': 'executive_summary',
+      '11b': 'company_overview',
+      '11c': 'financial_analysis',
+      '11d': 'industry_analysis',
+      '11e': 'risk_assessment',
+      '11f': 'asset_approach_narrative',
+      '11g': 'income_approach_narrative',
+      '11h': 'market_approach_narrative',
+      '11i': 'valuation_synthesis',
+      '11j': 'assumptions_limiting_conditions',
+      '11k': 'value_enhancement_recommendations',
+    };
+    const key = keyMap[passId];
+    if (key && typeof combinedNarratives[key] === 'string') {
+      return combinedNarratives[key] as string;
+    }
+  }
+
   return '';
 }
 
@@ -209,8 +286,13 @@ export function aggregatePassOutputsToReportData(
     income_approach_weight: getNumber(valueSynthesis, 'approach_summaries.1.weight') || 0.40,
     market_approach_weight: getNumber(valueSynthesis, 'approach_summaries.2.weight') || 0.40,
 
-    // Liquidation value
-    liquidation_value: getNumber(pass7, 'summary.orderly_liquidation_value') || Math.round(assetValue * 0.65),
+    // Liquidation value - check multiple paths
+    liquidation_value: getNumber(pass7,
+      'summary.orderly_liquidation_value',
+      'asset_approach.orderly_liquidation_value.value',
+      'orderly_liquidation_value.value',
+      'orderly_liquidation_value'
+    ) || (assetValue > 0 ? Math.round(assetValue * 0.65) : null),
 
     // === Valuation Summary ===
     valuation_amount: concludedValue,
@@ -225,33 +307,36 @@ export function aggregatePassOutputsToReportData(
     key_value_drivers: pass10?.key_value_drivers || [],
     key_risks_to_value: pass10?.key_risks_to_value || [],
 
-    // === ALL 11 NARRATIVES (Pass 11) ===
-    executive_summary: getNarrative(pass11, 'executive_summary'),
-    company_profile: getNarrative(pass11, 'company_overview'),
-    financial_analysis: getNarrative(pass11, 'financial_analysis'),
-    industry_analysis: getNarrative(pass11, 'industry_analysis') || getNarrative(pass4, 'narrative'),
-    risk_assessment: getNarrative(pass11, 'risk_assessment') || getNarrative(pass6, 'narrative'),
-    asset_approach_analysis: getNarrative(pass11, 'asset_approach_narrative') || getNarrative(pass7, 'narrative'),
-    income_approach_analysis: getNarrative(pass11, 'income_approach_narrative') || getNarrative(pass8, 'narrative'),
-    market_approach_analysis: getNarrative(pass11, 'market_approach_narrative') || getNarrative(pass9, 'narrative'),
-    valuation_reconciliation: getNarrative(pass11, 'valuation_synthesis') || getNarrative(pass10, 'narrative'),
-    assumptions_limiting_conditions: getNarrative(pass11, 'assumptions_limiting_conditions'),
-    strategic_insights: getNarrative(pass11, 'value_enhancement_recommendations'),
-    recommendations: getNarrative(pass11, 'value_enhancement_recommendations'),
+    // === ALL 11 NARRATIVES ===
+    // Try new 11a-11k system first, then fall back to old Pass 11 system
+    executive_summary: getNarrativeFromPassResults(passOutputs, '11a') || getNarrative(pass11, 'executive_summary'),
+    company_profile: getNarrativeFromPassResults(passOutputs, '11b') || getNarrative(pass11, 'company_overview'),
+    financial_analysis: getNarrativeFromPassResults(passOutputs, '11c') || getNarrative(pass11, 'financial_analysis'),
+    industry_analysis: getNarrativeFromPassResults(passOutputs, '11d') || getNarrative(pass11, 'industry_analysis') || getNarrative(pass4, 'narrative'),
+    risk_assessment: getNarrativeFromPassResults(passOutputs, '11e') || getNarrative(pass11, 'risk_assessment') || getNarrative(pass6, 'narrative'),
+    asset_approach_analysis: getNarrativeFromPassResults(passOutputs, '11f') || getNarrative(pass11, 'asset_approach_narrative') || getNarrative(pass7, 'narrative'),
+    income_approach_analysis: getNarrativeFromPassResults(passOutputs, '11g') || getNarrative(pass11, 'income_approach_narrative') || getNarrative(pass8, 'narrative'),
+    market_approach_analysis: getNarrativeFromPassResults(passOutputs, '11h') || getNarrative(pass11, 'market_approach_narrative') || getNarrative(pass9, 'narrative'),
+    valuation_reconciliation: getNarrativeFromPassResults(passOutputs, '11i') || getNarrative(pass11, 'valuation_synthesis') || getNarrative(pass10, 'narrative'),
+    assumptions_limiting_conditions: getNarrativeFromPassResults(passOutputs, '11j') || getNarrative(pass11, 'assumptions_limiting_conditions'),
+    strategic_insights: getNarrativeFromPassResults(passOutputs, '11k') || getNarrative(pass11, 'value_enhancement_recommendations'),
+    recommendations: getNarrativeFromPassResults(passOutputs, '11k') || getNarrative(pass11, 'value_enhancement_recommendations'),
 
     // Nested narratives object for components that expect this structure
     narratives: {
-      executive_summary: getNarrative(pass11, 'executive_summary'),
-      company_overview: getNarrative(pass11, 'company_overview'),
-      financial_analysis: getNarrative(pass11, 'financial_analysis'),
-      industry_analysis: getNarrative(pass11, 'industry_analysis') || getNarrative(pass4, 'narrative'),
-      risk_assessment: getNarrative(pass11, 'risk_assessment') || getNarrative(pass6, 'narrative'),
-      asset_approach_narrative: getNarrative(pass11, 'asset_approach_narrative') || getNarrative(pass7, 'narrative'),
-      income_approach_narrative: getNarrative(pass11, 'income_approach_narrative') || getNarrative(pass8, 'narrative'),
-      market_approach_narrative: getNarrative(pass11, 'market_approach_narrative') || getNarrative(pass9, 'narrative'),
-      valuation_synthesis: getNarrative(pass11, 'valuation_synthesis') || getNarrative(pass10, 'narrative'),
-      assumptions_limiting_conditions: getNarrative(pass11, 'assumptions_limiting_conditions'),
-      value_enhancement_recommendations: getNarrative(pass11, 'value_enhancement_recommendations'),
+      executive_summary: getNarrativeFromPassResults(passOutputs, '11a') || getNarrative(pass11, 'executive_summary'),
+      company_overview: getNarrativeFromPassResults(passOutputs, '11b') || getNarrative(pass11, 'company_overview'),
+      financial_analysis: getNarrativeFromPassResults(passOutputs, '11c') || getNarrative(pass11, 'financial_analysis'),
+      industry_analysis: getNarrativeFromPassResults(passOutputs, '11d') || getNarrative(pass11, 'industry_analysis') || getNarrative(pass4, 'narrative'),
+      risk_assessment: getNarrativeFromPassResults(passOutputs, '11e') || getNarrative(pass11, 'risk_assessment') || getNarrative(pass6, 'narrative'),
+      asset_approach_narrative: getNarrativeFromPassResults(passOutputs, '11f') || getNarrative(pass11, 'asset_approach_narrative') || getNarrative(pass7, 'narrative'),
+      income_approach_narrative: getNarrativeFromPassResults(passOutputs, '11g') || getNarrative(pass11, 'income_approach_narrative') || getNarrative(pass8, 'narrative'),
+      market_approach_narrative: getNarrativeFromPassResults(passOutputs, '11h') || getNarrative(pass11, 'market_approach_narrative') || getNarrative(pass9, 'narrative'),
+      valuation_synthesis: getNarrativeFromPassResults(passOutputs, '11i') || getNarrative(pass11, 'valuation_synthesis') || getNarrative(pass10, 'narrative'),
+      assumptions_limiting_conditions: getNarrativeFromPassResults(passOutputs, '11j') || getNarrative(pass11, 'assumptions_limiting_conditions'),
+      value_enhancement_recommendations: getNarrativeFromPassResults(passOutputs, '11k') || getNarrative(pass11, 'value_enhancement_recommendations'),
+      // Also include strategic_insights for backwards compatibility
+      strategic_insights: getNarrativeFromPassResults(passOutputs, '11k') || getNarrative(pass11, 'value_enhancement_recommendations'),
     },
 
     // === Word counts for quality checking ===
@@ -261,5 +346,24 @@ export function aggregatePassOutputsToReportData(
     industry_data_sources: pass4?.sources_cited || [],
     comparable_data_sources: pass13?.sources || [],
     economic_data_sources: pass12?.sources || [],
+
+    // === Data Quality (Pass 12) ===
+    quality_score: getNumber(pass12, 'quality_summary.overall_quality_score', 'quality_score') ||
+                   (existingReportData.quality_score as number) || 0,
+    quality_grade: String(
+      (pass12?.quality_summary as Record<string, unknown>)?.quality_grade ||
+      pass12?.quality_grade ||
+      existingReportData.quality_grade ||
+      'N/A'
+    ),
+    data_completeness: (pass12?.quality_summary as Record<string, unknown>)?.completeness_score ||
+                       (pass12?.data_completeness as Record<string, unknown>) ||
+                       existingReportData.data_completeness,
+    quality_issues: (pass12?.issues_found as unknown[]) ||
+                    (pass12?.quality_summary as Record<string, unknown>)?.issues ||
+                    existingReportData.quality_issues || [],
+    quality_recommendations: (pass12?.recommendations as unknown[]) ||
+                             (pass12?.quality_summary as Record<string, unknown>)?.recommendations ||
+                             existingReportData.quality_recommendations || [],
   };
 }

@@ -188,18 +188,34 @@ export class ProfessionalPDFGenerator {
 
   /**
    * Calculate liquidation value (conservative estimate)
+   * First checks if Pass 7 provided a liquidation value, then falls back to calculation
    */
   private calculateLiquidationValue(reportData: ReportData): number | null {
+    // First try to use the liquidation value from Pass 7 (if available)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = reportData as any;
+    if (data.liquidation_value && typeof data.liquidation_value === 'number' && data.liquidation_value > 0) {
+      return data.liquidation_value;
+    }
+
+    // Fallback: Calculate from balance sheet components
     if (!reportData.total_assets) return null;
-    
+
     // Liquidation value is typically 50-70% of asset value
     const cash = reportData.cash || 0;
     const ar = (reportData.accounts_receivable || 0) * 0.7; // 70% recovery
     const inventory = (reportData.inventory || 0) * 0.5; // 50% recovery
     const fixedAssets = (reportData.fixed_assets || 0) * 0.4; // 40% recovery
     const liabilities = reportData.total_liabilities || 0;
-    
-    return Math.max(0, cash + ar + inventory + fixedAssets - liabilities);
+
+    const calculated = cash + ar + inventory + fixedAssets - liabilities;
+
+    // If calculated is negative or zero, try using asset_approach_value as fallback
+    if (calculated <= 0 && data.asset_approach_value && data.asset_approach_value > 0) {
+      return Math.round(data.asset_approach_value * 0.65);
+    }
+
+    return Math.max(0, calculated);
   }
 
   /**
@@ -258,7 +274,7 @@ export class ProfessionalPDFGenerator {
     const marketContent = getContent(data.market_approach_analysis) || getContent(narratives.market_approach_narrative);
     const marketAnalysis = marketContent ? await marked(marketContent) : '';
 
-    const reconContent = getContent(data.valuation_reconciliation) || getContent(narratives.valuation_synthesis_narrative);
+    const reconContent = getContent(data.valuation_reconciliation) || getContent(narratives.valuation_synthesis) || getContent(narratives.valuation_synthesis_narrative);
     const valuationRecon = reconContent ? await marked(reconContent) : '';
 
     const riskContent = getContent(data.risk_assessment) || getContent(narratives.risk_assessment);

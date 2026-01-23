@@ -149,6 +149,7 @@ export function EnhancedReportDisplay({ reportData, companyName }: EnhancedRepor
     market_approach_analysis: getNarrativeContent(reportData.market_approach_analysis) ||
                               getNarrativeContent(reportData.narratives?.market_approach_narrative) || '',
     valuation_reconciliation: getNarrativeContent(reportData.valuation_reconciliation) ||
+                              getNarrativeContent(reportData.narratives?.valuation_synthesis) ||
                               getNarrativeContent(reportData.narratives?.valuation_synthesis_narrative) || '',
   };
 
@@ -197,7 +198,7 @@ export function EnhancedReportDisplay({ reportData, companyName }: EnhancedRepor
       </div>
 
       {/* Key Metrics Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <Card className="border-2 border-blue-200 bg-blue-50">
           <CardContent className="pt-6">
             <div className="flex items-center gap-2 mb-3">
@@ -253,6 +254,42 @@ export function EnhancedReportDisplay({ reportData, companyName }: EnhancedRepor
                 Premise: {reportData.premise_of_value}
               </p>
             )}
+          </CardContent>
+        </Card>
+
+        {/* Data Quality Score Card */}
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Shield className="h-6 w-6 text-slate-600" />
+              <p className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Data Quality</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <Badge
+                variant={
+                  reportData.quality_grade === 'A' ? 'default' :
+                  reportData.quality_grade === 'B' ? 'secondary' :
+                  reportData.quality_grade === 'C' ? 'outline' :
+                  'destructive'
+                }
+                className="text-lg px-4 py-2"
+              >
+                {reportData.quality_grade || 'N/A'}
+              </Badge>
+              {reportData.quality_score > 0 && (
+                <span className="text-sm text-slate-600">
+                  ({reportData.quality_score}/100)
+                </span>
+              )}
+            </div>
+            <p className="text-sm text-slate-600 mt-2">
+              {reportData.quality_grade === 'A' ? 'Excellent data quality' :
+               reportData.quality_grade === 'B' ? 'Good data quality' :
+               reportData.quality_grade === 'C' ? 'Adequate data quality' :
+               reportData.quality_grade === 'D' ? 'Limited data quality' :
+               reportData.quality_grade === 'F' ? 'Insufficient data' :
+               'Quality not assessed'}
+            </p>
           </CardContent>
         </Card>
       </div>
