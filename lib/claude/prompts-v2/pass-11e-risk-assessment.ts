@@ -51,7 +51,7 @@ ${riskAssessment.factors?.customer_concentration?.details || 'Customer diversifi
 ${riskAssessment.factors?.owner_dependence?.details || 'Owner dependence analysis pending'}
 
 **Other Key Risks**:
-${riskAssessment.top_risks?.map((r: any) => `- ${r.factor}: ${r.details}`).join('\n') || '- See detailed risk analysis'}
+${Array.isArray(riskAssessment.top_risks) ? riskAssessment.top_risks.map((r: any) => `- ${r.factor}: ${r.details}`).join('\n') : '- See detailed risk analysis'}
 
 ## DISCOUNT RATE BUILD-UP
 
@@ -66,7 +66,7 @@ ${riskAssessment.top_risks?.map((r: any) => `- ${r.factor}: ${r.details}`).join(
 
 ## VALUE DRIVERS (Positive Factors)
 
-${riskAssessment.value_drivers?.map((d: string) => `- ${d}`).join('\n') || '- Established business operations\n- Consistent financial performance\n- Industry expertise'}
+${Array.isArray(riskAssessment.value_drivers) ? riskAssessment.value_drivers.map((d: string) => `- ${d}`).join('\n') : '- Established business operations\n- Consistent financial performance\n- Industry expertise'}
 
 ## STRUCTURE REQUIREMENTS
 

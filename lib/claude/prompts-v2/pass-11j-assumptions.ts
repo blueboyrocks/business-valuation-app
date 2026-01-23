@@ -35,10 +35,10 @@ Write the Assumptions & Limiting Conditions section (400-500 words) for this val
 **Interest Valued**: ${reportMetadata.interest_valued || '100% equity interest'}
 
 **Documents Analyzed**:
-${reportMetadata.documents?.map((d: any) => `- ${d.type}: ${d.name} (${d.year})`).join('\n') || '- Financial statements provided by management\n- Tax returns as available\n- Operational information from discussions'}
+${Array.isArray(reportMetadata.documents) ? reportMetadata.documents.map((d: any) => `- ${d.type}: ${d.name} (${d.year})`).join('\n') : '- Financial statements provided by management\n- Tax returns as available\n- Operational information from discussions'}
 
 **Data Limitations Noted**:
-${reportMetadata.data_limitations?.map((l: string) => `- ${l}`).join('\n') || '- Standard reliance on management-provided information\n- No independent audit performed'}
+${Array.isArray(reportMetadata.data_limitations) ? reportMetadata.data_limitations.map((l: string) => `- ${l}`).join('\n') : '- Standard reliance on management-provided information\n- No independent audit performed'}
 
 ## REQUIRED SECTIONS
 

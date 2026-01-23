@@ -64,10 +64,10 @@ Write a comprehensive Industry Analysis (600-800 words) for this valuation repor
 ## KEY TRENDS & FACTORS
 
 **Key Trends**:
-${industryData.key_trends?.map((t: string) => `- ${t}`).join('\n') || '- See industry analysis'}
+${Array.isArray(industryData.key_trends) ? industryData.key_trends.map((t: string) => `- ${t}`).join('\n') : '- See industry analysis'}
 
 **Key Challenges**:
-${industryData.key_challenges?.map((c: string) => `- ${c}`).join('\n') || '- Standard industry challenges apply'}
+${Array.isArray(industryData.key_challenges) ? industryData.key_challenges.map((c: string) => `- ${c}`).join('\n') : '- Standard industry challenges apply'}
 
 **Competitive Landscape**: ${industryData.competitive_landscape || 'Fragmented market with local competition'}
 

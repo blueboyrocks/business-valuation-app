@@ -64,7 +64,7 @@ ${yearlyData.map(y => `
 - Normalized EBITDA: $${normalizedEarnings.normalized_ebitda?.toLocaleString() || 'N/A'}
 
 **Key Add-Backs**:
-${normalizedEarnings.addbacks?.map((a: any) => `- ${a.description}: $${a.amount?.toLocaleString()}`).join('\n') || '- No significant add-backs'}
+${Array.isArray(normalizedEarnings.addbacks) ? normalizedEarnings.addbacks.map((a: any) => `- ${a.description}: $${a.amount?.toLocaleString()}`).join('\n') : '- No significant add-backs'}
 
 ## BALANCE SHEET DATA
 

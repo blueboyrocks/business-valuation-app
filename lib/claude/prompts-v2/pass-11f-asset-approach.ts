@@ -33,15 +33,15 @@ Write a comprehensive Asset Approach narrative (500-600 words) for this valuatio
 - Total Liabilities: $${assetApproach.total_liabilities?.toLocaleString() || 'N/A'}
 
 **Asset Adjustments**:
-${assetApproach.adjustments?.map((adj: any) => `
+${Array.isArray(assetApproach.adjustments) ? assetApproach.adjustments.map((adj: any) => `
 - **${adj.asset_category}**: Book $${adj.book_value?.toLocaleString() || 'N/A'} -> FMV $${adj.fair_market_value?.toLocaleString() || 'N/A'} (Adjustment: ${adj.adjustment >= 0 ? '+' : ''}$${adj.adjustment?.toLocaleString() || '0'})
   - Rationale: ${adj.rationale || 'Fair value assessment'}
-`).join('\n') || '- Adjustments pending analysis'}
+`).join('\n') : '- Adjustments pending analysis'}
 
 **Liability Adjustments**:
-${assetApproach.liability_adjustments?.map((adj: any) => `
+${Array.isArray(assetApproach.liability_adjustments) ? assetApproach.liability_adjustments.map((adj: any) => `
 - ${adj.description}: ${adj.adjustment >= 0 ? '+' : ''}$${adj.adjustment?.toLocaleString() || '0'}
-`).join('\n') || '- No liability adjustments required'}
+`).join('\n') : '- No liability adjustments required'}
 
 **Summary**:
 - Total Asset Adjustments: ${(assetApproach.total_asset_adjustments || 0) >= 0 ? '+' : ''}$${assetApproach.total_asset_adjustments?.toLocaleString() || '0'}

@@ -37,9 +37,9 @@ Write a comprehensive Market Approach narrative (500-600 words) for this valuati
 - Data Date: ${marketApproach.data_date || 'Current'}
 
 **Company-Specific Adjustments**:
-${marketApproach.adjustments?.map((adj: any) => `
+${Array.isArray(marketApproach.adjustments) ? marketApproach.adjustments.map((adj: any) => `
 - ${adj.factor}: ${adj.adjustment >= 0 ? '+' : ''}${adj.adjustment?.toFixed(1) || '0'}x (${adj.rationale || 'Company-specific factor'})
-`).join('\n') || '- Standard industry multiple applied'}
+`).join('\n') : '- Standard industry multiple applied'}
 
 **Adjusted Multiple**: ${marketApproach.adjusted_multiple?.toFixed(1) || 'N/A'}x
 

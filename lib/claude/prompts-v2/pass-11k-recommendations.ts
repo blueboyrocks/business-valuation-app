@@ -40,15 +40,15 @@ Write actionable Value Enhancement Recommendations (600-800 words) for this valu
 
 ## KEY RISK FACTORS TO ADDRESS
 
-${riskAssessment.top_risks?.map((r: any) => `
+${Array.isArray(riskAssessment.top_risks) ? riskAssessment.top_risks.map((r: any) => `
 **${r.factor || r}** (Score: ${r.score || 'N/A'}/5)
 - Current State: ${r.current_state || 'See risk analysis'}
 - Impact on Value: ${r.value_impact || 'Negative pressure on multiple'}
-`).join('\n') || '- Customer concentration\n- Owner dependence\n- Key employee risk'}
+`).join('\n') : '- Customer concentration\n- Owner dependence\n- Key employee risk'}
 
 ## VALUE DRIVERS TO LEVERAGE
 
-${riskAssessment.value_drivers?.map((d: string) => `- ${d}`).join('\n') || '- Established market position\n- Consistent financial performance\n- Growth potential'}
+${Array.isArray(riskAssessment.value_drivers) ? riskAssessment.value_drivers.map((d: string) => `- ${d}`).join('\n') : '- Established market position\n- Consistent financial performance\n- Growth potential'}
 
 ## FINANCIAL METRICS TO IMPROVE
 
