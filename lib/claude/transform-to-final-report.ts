@@ -86,7 +86,7 @@ export function transformToFinalReport(
     kpi_analysis: transformKPIAnalysis(passes.pass2, passes.pass3, passes.pass5),
     valuation_approaches: transformValuationApproaches(passes.pass7, passes.pass8, passes.pass9),
     valuation_synthesis: transformValuationSynthesis(passes.pass10, passes.pass3),
-    narratives: transformNarratives(passes.pass11, passes.pass7, passes.pass8, passes.pass9),
+    narratives: transformNarratives(passes.pass11, passes.pass6, passes.pass7, passes.pass8, passes.pass9),
     data_quality: transformDataQuality(passes.pass1, passes.pass12),
     metadata: transformMetadata(passes.pass1, passes.pass12),
   };
@@ -937,11 +937,42 @@ function transformValuationSynthesis(
 
 function transformNarratives(
   pass11: Pass11Output,
+  pass6: Pass6Output,
   pass7: Pass7Output,
   pass8: Pass8Output,
   pass9: Pass9Output
 ): NarrativesFinal {
   const narratives = pass11?.report_narratives || {} as any;
+
+  // Build value enhancement content from Pass 6's value drivers and risk mitigants
+  const valueDrivers = pass6?.company_strengths?.value_drivers || [];
+  const riskMitigants = pass6?.risk_summary?.key_risk_mitigants || [];
+  const strengths = pass6?.company_strengths?.strengths || [];
+
+  let valueEnhancementContent = '';
+  if (valueDrivers.length > 0 || riskMitigants.length > 0 || strengths.length > 0) {
+    const sections: string[] = [];
+
+    if (valueDrivers.length > 0) {
+      sections.push('## Key Value Drivers\n\n' + valueDrivers.map(d =>
+        `**${d.driver}** (${d.importance}): ${d.description} - Current performance: ${d.current_performance}`
+      ).join('\n\n'));
+    }
+
+    if (strengths.length > 0) {
+      sections.push('## Company Strengths\n\n' + strengths.map(s =>
+        `**${s.strength}** (${s.category}): ${s.description}`
+      ).join('\n\n'));
+    }
+
+    if (riskMitigants.length > 0) {
+      sections.push('## Risk Mitigation Strategies\n\n' + riskMitigants.map(m =>
+        `- ${m}`
+      ).join('\n'));
+    }
+
+    valueEnhancementContent = sections.join('\n\n');
+  }
 
   return {
     executive_summary: {
@@ -993,7 +1024,7 @@ function transformNarratives(
     },
     value_enhancement_recommendations: {
       word_count_target: NARRATIVE_WORD_TARGETS.value_enhancement_recommendations,
-      content: '', // Would need to generate from pass11 or separate analysis
+      content: valueEnhancementContent,
     },
   };
 }

@@ -145,9 +145,14 @@ export function aggregatePassOutputsToReportData(
   const pass12 = getPass(passOutputs, 12);
   const pass13 = getPass(passOutputs, 13);
 
+  // Get user-provided data (takes priority over extracted data)
+  const userProvided = (passOutputs['user_provided'] || {}) as Record<string, unknown>;
+  const userIndustry = (userProvided?.industry_classification || {}) as Record<string, unknown>;
+
   // Get nested objects
   const companyProfile = (pass1?.company_profile || {}) as Record<string, unknown>;
-  const industryClass = (pass1?.industry_classification || pass4?.industry_classification || {}) as Record<string, unknown>;
+  // User-provided industry takes priority, then Pass 1, then Pass 4
+  const industryClass = (userIndustry?.naics_code ? userIndustry : (pass1?.industry_classification || pass4?.industry_classification || {})) as Record<string, unknown>;
   const incomeStatements = (pass2?.income_statements || []) as Record<string, unknown>[];
   const latestIncome = incomeStatements[0] || {};
   const balanceSheets = (pass3?.balance_sheets || []) as Record<string, unknown>[];

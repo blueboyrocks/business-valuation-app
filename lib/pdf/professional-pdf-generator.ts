@@ -577,20 +577,68 @@ export class ProfessionalPDFGenerator {
   <!-- Table of Contents -->
   <div class="toc">
     <h1>Contents</h1>
-    <div class="toc-item"><span>Your Valuation</span><span>3</span></div>
-    <div class="toc-item"><span>Financial Summary</span><span>4</span></div>
-    <div class="toc-item"><span>Key Performance Indicators</span><span>5</span></div>
-    <div class="toc-item"><span>Executive Summary</span><span>6</span></div>
-    ${companyProfile ? '<div class="toc-item"><span>Company Profile</span><span>7</span></div>' : ''}
-    ${industryAnalysis ? '<div class="toc-item"><span>Industry Analysis</span><span>8</span></div>' : ''}
-    ${financialAnalysis ? '<div class="toc-item"><span>Financial Analysis</span><span>9</span></div>' : ''}
-    ${assetAnalysis ? '<div class="toc-item"><span>Asset Approach</span><span>10</span></div>' : ''}
-    ${incomeAnalysis ? '<div class="toc-item"><span>Income Approach</span><span>11</span></div>' : ''}
-    ${marketAnalysis ? '<div class="toc-item"><span>Market Approach</span><span>12</span></div>' : ''}
-    ${valuationRecon ? '<div class="toc-item"><span>Valuation Reconciliation</span><span>13</span></div>' : ''}
-    ${riskAssessment ? '<div class="toc-item"><span>Risk Assessment</span><span>14</span></div>' : ''}
-    ${strategicInsights ? '<div class="toc-item"><span>Strategic Insights</span><span>15</span></div>' : ''}
-    ${assumptionsLimitingConditions ? '<div class="toc-item"><span>Assumptions & Limiting Conditions</span><span>16</span></div>' : ''}
+    ${(() => {
+      // Calculate dynamic page numbers based on included sections
+      // Page 1: Cover, Page 2: TOC
+      let pageNum = 3;
+      const tocItems: string[] = [];
+
+      // Fixed sections (always present)
+      tocItems.push(`<div class="toc-item"><span>Your Valuation</span><span>${pageNum}</span></div>`);
+      pageNum += 2; // Your Valuation takes ~2 pages
+
+      tocItems.push(`<div class="toc-item"><span>Financial Summary</span><span>${pageNum}</span></div>`);
+      pageNum += 2; // Financial Summary takes ~2 pages
+
+      tocItems.push(`<div class="toc-item"><span>Key Performance Indicators</span><span>${pageNum}</span></div>`);
+      pageNum += 2; // KPIs take ~2 pages
+
+      tocItems.push(`<div class="toc-item"><span>Executive Summary</span><span>${pageNum}</span></div>`);
+      pageNum += 3; // Executive Summary takes ~3 pages (long content)
+
+      // Conditional sections
+      if (companyProfile) {
+        tocItems.push(`<div class="toc-item"><span>Company Profile</span><span>${pageNum}</span></div>`);
+        pageNum += 2;
+      }
+      if (industryAnalysis) {
+        tocItems.push(`<div class="toc-item"><span>Industry Analysis</span><span>${pageNum}</span></div>`);
+        pageNum += 2;
+      }
+      if (financialAnalysis) {
+        tocItems.push(`<div class="toc-item"><span>Financial Analysis</span><span>${pageNum}</span></div>`);
+        pageNum += 2;
+      }
+      if (assetAnalysis) {
+        tocItems.push(`<div class="toc-item"><span>Asset Approach</span><span>${pageNum}</span></div>`);
+        pageNum += 2;
+      }
+      if (incomeAnalysis) {
+        tocItems.push(`<div class="toc-item"><span>Income Approach</span><span>${pageNum}</span></div>`);
+        pageNum += 2;
+      }
+      if (marketAnalysis) {
+        tocItems.push(`<div class="toc-item"><span>Market Approach</span><span>${pageNum}</span></div>`);
+        pageNum += 2;
+      }
+      if (valuationRecon) {
+        tocItems.push(`<div class="toc-item"><span>Valuation Reconciliation</span><span>${pageNum}</span></div>`);
+        pageNum += 2;
+      }
+      if (riskAssessment) {
+        tocItems.push(`<div class="toc-item"><span>Risk Assessment</span><span>${pageNum}</span></div>`);
+        pageNum += 2;
+      }
+      if (strategicInsights) {
+        tocItems.push(`<div class="toc-item"><span>Strategic Insights</span><span>${pageNum}</span></div>`);
+        pageNum += 2;
+      }
+      if (assumptionsLimitingConditions) {
+        tocItems.push(`<div class="toc-item"><span>Assumptions & Limiting Conditions</span><span>${pageNum}</span></div>`);
+      }
+
+      return tocItems.join('\n    ');
+    })()}
   </div>
 
   <!-- Your Valuation -->
@@ -598,7 +646,7 @@ export class ProfessionalPDFGenerator {
     <h1 class="section-title">Your Valuation</h1>
     
     <h2>${companyName}</h2>
-    ${reportData.industry_name ? `<p><strong>Industry:</strong> ${reportData.naics_code} - ${reportData.industry_name}</p>` : ''}
+    ${reportData.industry_name ? `<p><strong>Industry:</strong> ${reportData.naics_code ? `${reportData.naics_code} - ` : ''}${reportData.industry_name}</p>` : ''}
     
     <div class="value-card">
       <div class="value-label">Equity Value (Fair Market Value)</div>

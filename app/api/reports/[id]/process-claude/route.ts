@@ -188,10 +188,29 @@ export async function POST(
     const finalReport = result.final_report;
     const valuationSummary = extractValuationSummary(finalReport);
 
+    // Convert pass_outputs array to keyed object for storage
+    const passOutputsKeyed: Record<string, unknown> = {};
+    result.pass_outputs.forEach((output, index) => {
+      passOutputsKeyed[String(index + 1)] = output;
+    });
+    // Preserve user_provided data if it exists
+    const { data: existingReport } = await getSupabaseClient()
+      .from('reports')
+      .select('pass_outputs')
+      .eq('id', reportId)
+      .single();
+    if (existingReport?.pass_outputs && typeof existingReport.pass_outputs === 'object') {
+      const existingPassOutputs = existingReport.pass_outputs as Record<string, unknown>;
+      if (existingPassOutputs['user_provided']) {
+        passOutputsKeyed['user_provided'] = existingPassOutputs['user_provided'];
+      }
+    }
+
     await updateReportStatus(reportId, 'completed', {
       processing_progress: 100,
       processing_message: 'Valuation complete',
       report_data: finalReport,
+      pass_outputs: passOutputsKeyed,
       tokens_used: result.metrics.total_tokens_used,
       processing_cost: result.metrics.total_cost_usd,
       processing_time_ms: result.metrics.total_duration_ms,

@@ -1271,7 +1271,7 @@ async function assembleFinalReport(
       market: p9.value_indication || p9.market_approach_indication,
     },
     risk_assessment: p6.overall_risk_assessment,
-    narratives: p11.narratives,
+    narratives: p11.report_narratives,
     quality_review: {
       grade: p12.quality_grade || 'B',
       score: p12.quality_score || 75,
