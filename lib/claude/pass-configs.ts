@@ -223,9 +223,14 @@ export function buildPassPrompt(
   const pass9 = getPassOutput(priorPassOutputs, 9) as Record<string, unknown> | null;
   const pass10 = getPassOutput(priorPassOutputs, 10) as Record<string, unknown> | null;
 
+  // Check for user-provided industry (highest priority)
+  const userProvided = priorPassOutputs['user_provided'] as Record<string, unknown> | undefined;
+  const userIndustry = userProvided?.industry_classification as Record<string, unknown> | undefined;
+
   // Extract common values
   const companyProfile = (pass1?.company_profile || {}) as Record<string, unknown>;
-  const industryClassification = (pass1?.industry_classification || pass4?.industry_classification || {}) as Record<string, unknown>;
+  // User-provided industry takes priority over extracted
+  const industryClassification = (userIndustry || pass1?.industry_classification || pass4?.industry_classification || {}) as Record<string, unknown>;
   const incomeStatements = ((pass2?.income_statements || []) as unknown[]);
   const latestIncome = incomeStatements[0] as Record<string, unknown> | undefined;
   const balanceSheets = ((pass3?.balance_sheets || []) as unknown[]);
@@ -283,9 +288,23 @@ export function buildPassPrompt(
     // Build context string for the user prompt
     const contextStr = buildPriorPassContext(passNumber, priorPassOutputs, report);
 
+    // For Pass 1, inject user-provided industry if available
+    let industryContext = '';
+    if (passNumber === 1 && userIndustry) {
+      industryContext = `\n\n## KNOWN INDUSTRY CLASSIFICATION (User Verified)
+
+IMPORTANT: The user has confirmed the industry classification. You MUST use this exact classification in your output:
+
+**NAICS Code**: ${userIndustry.naics_code}
+**Industry**: ${userIndustry.naics_description}
+**Sector**: ${userIndustry.sector || 'Not specified'}
+
+Do NOT try to determine a different industry - use this verified classification.\n`;
+    }
+
     return {
       systemPrompt: standardConfig.systemPrompt,
-      userPrompt: `${standardConfig.userPrompt}\n\n## PRIOR PASS DATA\n\n${contextStr}\n\n## DOCUMENT TEXT\n\n${report.document_text || 'No document text available'}`,
+      userPrompt: `${standardConfig.userPrompt}${industryContext}\n\n## PRIOR PASS DATA\n\n${contextStr}\n\n## DOCUMENT TEXT\n\n${report.document_text || 'No document text available'}`,
     };
   }
 

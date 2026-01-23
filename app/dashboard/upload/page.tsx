@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
 import { Upload, FileText, X, Loader2, XCircle, CheckCircle2 } from 'lucide-react';
 import { logError } from '@/lib/errorLogger';
+import { IndustrySelector } from '@/components/IndustrySelector';
 
 interface AnalysisProgress {
   phase: 'uploading' | 'extracting' | 'valuating' | 'completed' | 'failed' | 'cancelled';
@@ -30,6 +31,11 @@ export default function UploadPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [companyName, setCompanyName] = useState('');
+  const [selectedIndustry, setSelectedIndustry] = useState<{
+    naics_code: string;
+    naics_description: string;
+    sector: string;
+  } | null>(null);
   const [files, setFiles] = useState<File[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -319,6 +325,15 @@ export default function UploadPage() {
       return;
     }
 
+    if (!selectedIndustry) {
+      toast({
+        title: 'Industry required',
+        description: 'Please select an industry classification for accurate valuation.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
     if (files.length === 0) {
       toast({
         title: 'No files selected',
@@ -412,7 +427,7 @@ export default function UploadPage() {
         message: 'Files uploaded! Creating report...',
       });
 
-      // Call API to create report with file paths
+      // Call API to create report with file paths and industry
       const uploadResponse = await fetch('/api/upload-documents', {
         method: 'POST',
         headers: {
@@ -422,6 +437,7 @@ export default function UploadPage() {
         body: JSON.stringify({
           companyName,
           files: uploadedFiles,
+          industry: selectedIndustry,
         }),
         signal: abortControllerRef.current?.signal,
       });
@@ -641,6 +657,11 @@ export default function UploadPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* Industry Selection */}
+            <IndustrySelector
+              onSelect={setSelectedIndustry}
+            />
 
             {/* File upload */}
             <Card>

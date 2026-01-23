@@ -161,6 +161,29 @@ export async function runTwelvePassValuation(
   let totalOutputTokens = 0;
   let totalRetries = 0;
 
+  // Load user-provided data from database (e.g., industry classification)
+  let userProvidedData: Record<string, unknown> | undefined;
+  try {
+    const { data } = await supabase
+      .from('reports')
+      .select('pass_outputs')
+      .eq('id', reportId)
+      .single();
+    if (data?.pass_outputs && typeof data.pass_outputs === 'object') {
+      userProvidedData = (data.pass_outputs as Record<string, unknown>)['user_provided'] as Record<string, unknown> | undefined;
+      if (userProvidedData) {
+        console.log(`[12-PASS] Loaded user-provided data: ${JSON.stringify(userProvidedData)}`);
+      }
+    }
+  } catch (loadError) {
+    console.warn(`[12-PASS] Could not load user-provided data:`, loadError);
+  }
+
+  // Store user_provided in passOutputs map (accessible via type cast)
+  if (userProvidedData) {
+    (passOutputs as unknown as Record<string, unknown>)['user_provided'] = userProvidedData;
+  }
+
   // Context for passes
   const context: PassContext = {
     reportId,
@@ -858,10 +881,22 @@ export async function executeSinglePass(
       console.log(`[SINGLE-PASS] Downloaded ${pdfBase64.length} document(s)`);
 
       // Create context for per-document extraction
+      // Also preserve user_provided data (non-numeric key)
+      const userProvidedData = (passOutputs as unknown as Record<string, unknown>)['user_provided'] as Record<string, unknown> | undefined;
+      const numericPassOutputs = new Map(
+        Object.entries(passOutputs)
+          .filter(([k]) => !isNaN(parseInt(k)))
+          .map(([k, v]) => [parseInt(k), v])
+      );
+      // Store user_provided back in the map with a special key (using 0 as placeholder)
+      if (userProvidedData) {
+        (numericPassOutputs as unknown as Record<string, unknown>)['user_provided'] = userProvidedData;
+      }
+
       const context: PassContext = {
         reportId,
         pdfBase64,
-        passOutputs: new Map(Object.entries(passOutputs).map(([k, v]) => [parseInt(k), v])),
+        passOutputs: numericPassOutputs,
         onProgress: (pass, msg, pct) => onProgress?.(msg, pct),
       };
 
@@ -2906,7 +2941,19 @@ async function runExtractionPassesWithPerDocumentProcessing(
   pass1TotalTime = Date.now() - pass1StartTime;
 
   // Merge Pass 1 outputs
-  const mergedPass1 = mergePass1Outputs(pass1Outputs);
+  let mergedPass1 = mergePass1Outputs(pass1Outputs);
+
+  // Check for user-provided industry classification and override AI extraction
+  const existingOutputs = context.passOutputs as unknown as Record<string, unknown>;
+  const userProvided = existingOutputs['user_provided'] as Record<string, unknown> | undefined;
+  if (userProvided?.industry_classification) {
+    console.log(`[12-PASS] Using user-provided industry: ${(userProvided.industry_classification as Record<string, unknown>).naics_code} - ${(userProvided.industry_classification as Record<string, unknown>).naics_description}`);
+    mergedPass1 = {
+      ...mergedPass1,
+      industry_classification: userProvided.industry_classification as typeof mergedPass1.industry_classification,
+    };
+  }
+
   const pass1Result: PassResult<Pass1Output> = {
     success: true,
     output: mergedPass1,
@@ -2922,6 +2969,7 @@ async function runExtractionPassesWithPerDocumentProcessing(
   totalRetries += pass1Retries;
 
   console.log(`[12-PASS] Pass 1 complete: ${mergedPass1.company_profile?.legal_name || 'Company'} identified`);
+  console.log(`[12-PASS] Industry: ${mergedPass1.industry_classification?.naics_code} - ${mergedPass1.industry_classification?.naics_description}`);
   context.passOutputs.set(1, mergedPass1);
 
   await saveToDatabase(supabase, context.reportId, {

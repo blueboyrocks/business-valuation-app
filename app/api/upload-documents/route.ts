@@ -48,9 +48,14 @@ export async function POST(request: NextRequest) {
 
     // Parse JSON body with file paths (files already uploaded to Supabase)
     const body = await request.json();
-    const { companyName, files } = body as {
+    const { companyName, files, industry } = body as {
       companyName: string;
       files: { name: string; path: string; size: number }[];
+      industry?: {
+        naics_code: string;
+        naics_description: string;
+        sector: string;
+      };
     };
 
     if (!companyName || !companyName.trim()) {
@@ -131,6 +136,19 @@ export async function POST(request: NextRequest) {
 
     console.log(`Creating report with user_id: ${userId}, company: ${companyName}`);
 
+    // Pre-populate pass_outputs with user-provided industry data
+    const initialPassOutputs = industry ? {
+      user_provided: {
+        industry_classification: {
+          naics_code: industry.naics_code,
+          naics_description: industry.naics_description,
+          sector: industry.sector,
+          source: 'user_input',
+          confidence: 1.0,
+        },
+      },
+    } : {};
+
     const { data: reportData, error: reportError } = await supabase
       .from('reports')
       .insert({
@@ -138,6 +156,7 @@ export async function POST(request: NextRequest) {
         company_name: companyName,
         report_status: 'pending',
         document_id: uploadedDocuments[0]?.id || null,
+        pass_outputs: initialPassOutputs,
       } as any)
       .select()
       .single();
