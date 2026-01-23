@@ -109,6 +109,15 @@ export async function executePass(
     }
     jsonStr = jsonStr.trim();
 
+    // Try to find JSON object in the response if it doesn't start with {
+    if (!jsonStr.startsWith('{')) {
+      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        console.log(`[PASS ${passNumber}] Found JSON object in response text`);
+        jsonStr = jsonMatch[0];
+      }
+    }
+
     const parsed = JSON.parse(jsonStr);
     console.log(`[PASS ${passNumber}] Successfully parsed response`);
     return parsed;
@@ -116,6 +125,18 @@ export async function executePass(
   } catch (parseError) {
     console.error(`[PASS ${passNumber}] JSON parse error:`, parseError);
     console.error(`[PASS ${passNumber}] Raw content (first 500 chars):`, textContent.slice(0, 500));
+
+    // Try one more time to extract JSON from the response
+    try {
+      const jsonMatch = textContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const extracted = JSON.parse(jsonMatch[0]);
+        console.log(`[PASS ${passNumber}] Extracted JSON from mixed content`);
+        return extracted;
+      }
+    } catch {
+      // Fall through to return raw content
+    }
 
     // Return raw text if JSON parsing fails
     return {

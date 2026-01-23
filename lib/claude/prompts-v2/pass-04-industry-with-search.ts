@@ -22,7 +22,18 @@ For EVERY factual claim about industry data, you MUST:
 - Cite your sources with URLs
 - Include the date of the data
 
-CRITICAL: Return ONLY valid JSON. Do NOT wrap in markdown code fences.`;
+IMPORTANT HANDLING FOR UNKNOWN INDUSTRIES:
+If the industry is listed as "Unknown" or you cannot identify it:
+1. Search for general "small business valuation multiples" and "private company acquisition trends"
+2. Use broad service or retail business benchmarks as defaults
+3. Still return complete JSON with your best estimates and note the limitations
+4. NEVER refuse to provide data - always give reasonable defaults based on general small business data
+
+CRITICAL REQUIREMENTS:
+- You MUST return ONLY valid JSON - no explanations, no markdown, no text before or after the JSON
+- Start your response with { and end with }
+- Do NOT include any text like "I need to" or "Let me search" - just return the JSON directly
+- If you cannot find specific data, use reasonable industry defaults and note it in research_notes`;
 
 export function buildPass4WebSearchPrompt(
   companyProfile: Record<string, unknown>,
@@ -34,33 +45,49 @@ export function buildPass4WebSearchPrompt(
   const revenue = financialData?.annual_revenue || 0;
   const sde = financialData?.normalized_sde || 0;
 
+  // Determine if we have valid industry data
+  const hasValidIndustry = industryName && industryName !== 'Unknown Industry' && industryName !== 'Unknown';
+  const hasValidNaics = naicsCode && naicsCode !== 'Unknown' && naicsCode !== '';
+
+  // Build search terms - use fallbacks for unknown industries
+  const searchIndustry = hasValidIndustry ? industryName : 'small business service company';
+  const searchNaics = hasValidNaics ? naicsCode : 'professional services';
+
   return `## INDUSTRY RESEARCH TASK
 
 Research the following industry for a business valuation:
 
-**Industry**: ${industryName}
-**NAICS Code**: ${naicsCode}
+**Industry**: ${industryName}${!hasValidIndustry ? ' (NOTE: Industry unknown - use general small business data)' : ''}
+**NAICS Code**: ${naicsCode}${!hasValidNaics ? ' (NOTE: NAICS unknown - use general benchmarks)' : ''}
 **Company Revenue**: $${revenue.toLocaleString()}
 **Company SDE**: $${sde.toLocaleString()}
+
+${!hasValidIndustry ? `
+IMPORTANT: The specific industry is unknown. You MUST still:
+1. Search for general small business valuation multiples and trends
+2. Use service business or general SMB benchmarks as defaults
+3. Return complete JSON with reasonable estimates
+4. Note the data limitations in research_notes
+` : ''}
 
 ## REQUIRED WEB SEARCHES
 
 Please perform the following searches and synthesize the results:
 
 ### 1. Industry Valuation Multiples
-Search for: "${industryName} business valuation multiples 2024 2025"
-Search for: "SDE multiple ${industryName} small business"
-Search for: "${naicsCode} industry valuation"
+Search for: "${searchIndustry} business valuation multiples 2024 2025"
+Search for: "SDE multiple small business acquisition"
+${hasValidNaics ? `Search for: "${searchNaics} industry valuation"` : 'Search for: "private company valuation multiples by revenue"'}
 
 ### 2. Comparable Transactions
-Search for: "${industryName} acquisition transactions 2024"
-Search for: "${industryName} M&A deals recent"
-Search for: "small business sold ${industryName}"
+Search for: "${searchIndustry} acquisition transactions 2024"
+Search for: "small business M&A deals 2024 2025"
+Search for: "business sold $${Math.round(revenue / 1000000)}M revenue"
 
 ### 3. Industry Analysis
-Search for: "${industryName} industry outlook 2025"
-Search for: "${naicsCode} market size growth rate"
-Search for: "${industryName} industry challenges trends"
+Search for: "${searchIndustry} industry outlook 2025"
+Search for: "small business market trends 2025"
+Search for: "${searchIndustry} industry challenges"
 
 ### 4. Economic Context
 Search for: "small business lending rates 2025"
