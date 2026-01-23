@@ -13,13 +13,15 @@
  * - skipPdf=true: Only regenerate report_data, skip PDF generation
  */
 
-export const maxDuration = 120; // PDF generation can take time - v2
+export const maxDuration = 120; // PDF generation can take time - v5
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { transformToFinalReport, PassOutputs, validateFinalReport } from '@/lib/claude/transform-to-final-report';
 import { generateAndStorePDF } from '@/lib/pdf/auto-generate';
+import { validateReportOutput } from '@/lib/validation/report-output-validator';
+import { reconcileWithNarratives } from '@/lib/extraction/narrative-data-extractor';
 import {
   Pass1Output,
   Pass2Output,
@@ -231,13 +233,34 @@ export async function POST(
       market_approach_analysis: finalReport.narratives?.market_approach_narrative?.content || passes.pass9?.narrative?.content || '',
     };
 
+    // 7b. Reconcile with narrative data (fallback for missing values)
+    const narrativesForReconciliation = {
+      executive_summary: finalReport.narratives?.executive_summary,
+      asset_approach_narrative: finalReport.narratives?.asset_approach_narrative || passes.pass7?.narrative,
+      income_approach_narrative: finalReport.narratives?.income_approach_narrative || passes.pass8?.narrative,
+      market_approach_narrative: finalReport.narratives?.market_approach_narrative || passes.pass9?.narrative,
+    };
+
+    const reconciledReport = reconcileWithNarratives(reportWithQuality, narrativesForReconciliation);
+    console.log(`[REGENERATE] After reconciliation - Asset: ${reconciledReport.asset_approach_value}, Income: ${reconciledReport.income_approach_value}, Market: ${reconciledReport.market_approach_value}`);
+
+    // 7c. Validate the final report data
+    const outputValidation = validateReportOutput(reconciledReport);
+    if (!outputValidation.isValid) {
+      console.warn(`[REGENERATE] Output validation failed: ${outputValidation.missingFields.join(', ')}`);
+    }
+    console.log(`[REGENERATE] Output completeness score: ${outputValidation.score}/100`);
+
     // 8. Update the report in database
     console.log(`[REGENERATE] Saving report to database...`);
+    // Use reconciled values for the final concluded value
+    const finalConcludedValue = reconciledReport.valuation_amount || concludedValue;
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: updateError } = await (getSupabaseClient().from('reports') as any).update({
       report_status: 'completed',
-      report_data: reportWithQuality,
-      valuation_amount: concludedValue,
+      report_data: reconciledReport,
+      valuation_amount: finalConcludedValue,
       valuation_method: 'Weighted Multi-Approach',
       executive_summary: finalReport.narratives?.executive_summary?.content || null,
       updated_at: new Date().toISOString(),
@@ -262,7 +285,7 @@ export async function POST(
         const result = await generateAndStorePDF(
           reportId,
           report.company_name,
-          reportWithQuality as unknown as Record<string, unknown>
+          reconciledReport as unknown as Record<string, unknown>
         );
 
         pdfGenerated = result.success;
@@ -286,18 +309,26 @@ export async function POST(
       success: true,
       message: 'Report regenerated successfully',
       reportId,
+      version: 'v5',
       valuationSummary: {
-        concludedValue,
+        concludedValue: finalConcludedValue,
+        assetApproachValue: reconciledReport.asset_approach_value,
+        incomeApproachValue: reconciledReport.income_approach_value,
+        marketApproachValue: reconciledReport.market_approach_value,
         valueRangeLow: finalReport.valuation_synthesis?.final_valuation?.valuation_range_low,
         valueRangeHigh: finalReport.valuation_synthesis?.final_valuation?.valuation_range_high,
         qualityGrade,
         qualityScore,
       },
       validation: {
-        valid: validation.valid,
-        errorCount: validation.errors.length,
-        warningCount: validation.warnings.length,
-        warnings: validation.warnings.slice(0, 5), // Show first 5 warnings
+        schemaValid: validation.valid,
+        schemaErrorCount: validation.errors.length,
+        schemaWarningCount: validation.warnings.length,
+        schemaWarnings: validation.warnings.slice(0, 5),
+        outputValid: outputValidation.isValid,
+        outputCompletenessScore: outputValidation.score,
+        outputMissingFields: outputValidation.missingFields,
+        outputNullFields: outputValidation.nullFields.slice(0, 5),
       },
       pdf: {
         generated: pdfGenerated,
