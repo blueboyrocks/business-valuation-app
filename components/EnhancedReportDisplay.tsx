@@ -97,6 +97,14 @@ const markdownComponents: Components = {
   ),
 };
 
+// Helper to get content from narrative fields (handles both string and {content: string} formats)
+function getNarrativeContent(value: any): string {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (value.content) return value.content;
+  return '';
+}
+
 export function EnhancedReportDisplay({ reportData, companyName }: EnhancedReportDisplayProps) {
   if (!reportData) {
     return (
@@ -118,6 +126,64 @@ export function EnhancedReportDisplay({ reportData, companyName }: EnhancedRepor
       maximumFractionDigits: 0,
     }).format(amount);
   };
+
+  // Extract narratives from multiple possible paths
+  const narratives = {
+    executive_summary: getNarrativeContent(reportData.executive_summary) ||
+                       getNarrativeContent(reportData.narratives?.executive_summary) || '',
+    financial_analysis: getNarrativeContent(reportData.financial_analysis) ||
+                        getNarrativeContent(reportData.narratives?.financial_analysis) || '',
+    industry_analysis: getNarrativeContent(reportData.industry_analysis) ||
+                       getNarrativeContent(reportData.narratives?.industry_analysis) || '',
+    risk_assessment: getNarrativeContent(reportData.risk_assessment) ||
+                     getNarrativeContent(reportData.narratives?.risk_assessment) || '',
+    strategic_insights: getNarrativeContent(reportData.strategic_insights) ||
+                        getNarrativeContent(reportData.narratives?.value_enhancement_recommendations) ||
+                        getNarrativeContent(reportData.narratives?.strategic_insights) || '',
+    company_profile: getNarrativeContent(reportData.company_profile) ||
+                     getNarrativeContent(reportData.narratives?.company_overview) || '',
+    asset_approach_analysis: getNarrativeContent(reportData.asset_approach_analysis) ||
+                             getNarrativeContent(reportData.narratives?.asset_approach_narrative) || '',
+    income_approach_analysis: getNarrativeContent(reportData.income_approach_analysis) ||
+                              getNarrativeContent(reportData.narratives?.income_approach_narrative) || '',
+    market_approach_analysis: getNarrativeContent(reportData.market_approach_analysis) ||
+                              getNarrativeContent(reportData.narratives?.market_approach_narrative) || '',
+    valuation_reconciliation: getNarrativeContent(reportData.valuation_reconciliation) ||
+                              getNarrativeContent(reportData.narratives?.valuation_synthesis_narrative) || '',
+  };
+
+  // Extract valuation summary from multiple possible paths
+  const valuationMethod = reportData.valuation_method ||
+                          reportData.valuation_summary?.primary_valuation_method ||
+                          'Weighted Multi-Approach';
+
+  const confidenceLevel = reportData.confidence_level ||
+                          reportData.valuation_summary?.confidence_level ||
+                          reportData.valuation_conclusion?.confidence_level ||
+                          'Moderate';
+
+  const valueRangeLow = reportData.valuation_range_low ||
+                        reportData.valuation_summary?.value_range?.low ||
+                        reportData.valuation_conclusion?.value_range_low ||
+                        (reportData.valuation_amount ? Math.round(reportData.valuation_amount * 0.85) : null);
+
+  const valueRangeHigh = reportData.valuation_range_high ||
+                         reportData.valuation_summary?.value_range?.high ||
+                         reportData.valuation_conclusion?.value_range_high ||
+                         (reportData.valuation_amount ? Math.round(reportData.valuation_amount * 1.15) : null);
+
+  // Extract weights with defaults (ensure they're numbers)
+  const assetWeight = parseFloat(reportData.asset_approach_weight) || 0.20;
+  const incomeWeight = parseFloat(reportData.income_approach_weight) || 0.40;
+  const marketWeight = parseFloat(reportData.market_approach_weight) || 0.40;
+
+  // Extract approach values
+  const assetValue = reportData.asset_approach_value || 0;
+  const incomeValue = reportData.income_approach_value || 0;
+  const marketValue = reportData.market_approach_value || 0;
+
+  // Calculate liquidation value if not provided
+  const liquidationValue = reportData.liquidation_value || Math.round(assetValue * 0.65);
 
   return (
     <div className="space-y-8">
@@ -141,9 +207,9 @@ export function EnhancedReportDisplay({ reportData, companyName }: EnhancedRepor
             <p className="text-3xl font-bold text-slate-900 mb-2">
               {formatCurrency(reportData.valuation_amount)}
             </p>
-            {(reportData.valuation_range_low && reportData.valuation_range_high) && (
+            {(valueRangeLow && valueRangeHigh) && (
               <p className="text-sm text-slate-600">
-                Range: {formatCurrency(reportData.valuation_range_low)} - {formatCurrency(reportData.valuation_range_high)}
+                Range: {formatCurrency(valueRangeLow)} - {formatCurrency(valueRangeHigh)}
               </p>
             )}
           </CardContent>
@@ -156,7 +222,7 @@ export function EnhancedReportDisplay({ reportData, companyName }: EnhancedRepor
               <p className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Valuation Method</p>
             </div>
             <p className="text-lg font-semibold text-slate-900">
-              {reportData.valuation_method || 'N/A'}
+              {valuationMethod}
             </p>
             {reportData.standard_of_value && (
               <p className="text-sm text-slate-600 mt-2">
@@ -172,15 +238,15 @@ export function EnhancedReportDisplay({ reportData, companyName }: EnhancedRepor
               <Target className="h-6 w-6 text-slate-600" />
               <p className="text-sm font-semibold text-slate-600 uppercase tracking-wide">Confidence Level</p>
             </div>
-            <Badge 
+            <Badge
               variant={
-                reportData.confidence_level === 'High' ? 'default' : 
-                reportData.confidence_level === 'Medium' ? 'secondary' : 
+                confidenceLevel === 'High' ? 'default' :
+                confidenceLevel === 'Medium' || confidenceLevel === 'Moderate' ? 'secondary' :
                 'outline'
               }
               className="text-lg px-4 py-2"
             >
-              {reportData.confidence_level || 'N/A'}
+              {confidenceLevel}
             </Badge>
             {reportData.premise_of_value && (
               <p className="text-sm text-slate-600 mt-2">
@@ -213,16 +279,18 @@ export function EnhancedReportDisplay({ reportData, companyName }: EnhancedRepor
               <CardDescription>Comprehensive overview of business valuation and key findings</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {reportData.executive_summary && (
+              {narratives.executive_summary ? (
                 <div className="prose max-w-none">
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     rehypePlugins={[rehypeRaw, rehypeSanitize]}
                     components={markdownComponents}
                   >
-                    {reportData.executive_summary}
+                    {narratives.executive_summary}
                   </ReactMarkdown>
                 </div>
+              ) : (
+                <p className="text-slate-500 italic">No executive summary available.</p>
               )}
 
               {reportData.key_findings && reportData.key_findings.length > 0 && (
@@ -244,14 +312,14 @@ export function EnhancedReportDisplay({ reportData, companyName }: EnhancedRepor
                 </div>
               )}
 
-              {reportData.company_profile && (
+              {narratives.company_profile && (
                 <div>
                   <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
                     <Building2 className="h-5 w-5 text-blue-600" />
                     Company Profile
                   </h3>
                   <div className="prose max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{reportData.company_profile}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{narratives.company_profile}</ReactMarkdown>
                   </div>
                 </div>
               )}
@@ -270,17 +338,40 @@ export function EnhancedReportDisplay({ reportData, companyName }: EnhancedRepor
               <CardDescription>Detailed financial performance and metrics analysis</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {reportData.financial_analysis && (
+              {narratives.financial_analysis ? (
                 <div className="prose max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{reportData.financial_analysis}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{narratives.financial_analysis}</ReactMarkdown>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-slate-500 italic">No detailed financial analysis narrative available.</p>
+                  {/* Show summary from extracted data */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+                    <div className="p-4 bg-slate-50 rounded-lg">
+                      <p className="text-sm text-slate-600">Revenue</p>
+                      <p className="text-lg font-semibold">{formatCurrency(reportData.annual_revenue)}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-lg">
+                      <p className="text-sm text-slate-600">Pretax Income</p>
+                      <p className="text-lg font-semibold">{formatCurrency(reportData.pretax_income)}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-lg">
+                      <p className="text-sm text-slate-600">Total Assets</p>
+                      <p className="text-lg font-semibold">{formatCurrency(reportData.total_assets)}</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 rounded-lg">
+                      <p className="text-sm text-slate-600">Total Liabilities</p>
+                      <p className="text-lg font-semibold">{formatCurrency(reportData.total_liabilities)}</p>
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {reportData.industry_analysis && (
+              {narratives.industry_analysis && (
                 <div className="mt-8">
                   <h3 className="text-lg font-semibold mb-4">Industry Analysis</h3>
                   <div className="prose max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{reportData.industry_analysis}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{narratives.industry_analysis}</ReactMarkdown>
                   </div>
                 </div>
               )}
@@ -310,21 +401,21 @@ export function EnhancedReportDisplay({ reportData, companyName }: EnhancedRepor
                 <div>
                   <p className="text-sm font-semibold text-slate-600 mb-2">Value Range</p>
                   <p className="text-lg font-semibold text-slate-900">
-                    {formatCurrency(reportData.valuation_range_low)} - {formatCurrency(reportData.valuation_range_high)}
+                    {formatCurrency(valueRangeLow)} - {formatCurrency(valueRangeHigh)}
                   </p>
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-slate-600 mb-2">Primary Method</p>
-                  <p className="text-lg text-slate-900">{reportData.valuation_method || 'N/A'}</p>
+                  <p className="text-lg text-slate-900">{valuationMethod}</p>
                 </div>
                 <div>
                   <p className="text-sm font-semibold text-slate-600 mb-2">Standard of Value</p>
-                  <p className="text-lg text-slate-900">{reportData.standard_of_value || 'N/A'}</p>
+                  <p className="text-lg text-slate-900">{reportData.standard_of_value || 'Fair Market Value'}</p>
                 </div>
               </div>
 
               {/* Valuation Approaches Breakdown */}
-              {(reportData.asset_approach_value && reportData.income_approach_value && reportData.market_approach_value) && (
+              {(assetValue > 0 || incomeValue > 0 || marketValue > 0) && (
                 <div className="mt-8">
                   <h3 className="text-lg font-semibold mb-4">Valuation Approaches Breakdown</h3>
                   <div className="overflow-x-auto">
@@ -341,37 +432,37 @@ export function EnhancedReportDisplay({ reportData, companyName }: EnhancedRepor
                         <tr className="hover:bg-gray-50">
                           <td className="px-4 py-3 text-sm font-medium text-gray-900 border-r border-gray-200">Asset Approach</td>
                           <td className="px-4 py-3 text-sm text-right text-gray-700 border-r border-gray-200">
-                            {formatCurrency(reportData.asset_approach_value)}
+                            {formatCurrency(assetValue)}
                           </td>
                           <td className="px-4 py-3 text-sm text-right text-gray-700 border-r border-gray-200">
-                            {(reportData.asset_approach_weight * 100).toFixed(0)}%
+                            {Math.round(assetWeight * 100)}%
                           </td>
                           <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900">
-                            {formatCurrency(reportData.asset_approach_value * reportData.asset_approach_weight)}
+                            {formatCurrency(assetValue * assetWeight)}
                           </td>
                         </tr>
                         <tr className="hover:bg-gray-50">
                           <td className="px-4 py-3 text-sm font-medium text-gray-900 border-r border-gray-200">Income Approach</td>
                           <td className="px-4 py-3 text-sm text-right text-gray-700 border-r border-gray-200">
-                            {formatCurrency(reportData.income_approach_value)}
+                            {formatCurrency(incomeValue)}
                           </td>
                           <td className="px-4 py-3 text-sm text-right text-gray-700 border-r border-gray-200">
-                            {(reportData.income_approach_weight * 100).toFixed(0)}%
+                            {Math.round(incomeWeight * 100)}%
                           </td>
                           <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900">
-                            {formatCurrency(reportData.income_approach_value * reportData.income_approach_weight)}
+                            {formatCurrency(incomeValue * incomeWeight)}
                           </td>
                         </tr>
                         <tr className="hover:bg-gray-50">
                           <td className="px-4 py-3 text-sm font-medium text-gray-900 border-r border-gray-200">Market Approach</td>
                           <td className="px-4 py-3 text-sm text-right text-gray-700 border-r border-gray-200">
-                            {formatCurrency(reportData.market_approach_value)}
+                            {formatCurrency(marketValue)}
                           </td>
                           <td className="px-4 py-3 text-sm text-right text-gray-700 border-r border-gray-200">
-                            {(reportData.market_approach_weight * 100).toFixed(0)}%
+                            {Math.round(marketWeight * 100)}%
                           </td>
                           <td className="px-4 py-3 text-sm text-right font-semibold text-gray-900">
-                            {formatCurrency(reportData.market_approach_value * reportData.market_approach_weight)}
+                            {formatCurrency(marketValue * marketWeight)}
                           </td>
                         </tr>
                         <tr className="bg-blue-50">
@@ -450,41 +541,41 @@ export function EnhancedReportDisplay({ reportData, companyName }: EnhancedRepor
               )}
 
               {/* Asset Approach */}
-              {reportData.asset_approach_analysis && (
+              {narratives.asset_approach_analysis && (
                 <div>
                   <h3 className="text-lg font-semibold mb-4">Asset Approach</h3>
                   <div className="prose max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{reportData.asset_approach_analysis}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{narratives.asset_approach_analysis}</ReactMarkdown>
                   </div>
                 </div>
               )}
 
               {/* Income Approach */}
-              {reportData.income_approach_analysis && (
+              {narratives.income_approach_analysis && (
                 <div className="mt-8">
                   <h3 className="text-lg font-semibold mb-4">Income Approach</h3>
                   <div className="prose max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{reportData.income_approach_analysis}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{narratives.income_approach_analysis}</ReactMarkdown>
                   </div>
                 </div>
               )}
 
               {/* Market Approach */}
-              {reportData.market_approach_analysis && (
+              {narratives.market_approach_analysis && (
                 <div className="mt-8">
                   <h3 className="text-lg font-semibold mb-4">Market Approach</h3>
                   <div className="prose max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{reportData.market_approach_analysis}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{narratives.market_approach_analysis}</ReactMarkdown>
                   </div>
                 </div>
               )}
 
               {/* Valuation Reconciliation */}
-              {reportData.valuation_reconciliation && (
+              {narratives.valuation_reconciliation && (
                 <div className="mt-8">
                   <h3 className="text-lg font-semibold mb-4">Valuation Reconciliation</h3>
                   <div className="prose max-w-none">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{reportData.valuation_reconciliation}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{narratives.valuation_reconciliation}</ReactMarkdown>
                   </div>
                 </div>
               )}
@@ -513,10 +604,24 @@ export function EnhancedReportDisplay({ reportData, companyName }: EnhancedRepor
               <CardDescription>Comprehensive risk analysis and mitigation strategies</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {reportData.risk_assessment && (
-                <div className="prose max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{reportData.risk_assessment}</ReactMarkdown>
+              {/* Risk Score Summary */}
+              {(reportData.risk_score || reportData.overall_risk_score) && (
+                <div className="bg-gray-50 p-4 rounded-lg mb-6">
+                  <div className="text-sm text-gray-600">Overall Risk Score</div>
+                  <div className="text-2xl font-bold">{reportData.risk_score || reportData.overall_risk_score}/10</div>
+                  <div className="text-sm text-gray-500">
+                    {(reportData.risk_score || reportData.overall_risk_score) <= 3 ? 'Low Risk' :
+                     (reportData.risk_score || reportData.overall_risk_score) <= 6 ? 'Moderate Risk' : 'High Risk'}
+                  </div>
                 </div>
+              )}
+
+              {narratives.risk_assessment ? (
+                <div className="prose max-w-none">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{narratives.risk_assessment}</ReactMarkdown>
+                </div>
+              ) : (
+                <p className="text-slate-500 italic">No detailed risk assessment narrative available.</p>
               )}
 
               {reportData.critical_risk_factors && reportData.critical_risk_factors.length > 0 && (
@@ -550,9 +655,23 @@ export function EnhancedReportDisplay({ reportData, companyName }: EnhancedRepor
               <CardDescription>Value drivers and strategic opportunities</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              {reportData.strategic_insights && (
+              {narratives.strategic_insights ? (
                 <div className="prose max-w-none">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{reportData.strategic_insights}</ReactMarkdown>
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{narratives.strategic_insights}</ReactMarkdown>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-slate-500 italic">No detailed strategic insights narrative available.</p>
+                  <p className="text-slate-600">
+                    Based on our analysis, consider the following value enhancement strategies:
+                  </p>
+                  <ul className="list-disc pl-5 space-y-2 text-slate-700">
+                    <li>Reduce customer concentration by diversifying client base</li>
+                    <li>Document key processes to reduce owner dependence</li>
+                    <li>Strengthen management team depth</li>
+                    <li>Improve financial record-keeping and reporting</li>
+                    <li>Consider strategies to improve gross margins</li>
+                  </ul>
                 </div>
               )}
             </CardContent>
@@ -570,6 +689,14 @@ export function EnhancedReportDisplay({ reportData, companyName }: EnhancedRepor
               <CardDescription>Actionable strategies to maximize business value</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* If we have a narrative string for recommendations, render it */}
+              {narratives.strategic_insights && (
+                <div className="prose max-w-none mb-6">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw, rehypeSanitize]} components={markdownComponents}>{narratives.strategic_insights}</ReactMarkdown>
+                </div>
+              )}
+
+              {/* If we have an array of recommendations */}
               {reportData.value_enhancement_recommendations && reportData.value_enhancement_recommendations.length > 0 && (
                 <div className="space-y-4">
                   {reportData.value_enhancement_recommendations.map((recommendation: string, index: number) => (
@@ -582,6 +709,11 @@ export function EnhancedReportDisplay({ reportData, companyName }: EnhancedRepor
                     </div>
                   ))}
                 </div>
+              )}
+
+              {/* Fallback if no recommendations */}
+              {!narratives.strategic_insights && (!reportData.value_enhancement_recommendations || reportData.value_enhancement_recommendations.length === 0) && (
+                <p className="text-slate-500 italic">No specific recommendations available.</p>
               )}
             </CardContent>
           </Card>

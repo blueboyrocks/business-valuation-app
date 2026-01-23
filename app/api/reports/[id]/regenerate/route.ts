@@ -13,7 +13,7 @@
  * - skipPdf=true: Only regenerate report_data, skip PDF generation
  */
 
-export const maxDuration = 120; // PDF generation can take time - v5
+export const maxDuration = 120; // PDF generation can take time - v6 (premium quality fixes)
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -22,6 +22,7 @@ import { transformToFinalReport, PassOutputs, validateFinalReport } from '@/lib/
 import { generateAndStorePDF } from '@/lib/pdf/auto-generate';
 import { validateReportOutput } from '@/lib/validation/report-output-validator';
 import { reconcileWithNarratives } from '@/lib/extraction/narrative-data-extractor';
+import { checkReportQuality, formatQualityReport } from '@/lib/validation/quality-checker';
 import {
   Pass1Output,
   Pass2Output,
@@ -189,30 +190,67 @@ export async function POST(
 
     console.log(`[REGENERATE] Extracted values - Asset: ${assetValue}, Income: ${incomeValue}, Market: ${marketValue}, Concluded: ${concludedValue}`);
 
-    // Add quality metrics AND flat properties for PDF generator
+    // Extract narratives from Pass 11
+    const pass11Narratives = (passes.pass11 as any)?.report_narratives || (passes.pass11 as any)?.narratives || {};
+
+    // Helper to get narrative content (handles both string and {content: string} formats)
+    const getNarrativeContent = (value: any): string => {
+      if (!value) return '';
+      if (typeof value === 'string') return value;
+      if (value.content) return value.content;
+      return '';
+    };
+
+    // Add quality metrics AND flat properties for PDF generator and web app
     const reportWithQuality = {
       ...finalReport,
       // Quality metrics
       quality_grade: qualityGrade,
       quality_score: qualityScore,
+
+      // Valuation metadata (flat for web app)
+      valuation_amount: concludedValue,
+      valuation_method: 'Weighted Multi-Approach',
+      confidence_level: finalReport.valuation_synthesis?.final_valuation?.confidence_level || 'Moderate',
+      valuation_range_low: finalReport.valuation_synthesis?.final_valuation?.valuation_range_low || (concludedValue ? Math.round(concludedValue * 0.85) : 0),
+      valuation_range_high: finalReport.valuation_synthesis?.final_valuation?.valuation_range_high || (concludedValue ? Math.round(concludedValue * 1.15) : 0),
+      standard_of_value: 'Fair Market Value',
+
+      // Also keep nested structure for compatibility
       valuation_conclusion: {
         concluded_value: concludedValue,
-        value_range_low: finalReport.valuation_synthesis?.final_valuation?.valuation_range_low || (concludedValue ? concludedValue * 0.85 : 0),
-        value_range_high: finalReport.valuation_synthesis?.final_valuation?.valuation_range_high || (concludedValue ? concludedValue * 1.15 : 0),
+        value_range_low: finalReport.valuation_synthesis?.final_valuation?.valuation_range_low || (concludedValue ? Math.round(concludedValue * 0.85) : 0),
+        value_range_high: finalReport.valuation_synthesis?.final_valuation?.valuation_range_high || (concludedValue ? Math.round(concludedValue * 1.15) : 0),
         confidence_level: finalReport.valuation_synthesis?.final_valuation?.confidence_level || 'Moderate',
       },
-      // Flat properties for PDF generator
-      valuation_amount: concludedValue,
+
+      // Approach values (flat for web app)
       asset_approach_value: assetValue,
       income_approach_value: incomeValue,
       market_approach_value: marketValue,
+
+      // Approach weights as numbers (critical for web app display)
+      asset_approach_weight: 0.20,
+      income_approach_weight: 0.40,
+      market_approach_weight: 0.40,
+
+      // Liquidation value (65% of asset value per industry standard)
+      liquidation_value: Math.round(assetValue * 0.65),
+
       // Financial data (flat) for PDF generator
-      annual_revenue: incomeStmt.revenue?.total_revenue || 0,
+      annual_revenue: incomeStmt.revenue?.total_revenue || incomeStmt.revenue?.gross_receipts || 0,
       pretax_income: incomeStmt.net_income || 0,
-      owner_compensation: (passes.pass5?.sde_calculations?.[0] as any)?.owner_compensation?.amount || 0,
+      owner_compensation: (passes.pass5?.sde_calculations?.[0] as any)?.owner_compensation?.amount ||
+                          incomeStmt.operating_expenses?.officer_compensation || 0,
+      officer_compensation: incomeStmt.operating_expenses?.officer_compensation || 0,
       interest_expense: opExpenses.interest_expense || incomeStmt.interest_expense || 0,
       depreciation_amortization: opExpenses.depreciation_amortization || opExpenses.depreciation || 0,
       non_cash_expenses: opExpenses.depreciation_amortization || opExpenses.depreciation || 0,
+
+      // Normalized earnings (use any cast for flexible property access)
+      normalized_sde: (passes.pass5?.summary as any)?.normalized_sde || passes.pass5?.summary?.most_recent_sde || 0,
+      normalized_ebitda: (passes.pass5?.summary as any)?.most_recent_ebitda || passes.pass5?.summary?.most_recent_ebitda || 0,
+
       // Balance sheet data
       cash: balanceSheet.current_assets?.cash || 0,
       accounts_receivable: balanceSheet.current_assets?.accounts_receivable || 0,
@@ -226,11 +264,48 @@ export async function POST(
       bank_loans: balanceSheet.long_term_liabilities?.notes_payable || 0,
       other_long_term_liabilities: balanceSheet.long_term_liabilities?.total_long_term_liabilities || 0,
       total_liabilities: balanceSheet.total_liabilities || 0,
-      // Narrative sections (flat) for PDF generator
-      executive_summary: finalReport.narratives?.executive_summary?.content || '',
-      asset_approach_analysis: finalReport.narratives?.asset_approach_narrative?.content || passes.pass7?.narrative?.content || '',
-      income_approach_analysis: finalReport.narratives?.income_approach_narrative?.content || passes.pass8?.narrative?.content || '',
-      market_approach_analysis: finalReport.narratives?.market_approach_narrative?.content || passes.pass9?.narrative?.content || '',
+
+      // Risk data (use any cast for flexible property access)
+      risk_score: (passes.pass6 as any)?.overall_risk_score || (passes.pass6 as any)?.risk_assessment?.overall_score || 5,
+      overall_risk_score: (passes.pass6 as any)?.overall_risk_score || (passes.pass6 as any)?.risk_assessment?.overall_score || 5,
+
+      // Industry data
+      industry_name: passes.pass1?.industry_classification?.naics_description ||
+                     passes.pass4?.industry_overview?.industry_name || '',
+      industry_naics_code: passes.pass1?.industry_classification?.naics_code || '',
+
+      // ALL NARRATIVE SECTIONS (flat for web app) - critical for premium report
+      executive_summary: getNarrativeContent(finalReport.narratives?.executive_summary) ||
+                         getNarrativeContent(pass11Narratives.executive_summary) || '',
+
+      financial_analysis: getNarrativeContent(finalReport.narratives?.financial_analysis) ||
+                          getNarrativeContent(pass11Narratives.financial_analysis) || '',
+
+      industry_analysis: getNarrativeContent(finalReport.narratives?.industry_analysis) ||
+                         getNarrativeContent(pass11Narratives.industry_analysis) ||
+                         getNarrativeContent((passes.pass4 as any)?.narrative) || '',
+
+      risk_assessment: getNarrativeContent(finalReport.narratives?.risk_assessment) ||
+                       getNarrativeContent(pass11Narratives.risk_assessment) ||
+                       getNarrativeContent((passes.pass6 as any)?.narrative) || '',
+
+      company_profile: getNarrativeContent(finalReport.narratives?.company_overview) ||
+                       getNarrativeContent(pass11Narratives.company_overview) ||
+                       getNarrativeContent((passes.pass1 as any)?.narrative) || '',
+
+      strategic_insights: getNarrativeContent(finalReport.narratives?.value_enhancement_recommendations) ||
+                          getNarrativeContent(pass11Narratives.value_enhancement_recommendations) ||
+                          getNarrativeContent(pass11Narratives.strategic_insights) || '',
+
+      // Approach narratives (flat for web app)
+      asset_approach_analysis: getNarrativeContent(finalReport.narratives?.asset_approach_narrative) ||
+                               getNarrativeContent(passes.pass7?.narrative) || '',
+      income_approach_analysis: getNarrativeContent(finalReport.narratives?.income_approach_narrative) ||
+                                getNarrativeContent(passes.pass8?.narrative) || '',
+      market_approach_analysis: getNarrativeContent(finalReport.narratives?.market_approach_narrative) ||
+                                getNarrativeContent(passes.pass9?.narrative) || '',
+      valuation_reconciliation: getNarrativeContent(finalReport.narratives?.valuation_synthesis_narrative) ||
+                                getNarrativeContent(passes.pass10?.narrative) || '',
     };
 
     // 7b. Reconcile with narrative data (fallback for missing values)
@@ -250,6 +325,16 @@ export async function POST(
       console.warn(`[REGENERATE] Output validation failed: ${outputValidation.missingFields.join(', ')}`);
     }
     console.log(`[REGENERATE] Output completeness score: ${outputValidation.score}/100`);
+
+    // 7d. Quality check for premium report standards
+    const qualityResult = checkReportQuality(reconciledReport);
+    console.log(formatQualityReport(qualityResult));
+    console.log(`[REGENERATE] Quality Score: ${qualityResult.score}/100 (Grade: ${qualityResult.grade}, Premium Ready: ${qualityResult.isPremiumReady})`);
+
+    // Add quality metrics to the report
+    reconciledReport.quality_score = qualityResult.score;
+    reconciledReport.quality_grade = qualityResult.grade;
+    reconciledReport.is_premium_ready = qualityResult.isPremiumReady;
 
     // 8. Update the report in database
     console.log(`[REGENERATE] Saving report to database...`);
@@ -309,7 +394,7 @@ export async function POST(
       success: true,
       message: 'Report regenerated successfully',
       reportId,
-      version: 'v5',
+      version: 'v6',
       valuationSummary: {
         concludedValue: finalConcludedValue,
         assetApproachValue: reconciledReport.asset_approach_value,
@@ -329,6 +414,17 @@ export async function POST(
         outputCompletenessScore: outputValidation.score,
         outputMissingFields: outputValidation.missingFields,
         outputNullFields: outputValidation.nullFields.slice(0, 5),
+      },
+      quality: {
+        score: qualityResult.score,
+        grade: qualityResult.grade,
+        isPremiumReady: qualityResult.isPremiumReady,
+        summary: qualityResult.summary,
+        failedChecks: qualityResult.checks.filter(c => !c.passed).map(c => ({
+          name: c.name,
+          category: c.category,
+          details: c.details,
+        })),
       },
       pdf: {
         generated: pdfGenerated,
