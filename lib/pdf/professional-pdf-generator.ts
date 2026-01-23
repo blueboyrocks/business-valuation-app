@@ -267,6 +267,9 @@ export class ProfessionalPDFGenerator {
     const strategicContent = getContent(data.strategic_insights) || getContent(narratives.value_enhancement_recommendations);
     const strategicInsights = strategicContent ? await marked(strategicContent) : '';
 
+    const assumptionsContent = getContent(data.assumptions_limiting_conditions) || getContent(narratives.assumptions_limiting_conditions);
+    const assumptionsLimitingConditions = assumptionsContent ? await marked(assumptionsContent) : '';
+
     return `
 <!DOCTYPE html>
 <html>
@@ -571,6 +574,7 @@ export class ProfessionalPDFGenerator {
     ${valuationRecon ? '<div class="toc-item"><span>Valuation Reconciliation</span><span>13</span></div>' : ''}
     ${riskAssessment ? '<div class="toc-item"><span>Risk Assessment</span><span>14</span></div>' : ''}
     ${strategicInsights ? '<div class="toc-item"><span>Strategic Insights</span><span>15</span></div>' : ''}
+    ${assumptionsLimitingConditions ? '<div class="toc-item"><span>Assumptions & Limiting Conditions</span><span>16</span></div>' : ''}
   </div>
 
   <!-- Your Valuation -->
@@ -812,6 +816,15 @@ export class ProfessionalPDFGenerator {
     <h1 class="section-title">Strategic Insights</h1>
     <div class="narrative">
       ${strategicInsights}
+    </div>
+  </div>
+  ` : ''}
+
+  ${assumptionsLimitingConditions ? `
+  <div class="section">
+    <h1 class="section-title">Assumptions & Limiting Conditions</h1>
+    <div class="narrative">
+      ${assumptionsLimitingConditions}
     </div>
   </div>
   ` : ''}

@@ -11,9 +11,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowLeft, Download, Clock, CheckCircle, XCircle, TrendingUp, RefreshCw, StopCircle, FileText, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Download, Clock, CheckCircle, XCircle, TrendingUp, RefreshCw, StopCircle, FileText, AlertCircle, Settings2 } from 'lucide-react';
 import type { Database } from '@/lib/supabase/types';
 import Link from 'next/link';
+import { PassRerunPanel } from '@/components/PassRerunPanel';
 
 type Report = Database['public']['Tables']['reports']['Row'];
 
@@ -71,6 +72,7 @@ export default function ReportDetailPage() {
     missingPasses: [],
     error: null,
   });
+  const [showRerunPanel, setShowRerunPanel] = useState(false);
 
   const fetchReport = useCallback(async () => {
     if (!params.id || !user) return;
@@ -427,6 +429,14 @@ export default function ReportDetailPage() {
               <div className="flex gap-2">
                 <Button
                   variant="outline"
+                  onClick={() => setShowRerunPanel(!showRerunPanel)}
+                  title="Re-run specific passes with web search"
+                >
+                  <Settings2 className="mr-2 h-4 w-4" />
+                  {showRerunPanel ? 'Hide' : 'Re-Run Passes'}
+                </Button>
+                <Button
+                  variant="outline"
                   onClick={regenerateReport}
                   disabled={regenerationState.isRegenerating}
                   title="Regenerate report from saved data (no API cost)"
@@ -520,6 +530,14 @@ export default function ReportDetailPage() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Re-Run Panel (shown when toggled) */}
+          {showRerunPanel && report.report_status === 'completed' && (
+            <PassRerunPanel
+              reportId={params.id as string}
+              onComplete={fetchReport}
+            />
+          )}
 
           {/* Report content */}
           {report.report_status === 'completed' ? (
