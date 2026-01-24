@@ -13,35 +13,103 @@ import {
 } from '../valuation/kpi-calculator';
 import { KPIExplanation, getKPIExplanation } from '../content/kpi-explanations';
 import {
-  generateKPIComparisonChart,
   generatePerformanceBadge,
-  type KPIComparisonChartData,
 } from './puppeteer-chart-renderer';
 
 /**
- * Generate HTML for a single KPI detail page
+ * Generate an inline SVG bar chart for KPI visualization
+ * This avoids Puppeteer overhead and is much faster
  */
-export async function generateKPIDetailPage(kpi: KPIDetailedResult): Promise<string> {
+function generateInlineSVGChart(kpi: KPIDetailedResult): string {
+  const values = kpi.historicalValues.map(h => h.value || 0);
+  const years = kpi.historicalValues.map(h => h.year.toString());
+  const benchmark = kpi.benchmark || 0;
+
+  if (values.length === 0) return '';
+
+  // Normalize values for display
+  const isPercentage = kpi.format === 'percentage';
+  const displayValues = isPercentage ? values.map(v => v * 100) : values;
+  const displayBenchmark = isPercentage ? benchmark * 100 : benchmark;
+
+  const maxValue = Math.max(...displayValues, displayBenchmark) * 1.2;
+  const chartWidth = 450;
+  const chartHeight = 200;
+  const barWidth = 60;
+  const barGap = 30;
+  const startX = 60;
+  const bottomY = 170;
+
+  // Generate bars
+  const bars = displayValues.map((value, index) => {
+    const barHeight = (value / maxValue) * 140;
+    const x = startX + index * (barWidth + barGap);
+    const y = bottomY - barHeight;
+
+    // Determine color based on performance
+    const ratio = values[index] / benchmark;
+    let color = '#FFC107'; // Yellow - meeting
+    if (kpi.higherIsBetter) {
+      if (ratio > 1.10) color = '#4CAF50'; // Green
+      else if (ratio < 0.90) color = '#F44336'; // Red
+    } else {
+      if (ratio < 0.90) color = '#4CAF50';
+      else if (ratio > 1.10) color = '#F44336';
+    }
+
+    const formattedValue = isPercentage
+      ? `${value.toFixed(1)}%`
+      : kpi.format === 'times'
+        ? `${value.toFixed(1)}x`
+        : value.toFixed(2);
+
+    return `
+      <rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" fill="${color}" rx="4"/>
+      <text x="${x + barWidth / 2}" y="${y - 8}" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">${formattedValue}</text>
+      <text x="${x + barWidth / 2}" y="${bottomY + 20}" text-anchor="middle" font-size="11" fill="#666">${years[index]}</text>
+    `;
+  }).join('');
+
+  // Benchmark line
+  const benchmarkY = bottomY - (displayBenchmark / maxValue) * 140;
+  const benchmarkLabel = isPercentage
+    ? `${displayBenchmark.toFixed(1)}%`
+    : kpi.format === 'times'
+      ? `${displayBenchmark.toFixed(1)}x`
+      : displayBenchmark.toFixed(2);
+
+  return `
+    <svg width="${chartWidth}" height="${chartHeight + 30}" xmlns="http://www.w3.org/2000/svg" style="font-family: 'Helvetica Neue', Arial, sans-serif;">
+      <!-- Background -->
+      <rect width="100%" height="100%" fill="white"/>
+
+      <!-- Y-axis -->
+      <line x1="50" y1="20" x2="50" y2="${bottomY}" stroke="#E0E0E0" stroke-width="1"/>
+
+      <!-- X-axis -->
+      <line x1="50" y1="${bottomY}" x2="${chartWidth - 20}" y2="${bottomY}" stroke="#E0E0E0" stroke-width="1"/>
+
+      <!-- Bars -->
+      ${bars}
+
+      <!-- Benchmark line -->
+      <line x1="50" y1="${benchmarkY}" x2="${chartWidth - 20}" y2="${benchmarkY}" stroke="#2196F3" stroke-width="2" stroke-dasharray="6,4"/>
+      <text x="${chartWidth - 15}" y="${benchmarkY + 4}" font-size="10" fill="#2196F3" text-anchor="end">Benchmark: ${benchmarkLabel}</text>
+    </svg>
+  `;
+}
+
+/**
+ * Generate HTML for a single KPI detail page
+ * Note: Chart generation is disabled to avoid Vercel timeout issues
+ * Charts are rendered as inline SVG bar charts instead
+ */
+export async function generateKPIDetailPage(kpi: KPIDetailedResult, generateCharts: boolean = false): Promise<string> {
   const explanation = getKPIExplanation(kpi.id);
   const badge = generatePerformanceBadge(kpi.overallPerformance);
 
-  // Prepare chart data
-  const chartData: KPIComparisonChartData = {
-    kpiName: kpi.name,
-    years: kpi.historicalValues.map(h => h.year.toString()),
-    values: kpi.historicalValues.map(h => h.value || 0),
-    benchmark: kpi.benchmark || 0,
-    format: kpi.format === 'percentage' ? 'percentage' : kpi.format === 'times' ? 'times' : 'ratio',
-    higherIsBetter: kpi.higherIsBetter,
-  };
-
-  // Generate chart image
-  let chartImage = '';
-  try {
-    chartImage = await generateKPIComparisonChart(chartData);
-  } catch (error) {
-    console.error(`[KPI Page] Error generating chart for ${kpi.name}:`, error);
-  }
+  // Generate inline SVG chart instead of Puppeteer chart to avoid timeout
+  const chartImage = generateInlineSVGChart(kpi);
 
   // Build performance table rows
   const tableRows = kpi.historicalValues
@@ -100,7 +168,7 @@ export async function generateKPIDetailPage(kpi: KPIDetailedResult): Promise<str
       <!-- Chart Section -->
       ${chartImage ? `
         <div style="margin: 30px 0; text-align: center;">
-          <img src="${chartImage}" alt="${kpi.name} Chart" style="max-width: 100%; height: auto;" />
+          ${chartImage}
         </div>
       ` : ''}
 
@@ -252,13 +320,15 @@ function getTrendLabel(trend: TrendDirection): string {
 
 /**
  * Generate all KPI detail pages
+ * Uses inline SVG charts by default for fast generation
  */
 export async function generateAllKPIDetailPages(kpis: KPIDetailedResult[]): Promise<string> {
   const pages: string[] = [];
 
   for (const kpi of kpis) {
     try {
-      const page = await generateKPIDetailPage(kpi);
+      // Using inline SVG charts (generateCharts=false) for speed
+      const page = await generateKPIDetailPage(kpi, false);
       pages.push(page);
     } catch (error) {
       console.error(`[KPI Page] Error generating page for ${kpi.name}:`, error);
