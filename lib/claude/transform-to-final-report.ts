@@ -1170,3 +1170,285 @@ export function validateFinalReport(report: FinalValuationReport): {
     warnings,
   };
 }
+
+// =============================================================================
+// PDF DATA PREPARATION
+// =============================================================================
+
+/**
+ * Interface for yearly financial data used in PDF generation
+ */
+export interface YearlyFinancialData {
+  year: number;
+  revenue: number;
+  pretax_income?: number;
+  owner_compensation?: number;
+  interest_expense?: number;
+  depreciation_amortization?: number;
+  non_cash_expenses?: number;
+  cash?: number;
+  accounts_receivable?: number;
+  inventory?: number;
+  other_current_assets?: number;
+  fixed_assets?: number;
+  total_assets?: number;
+  accounts_payable?: number;
+  other_short_term_liabilities?: number;
+  bank_loans?: number;
+  other_long_term_liabilities?: number;
+  total_liabilities?: number;
+}
+
+/**
+ * Interface for risk factor data used in PDF generation
+ */
+export interface RiskFactorData {
+  category: string;
+  rating: string;
+  score: number;
+  description: string;
+}
+
+/**
+ * Interface for PDF-ready report data
+ */
+export interface PDFReportData {
+  valuation_amount: number;
+  asset_approach_value: number;
+  income_approach_value: number;
+  market_approach_value: number;
+  valuation_range_low: number;
+  valuation_range_high: number;
+
+  // Current year financial data
+  annual_revenue: number;
+  pretax_income?: number;
+  owner_compensation?: number;
+  interest_expense?: number;
+  depreciation_amortization?: number;
+  cash?: number;
+  accounts_receivable?: number;
+  inventory?: number;
+  other_current_assets?: number;
+  fixed_assets?: number;
+  intangible_assets?: number;
+  total_assets?: number;
+  accounts_payable?: number;
+  other_short_term_liabilities?: number;
+  bank_loans?: number;
+  other_long_term_liabilities?: number;
+  total_liabilities?: number;
+
+  // Multi-year data for trends
+  yearly_financials: YearlyFinancialData[];
+
+  // Risk assessment
+  risk_score: number;
+  risk_level: string;
+  risk_factors: RiskFactorData[];
+
+  // Industry benchmarks for KPI comparison
+  industry_benchmarks: Record<string, number>;
+
+  // Narratives
+  executive_summary?: string;
+  company_profile?: string;
+  industry_analysis?: string;
+  financial_analysis?: string;
+  asset_approach_analysis?: string;
+  income_approach_analysis?: string;
+  market_approach_analysis?: string;
+  valuation_reconciliation?: string;
+  risk_assessment?: string;
+  strategic_insights?: string;
+  assumptions_limiting_conditions?: string;
+
+  // Metadata
+  naics_code?: string;
+  industry_name?: string;
+  valuation_date?: string;
+}
+
+/**
+ * Transform pass outputs into PDF-ready data format with multi-year KPI support
+ */
+export function transformToPDFReportData(
+  passes: PassOutputs,
+  valuationDate: string
+): PDFReportData {
+  const pass2 = passes.pass2;
+  const pass3 = passes.pass3;
+  const pass4 = passes.pass4;
+  const pass6 = passes.pass6;
+  const pass7 = passes.pass7;
+  const pass8 = passes.pass8;
+  const pass9 = passes.pass9;
+  const pass10 = passes.pass10;
+  const pass11 = passes.pass11;
+
+  // Extract yearly financials from income statements and balance sheets
+  const incomeStatements = pass2?.income_statements || [];
+  const balanceSheets = pass3?.balance_sheets || [];
+
+  const yearlyFinancials: YearlyFinancialData[] = incomeStatements.map(is => {
+    const year = is.fiscal_year;
+    const matchingBS = balanceSheets.find(bs => bs.fiscal_year === year);
+
+    return {
+      year,
+      revenue: is.revenue?.total_revenue || is.revenue?.net_sales || 0,
+      pretax_income: is.pretax_income,
+      owner_compensation: is.operating_expenses?.officer_compensation,
+      interest_expense: is.other_income_expense?.interest_expense,
+      depreciation_amortization: (is.operating_expenses?.depreciation || 0) + (is.operating_expenses?.amortization || 0),
+      cash: matchingBS?.current_assets?.cash_and_equivalents,
+      accounts_receivable: matchingBS?.current_assets?.accounts_receivable_gross,
+      inventory: matchingBS?.current_assets?.inventory,
+      other_current_assets: (matchingBS?.current_assets?.prepaid_expenses || 0) + (matchingBS?.current_assets?.other_current_assets || 0),
+      fixed_assets: matchingBS?.fixed_assets?.net_fixed_assets,
+      total_assets: matchingBS?.total_assets,
+      accounts_payable: matchingBS?.current_liabilities?.accounts_payable,
+      other_short_term_liabilities: (matchingBS?.current_liabilities?.accrued_expenses || 0) + (matchingBS?.current_liabilities?.other_current_liabilities || 0),
+      bank_loans: matchingBS?.long_term_liabilities?.notes_payable_long_term,
+      other_long_term_liabilities: matchingBS?.long_term_liabilities?.other_long_term_liabilities,
+      total_liabilities: matchingBS?.total_liabilities,
+    };
+  }).sort((a, b) => b.year - a.year); // Sort descending (most recent first)
+
+  // Get most recent year data for current financials
+  const mostRecentIS = incomeStatements[0] || {} as any;
+  const mostRecentBS = balanceSheets[0] || {} as any;
+
+  // Extract risk factors
+  const riskFactors: RiskFactorData[] = [];
+  const companyRisks = pass6?.company_risks || {} as any;
+
+  const addRiskFactor = (category: string, risk: any) => {
+    if (risk?.score) {
+      riskFactors.push({
+        category,
+        rating: risk.score <= 3 ? 'Low' : risk.score <= 5 ? 'Moderate' : risk.score <= 7 ? 'High' : 'Critical',
+        score: risk.score,
+        description: risk.description || '',
+      });
+    }
+  };
+
+  addRiskFactor('Customer Concentration', companyRisks.operational_risks?.customer_concentration_risk);
+  addRiskFactor('Owner Dependence', companyRisks.operational_risks?.owner_dependence_risk);
+  addRiskFactor('Industry Risk', companyRisks.strategic_risks?.industry_risk);
+  addRiskFactor('Financial Risk', companyRisks.financial_risks?.profitability_risk);
+  addRiskFactor('Operational Risk', companyRisks.operational_risks?.facility_risk);
+  addRiskFactor('Market Risk', companyRisks.external_risks?.economic_sensitivity_risk);
+
+  // Extract industry benchmarks from pass4
+  const industryBenchmarks: Record<string, number> = {};
+  const benchmarks = pass4?.industry_benchmarks || {} as any;
+
+  if (benchmarks.profitability_benchmarks?.gross_margin?.median) {
+    industryBenchmarks['gross_profit_margin'] = benchmarks.profitability_benchmarks.gross_margin.median;
+  }
+  if (benchmarks.profitability_benchmarks?.operating_margin?.median) {
+    industryBenchmarks['operating_profit_margin'] = benchmarks.profitability_benchmarks.operating_margin.median;
+  }
+  if (benchmarks.profitability_benchmarks?.net_margin?.median) {
+    industryBenchmarks['net_profit_margin'] = benchmarks.profitability_benchmarks.net_margin.median;
+  }
+
+  // Get narratives
+  const narratives = pass11?.report_narratives || {} as any;
+
+  // Get valuation data
+  const synthesis = pass10?.value_synthesis || {} as any;
+  const conclusion = pass10?.conclusion || {} as any;
+
+  const assetValue = pass7?.asset_approach?.adjusted_book_value || 0;
+  const incomeValue = pass8?.income_approach?.single_period_capitalization?.adjusted_indicated_value || 0;
+  const marketValue = pass9?.market_approach?.indicated_value_point || 0;
+
+  return {
+    valuation_amount: conclusion.concluded_value || 0,
+    asset_approach_value: assetValue,
+    income_approach_value: incomeValue,
+    market_approach_value: marketValue,
+    valuation_range_low: conclusion.value_range?.low || Math.min(assetValue, incomeValue, marketValue) * 0.9,
+    valuation_range_high: conclusion.value_range?.high || Math.max(assetValue, incomeValue, marketValue) * 1.1,
+
+    annual_revenue: mostRecentIS.revenue?.total_revenue || mostRecentIS.revenue?.net_sales || 0,
+    pretax_income: mostRecentIS.pretax_income,
+    owner_compensation: mostRecentIS.operating_expenses?.officer_compensation,
+    interest_expense: mostRecentIS.other_income_expense?.interest_expense,
+    depreciation_amortization: (mostRecentIS.operating_expenses?.depreciation || 0) + (mostRecentIS.operating_expenses?.amortization || 0),
+    cash: mostRecentBS.current_assets?.cash_and_equivalents,
+    accounts_receivable: mostRecentBS.current_assets?.accounts_receivable_gross,
+    inventory: mostRecentBS.current_assets?.inventory,
+    other_current_assets: (mostRecentBS.current_assets?.prepaid_expenses || 0) + (mostRecentBS.current_assets?.other_current_assets || 0),
+    fixed_assets: mostRecentBS.fixed_assets?.net_fixed_assets,
+    intangible_assets: mostRecentBS.other_assets?.intangible_assets,
+    total_assets: mostRecentBS.total_assets,
+    accounts_payable: mostRecentBS.current_liabilities?.accounts_payable,
+    other_short_term_liabilities: (mostRecentBS.current_liabilities?.accrued_expenses || 0) + (mostRecentBS.current_liabilities?.other_current_liabilities || 0),
+    bank_loans: mostRecentBS.long_term_liabilities?.notes_payable_long_term,
+    other_long_term_liabilities: mostRecentBS.long_term_liabilities?.other_long_term_liabilities,
+    total_liabilities: mostRecentBS.total_liabilities,
+
+    yearly_financials: yearlyFinancials,
+
+    risk_score: pass6?.risk_summary?.overall_risk_score || 5,
+    risk_level: pass6?.risk_summary?.overall_risk_level || 'average',
+    risk_factors: riskFactors,
+
+    industry_benchmarks: industryBenchmarks,
+
+    executive_summary: narratives.executive_summary?.content,
+    company_profile: narratives.company_overview?.content,
+    industry_analysis: narratives.industry_analysis?.content,
+    financial_analysis: [
+      narratives.financial_analysis?.income_statement_analysis?.content,
+      narratives.financial_analysis?.balance_sheet_analysis?.content,
+      narratives.financial_analysis?.ratio_analysis?.content,
+    ].filter(Boolean).join('\n\n'),
+    asset_approach_analysis: narratives.valuation_approaches?.asset_approach_narrative?.content || pass7?.narrative?.content,
+    income_approach_analysis: narratives.valuation_approaches?.income_approach_narrative?.content || pass8?.narrative?.content,
+    market_approach_analysis: narratives.valuation_approaches?.market_approach_narrative?.content || pass9?.narrative?.content,
+    valuation_reconciliation: narratives.valuation_approaches?.synthesis_narrative?.content,
+    risk_assessment: narratives.risk_analysis?.content,
+    strategic_insights: buildValueEnhancementContent(pass6),
+    assumptions_limiting_conditions: narratives.conclusion_and_limiting_conditions?.content,
+
+    naics_code: passes.pass1?.industry_classification?.naics_code,
+    industry_name: passes.pass1?.industry_classification?.naics_description,
+    valuation_date: valuationDate,
+  };
+}
+
+/**
+ * Build value enhancement content from Pass 6 data
+ */
+function buildValueEnhancementContent(pass6: Pass6Output): string {
+  const valueDrivers = pass6?.company_strengths?.value_drivers || [];
+  const riskMitigants = pass6?.risk_summary?.key_risk_mitigants || [];
+  const strengths = pass6?.company_strengths?.strengths || [];
+
+  const sections: string[] = [];
+
+  if (valueDrivers.length > 0) {
+    sections.push('## Key Value Drivers\n\n' + valueDrivers.map((d: any) =>
+      `**${d.driver}** (${d.importance}): ${d.description} - Current performance: ${d.current_performance}`
+    ).join('\n\n'));
+  }
+
+  if (strengths.length > 0) {
+    sections.push('## Company Strengths\n\n' + strengths.map((s: any) =>
+      `**${s.strength}** (${s.category}): ${s.description}`
+    ).join('\n\n'));
+  }
+
+  if (riskMitigants.length > 0) {
+    sections.push('## Risk Mitigation Strategies\n\n' + riskMitigants.map((m: any) =>
+      `- ${m}`
+    ).join('\n'));
+  }
+
+  return sections.join('\n\n');
+}

@@ -25,6 +25,38 @@ export interface KPIChartData {
   industryBenchmark: number;
 }
 
+export interface KPIComparisonChartData {
+  kpiName: string;
+  years: string[];
+  values: number[];
+  benchmark: number;
+  format: 'percentage' | 'ratio' | 'times';
+  higherIsBetter: boolean;
+}
+
+export interface FinancialTrendChartData {
+  years: string[];
+  datasets: {
+    label: string;
+    data: number[];
+    color: string;
+  }[];
+}
+
+export interface RiskGaugeData {
+  score: number;  // 1-10 scale
+  label: string;
+}
+
+export interface ValueMapData {
+  lowValue: number;
+  midValue: number;
+  highValue: number;
+  companyValue: number;
+  industryLow: number;
+  industryHigh: number;
+}
+
 /**
  * Generate valuation approaches comparison chart
  */
@@ -350,14 +382,565 @@ export async function generateKPIChart(kpis: KPIChartData[]): Promise<string> {
 }
 
 /**
+ * Generate KPI comparison bar chart with 3-year data and benchmark line
+ */
+export async function generateKPIComparisonChart(data: KPIComparisonChartData): Promise<string> {
+  // Determine colors based on performance vs benchmark
+  const getBarColor = (value: number, benchmark: number, higherIsBetter: boolean): string => {
+    const ratio = value / benchmark;
+    if (higherIsBetter) {
+      if (ratio > 1.10) return 'rgba(76, 175, 80, 0.8)';   // Green - outperforming
+      if (ratio < 0.90) return 'rgba(244, 67, 54, 0.8)';   // Red - underperforming
+      return 'rgba(255, 193, 7, 0.8)';                      // Yellow - meeting
+    } else {
+      if (ratio < 0.90) return 'rgba(76, 175, 80, 0.8)';
+      if (ratio > 1.10) return 'rgba(244, 67, 54, 0.8)';
+      return 'rgba(255, 193, 7, 0.8)';
+    }
+  };
+
+  const barColors = data.values.map(v => getBarColor(v, data.benchmark, data.higherIsBetter));
+
+  const formatValue = (v: number): string => {
+    switch (data.format) {
+      case 'percentage': return (v * 100).toFixed(1) + '%';
+      case 'ratio': return v.toFixed(2);
+      case 'times': return v.toFixed(1) + 'x';
+      default: return v.toString();
+    }
+  };
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-annotation@3.0.1/dist/chartjs-plugin-annotation.min.js"></script>
+  <style>
+    body { margin: 0; padding: 20px; background: white; font-family: 'Helvetica Neue', Arial, sans-serif; }
+    #chart-container { width: 500px; height: 300px; }
+  </style>
+</head>
+<body>
+  <div id="chart-container">
+    <canvas id="chart"></canvas>
+  </div>
+  <script>
+    const ctx = document.getElementById('chart').getContext('2d');
+    new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: ${JSON.stringify(data.years)},
+        datasets: [{
+          label: '${data.kpiName}',
+          data: ${JSON.stringify(data.values.map(v => data.format === 'percentage' ? v * 100 : v))},
+          backgroundColor: ${JSON.stringify(barColors)},
+          borderColor: ${JSON.stringify(barColors.map(c => c.replace('0.8', '1')))},
+          borderWidth: 2,
+          borderRadius: 4
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          title: {
+            display: true,
+            text: '${data.kpiName}',
+            font: { size: 16, weight: 'bold' },
+            padding: { bottom: 20 }
+          },
+          legend: { display: false },
+          annotation: {
+            annotations: {
+              benchmarkLine: {
+                type: 'line',
+                yMin: ${data.format === 'percentage' ? data.benchmark * 100 : data.benchmark},
+                yMax: ${data.format === 'percentage' ? data.benchmark * 100 : data.benchmark},
+                borderColor: 'rgba(33, 150, 243, 1)',
+                borderWidth: 2,
+                borderDash: [6, 4],
+                label: {
+                  display: true,
+                  content: 'Industry Benchmark (${formatValue(data.benchmark)})',
+                  position: 'end',
+                  backgroundColor: 'rgba(33, 150, 243, 0.8)',
+                  font: { size: 10 }
+                }
+              }
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                const val = context.parsed.y;
+                return '${data.format === 'percentage' ? '' : ''}' + val.toFixed(1) + '${data.format === 'percentage' ? '%' : data.format === 'times' ? 'x' : ''}';
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: function(value) {
+                return value${data.format === 'percentage' ? " + '%'" : data.format === 'times' ? " + 'x'" : ''};
+              }
+            },
+            grid: { color: 'rgba(0, 0, 0, 0.1)' }
+          },
+          x: {
+            grid: { display: false }
+          }
+        }
+      }
+    });
+  </script>
+</body>
+</html>
+  `;
+
+  return await renderChartToBase64(html, 540, 340);
+}
+
+/**
+ * Generate financial trend line chart
+ */
+export async function generateFinancialTrendChart(data: FinancialTrendChartData): Promise<string> {
+  const datasets = data.datasets.map(ds => ({
+    label: ds.label,
+    data: ds.data,
+    borderColor: ds.color,
+    backgroundColor: ds.color.replace('1)', '0.1)'),
+    borderWidth: 3,
+    fill: true,
+    tension: 0.4,
+    pointRadius: 6,
+    pointHoverRadius: 8
+  }));
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    body { margin: 0; padding: 20px; background: white; }
+    #chart-container { width: 700px; height: 400px; }
+  </style>
+</head>
+<body>
+  <div id="chart-container">
+    <canvas id="chart"></canvas>
+  </div>
+  <script>
+    const ctx = document.getElementById('chart').getContext('2d');
+    new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: ${JSON.stringify(data.years)},
+        datasets: ${JSON.stringify(datasets)}
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: true,
+        plugins: {
+          title: {
+            display: true,
+            text: 'Financial Performance Trends',
+            font: { size: 20, weight: 'bold' },
+            padding: { top: 10, bottom: 20 }
+          },
+          legend: {
+            display: true,
+            position: 'bottom',
+            labels: {
+              font: { size: 12 },
+              padding: 15,
+              usePointStyle: true
+            }
+          },
+          tooltip: {
+            callbacks: {
+              label: function(context) {
+                return context.dataset.label + ': $' + context.parsed.y.toLocaleString();
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: false,
+            ticks: {
+              callback: function(value) {
+                if (value >= 1000000) return '$' + (value / 1000000).toFixed(1) + 'M';
+                if (value >= 1000) return '$' + (value / 1000).toFixed(0) + 'K';
+                return '$' + value;
+              },
+              font: { size: 12 }
+            },
+            grid: { color: 'rgba(0, 0, 0, 0.1)' }
+          },
+          x: {
+            ticks: { font: { size: 12 } },
+            grid: { color: 'rgba(0, 0, 0, 0.05)' }
+          }
+        }
+      }
+    });
+  </script>
+</body>
+</html>
+  `;
+
+  return await renderChartToBase64(html, 740, 440);
+}
+
+/**
+ * Generate risk assessment gauge
+ */
+export async function generateRiskGauge(data: RiskGaugeData): Promise<string> {
+  // Normalize score to 1-10 range
+  const score = Math.max(1, Math.min(10, data.score));
+
+  // Calculate gauge angle (-135 to 135 degrees for a semi-circle)
+  const normalizedScore = (score - 1) / 9; // 0 to 1
+  const angle = -135 + (normalizedScore * 270);
+
+  // Determine color based on score
+  const getScoreColor = (s: number): string => {
+    if (s <= 3) return '#4CAF50';      // Green - Low risk
+    if (s <= 5) return '#8BC34A';      // Light green
+    if (s <= 7) return '#FFC107';      // Yellow/Amber - Moderate
+    if (s <= 8) return '#FF9800';      // Orange
+    return '#F44336';                   // Red - High risk
+  };
+
+  const scoreColor = getScoreColor(score);
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { margin: 0; padding: 20px; background: white; font-family: 'Helvetica Neue', Arial, sans-serif; }
+    #chart-container { width: 400px; height: 280px; display: flex; flex-direction: column; align-items: center; }
+    .gauge-wrapper { position: relative; width: 300px; height: 180px; margin-bottom: 20px; }
+    .gauge-bg {
+      position: absolute;
+      width: 300px;
+      height: 150px;
+      border-radius: 150px 150px 0 0;
+      background: linear-gradient(90deg, #4CAF50 0%, #8BC34A 25%, #FFC107 50%, #FF9800 75%, #F44336 100%);
+      overflow: hidden;
+    }
+    .gauge-inner {
+      position: absolute;
+      bottom: 0;
+      left: 30px;
+      width: 240px;
+      height: 120px;
+      background: white;
+      border-radius: 120px 120px 0 0;
+    }
+    .gauge-needle {
+      position: absolute;
+      bottom: 0;
+      left: 150px;
+      width: 4px;
+      height: 100px;
+      background: #333;
+      transform-origin: bottom center;
+      transform: rotate(${angle}deg);
+      border-radius: 2px;
+    }
+    .gauge-center {
+      position: absolute;
+      bottom: -10px;
+      left: 140px;
+      width: 20px;
+      height: 20px;
+      background: #333;
+      border-radius: 50%;
+    }
+    .gauge-labels {
+      position: absolute;
+      bottom: -5px;
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      padding: 0 10px;
+      box-sizing: border-box;
+      font-size: 12px;
+      color: #666;
+    }
+    .score-display {
+      font-size: 48px;
+      font-weight: bold;
+      color: ${scoreColor};
+    }
+    .score-label {
+      font-size: 14px;
+      color: #666;
+      text-transform: uppercase;
+    }
+    .risk-level {
+      font-size: 18px;
+      font-weight: 500;
+      color: ${scoreColor};
+      margin-top: 5px;
+    }
+  </style>
+</head>
+<body>
+  <div id="chart-container">
+    <div class="gauge-wrapper">
+      <div class="gauge-bg"></div>
+      <div class="gauge-inner"></div>
+      <div class="gauge-needle"></div>
+      <div class="gauge-center"></div>
+      <div class="gauge-labels">
+        <span>1</span>
+        <span>3</span>
+        <span>5</span>
+        <span>7</span>
+        <span>10</span>
+      </div>
+    </div>
+    <div class="score-display">${score.toFixed(1)}</div>
+    <div class="score-label">Risk Score</div>
+    <div class="risk-level">${data.label}</div>
+  </div>
+</body>
+</html>
+  `;
+
+  return await renderChartToBase64(html, 440, 320);
+}
+
+/**
+ * Generate performance badge SVG
+ */
+export function generatePerformanceBadge(
+  level: 'outperforming' | 'meeting' | 'underperforming'
+): string {
+  const colors = {
+    outperforming: { bg: '#E8F5E9', border: '#4CAF50', text: '#2E7D32' },
+    meeting: { bg: '#FFF8E1', border: '#FFC107', text: '#F57F17' },
+    underperforming: { bg: '#FFEBEE', border: '#F44336', text: '#C62828' }
+  };
+
+  const labels = {
+    outperforming: 'Outperforming Industry',
+    meeting: 'Meeting Expectations',
+    underperforming: 'Below Industry Average'
+  };
+
+  const icons = {
+    outperforming: '&#9650;',  // Up triangle
+    meeting: '&#9679;',        // Circle
+    underperforming: '&#9660;' // Down triangle
+  };
+
+  const c = colors[level];
+  const label = labels[level];
+  const icon = icons[level];
+
+  return `
+    <div style="
+      display: inline-flex;
+      align-items: center;
+      padding: 8px 16px;
+      background: ${c.bg};
+      border: 2px solid ${c.border};
+      border-radius: 20px;
+      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-size: 14px;
+      font-weight: 600;
+      color: ${c.text};
+    ">
+      <span style="margin-right: 8px; font-size: 12px;">${icon}</span>
+      ${label}
+    </div>
+  `;
+}
+
+/**
+ * Generate value map/mountain visualization
+ */
+export async function generateValueMap(data: ValueMapData): Promise<string> {
+  const formatValue = (v: number): string => {
+    if (v >= 1000000) return '$' + (v / 1000000).toFixed(1) + 'M';
+    if (v >= 1000) return '$' + (v / 1000).toFixed(0) + 'K';
+    return '$' + v.toLocaleString();
+  };
+
+  // Calculate position for company value marker (0-100 scale)
+  const range = data.highValue - data.lowValue;
+  const companyPosition = ((data.companyValue - data.lowValue) / range) * 100;
+
+  const html = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { margin: 0; padding: 30px; background: white; font-family: 'Helvetica Neue', Arial, sans-serif; }
+    #chart-container { width: 600px; height: 350px; }
+    .title {
+      font-size: 20px;
+      font-weight: bold;
+      color: #333;
+      text-align: center;
+      margin-bottom: 30px;
+    }
+    .value-range {
+      position: relative;
+      height: 200px;
+      margin: 0 40px;
+    }
+    .mountain {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 180px;
+      background: linear-gradient(180deg,
+        #E3F2FD 0%,
+        #90CAF9 30%,
+        #42A5F5 60%,
+        #1E88E5 100%
+      );
+      clip-path: polygon(0% 100%, 25% 40%, 50% 0%, 75% 40%, 100% 100%);
+    }
+    .value-marker {
+      position: absolute;
+      bottom: 0;
+      left: ${companyPosition}%;
+      transform: translateX(-50%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .marker-line {
+      width: 3px;
+      height: 200px;
+      background: #F44336;
+    }
+    .marker-dot {
+      width: 16px;
+      height: 16px;
+      background: #F44336;
+      border-radius: 50%;
+      border: 3px solid white;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+      margin-bottom: -8px;
+    }
+    .marker-label {
+      position: absolute;
+      top: -40px;
+      background: #F44336;
+      color: white;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-weight: bold;
+      font-size: 14px;
+      white-space: nowrap;
+    }
+    .range-labels {
+      display: flex;
+      justify-content: space-between;
+      margin: 0 40px;
+      padding-top: 15px;
+    }
+    .range-label {
+      text-align: center;
+    }
+    .range-value {
+      font-size: 16px;
+      font-weight: bold;
+      color: #333;
+    }
+    .range-type {
+      font-size: 11px;
+      color: #666;
+      margin-top: 4px;
+    }
+    .industry-range {
+      display: flex;
+      justify-content: center;
+      margin-top: 25px;
+      gap: 40px;
+    }
+    .industry-item {
+      text-align: center;
+    }
+    .industry-label {
+      font-size: 12px;
+      color: #666;
+    }
+    .industry-value {
+      font-size: 14px;
+      font-weight: 600;
+      color: #1565C0;
+    }
+  </style>
+</head>
+<body>
+  <div id="chart-container">
+    <div class="title">Valuation Range</div>
+    <div class="value-range">
+      <div class="mountain"></div>
+      <div class="value-marker">
+        <div class="marker-label">Your Value: ${formatValue(data.companyValue)}</div>
+        <div class="marker-dot"></div>
+        <div class="marker-line"></div>
+      </div>
+    </div>
+    <div class="range-labels">
+      <div class="range-label">
+        <div class="range-value">${formatValue(data.lowValue)}</div>
+        <div class="range-type">Low Estimate</div>
+      </div>
+      <div class="range-label">
+        <div class="range-value">${formatValue(data.midValue)}</div>
+        <div class="range-type">Mid Point</div>
+      </div>
+      <div class="range-label">
+        <div class="range-value">${formatValue(data.highValue)}</div>
+        <div class="range-type">High Estimate</div>
+      </div>
+    </div>
+    <div class="industry-range">
+      <div class="industry-item">
+        <div class="industry-label">Industry Low</div>
+        <div class="industry-value">${formatValue(data.industryLow)}</div>
+      </div>
+      <div class="industry-item">
+        <div class="industry-label">Industry High</div>
+        <div class="industry-value">${formatValue(data.industryHigh)}</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
+  `;
+
+  return await renderChartToBase64(html, 660, 400);
+}
+
+/**
  * Render HTML chart to Base64 image using Puppeteer
  */
-async function renderChartToBase64(html: string): Promise<string> {
+async function renderChartToBase64(html: string, width: number = 840, height: number = 600): Promise<string> {
   let browser;
-  
+
   try {
     console.log('[Chart] Launching browser for chart rendering...');
-    
+
     browser = await puppeteer.launch({
       args: chromium.args,
       executablePath: await chromium.executablePath(),
@@ -365,9 +948,9 @@ async function renderChartToBase64(html: string): Promise<string> {
     });
 
     const page = await browser.newPage();
-    
+
     // Set viewport size
-    await page.setViewport({ width: 840, height: 600 });
+    await page.setViewport({ width, height });
     
     // Load HTML
     await page.setContent(html, { waitUntil: 'networkidle0' });

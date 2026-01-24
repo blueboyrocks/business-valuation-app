@@ -1,8 +1,52 @@
 import puppeteer from 'puppeteer-core';
 import chromium from '@sparticuz/chromium';
-import { calculateKPIs, formatKPI, type FinancialData } from '../valuation/kpi-calculator';
+import {
+  calculateKPIs,
+  formatKPI,
+  type FinancialData,
+  calculateDetailedKPIs,
+  type KPIDetailedResult,
+  formatKPIValue,
+} from '../valuation/kpi-calculator';
 import { marked } from 'marked';
-import { generateValuationChart, generateFinancialMetricsChart, generateKPIChart, type ValuationChartData, type FinancialMetricsChartData, type KPIChartData } from './puppeteer-chart-renderer';
+import {
+  generateValuationChart,
+  generateFinancialMetricsChart,
+  generateKPIChart,
+  generateKPIComparisonChart,
+  generateFinancialTrendChart,
+  generateRiskGauge,
+  generateValueMap,
+  type ValuationChartData,
+  type FinancialMetricsChartData,
+  type KPIChartData,
+  type FinancialTrendChartData,
+  type RiskGaugeData,
+  type ValueMapData,
+} from './puppeteer-chart-renderer';
+import { generateAllKPIDetailPages } from './kpi-page-generator';
+import { getAllKPIsOrdered } from '../content/kpi-explanations';
+
+interface YearlyFinancialData {
+  year: number;
+  revenue: number;
+  pretax_income?: number;
+  owner_compensation?: number;
+  interest_expense?: number;
+  depreciation_amortization?: number;
+  non_cash_expenses?: number;
+  cash?: number;
+  accounts_receivable?: number;
+  inventory?: number;
+  other_current_assets?: number;
+  fixed_assets?: number;
+  total_assets?: number;
+  accounts_payable?: number;
+  other_short_term_liabilities?: number;
+  bank_loans?: number;
+  other_long_term_liabilities?: number;
+  total_liabilities?: number;
+}
 
 interface ReportData {
   // Valuation outputs
@@ -10,7 +54,9 @@ interface ReportData {
   asset_approach_value?: number;
   income_approach_value?: number;
   market_approach_value?: number;
-  
+  valuation_range_low?: number;
+  valuation_range_high?: number;
+
   // Financial data (current year)
   annual_revenue?: number;
   pretax_income?: number;
@@ -32,7 +78,23 @@ interface ReportData {
   bank_loans?: number;
   other_long_term_liabilities?: number;
   total_liabilities?: number;
-  
+
+  // Multi-year financial data for KPI trends
+  yearly_financials?: YearlyFinancialData[];
+
+  // Risk assessment data
+  risk_score?: number;
+  risk_level?: string;
+  risk_factors?: Array<{
+    category: string;
+    rating: string;
+    score: number;
+    description: string;
+  }>;
+
+  // Industry benchmarks
+  industry_benchmarks?: Record<string, number>;
+
   // Narrative sections
   executive_summary?: string;
   company_profile?: string;
@@ -44,7 +106,7 @@ interface ReportData {
   valuation_reconciliation?: string;
   risk_assessment?: string;
   strategic_insights?: string;
-  
+
   // Metadata
   naics_code?: string;
   industry_name?: string;
@@ -93,8 +155,11 @@ export class ProfessionalPDFGenerator {
       const enterprise_value = this.calculateEnterpriseValue(reportData);
       const liquidation_value = this.calculateLiquidationValue(reportData);
 
+      // Generate detailed KPI pages
+      const kpiDetailPages = await this.generateDetailedKPIPages(reportData);
+
       // Build HTML
-      const html = await this.buildHTML(companyName, reportData, generatedDate, kpis, enterprise_value, liquidation_value, charts);
+      const html = await this.buildHTML(companyName, reportData, generatedDate, kpis, enterprise_value, liquidation_value, charts, kpiDetailPages);
 
       // Generate PDF with Puppeteer
       const browser = await puppeteer.launch({
@@ -131,12 +196,29 @@ export class ProfessionalPDFGenerator {
   /**
    * Generate charts using Puppeteer + Chart.js
    */
-  private async generateCharts(reportData: ReportData, kpis: any): Promise<{ valuation?: string; financialMetrics?: string; kpiPerformance?: string }> {
-    const charts: { valuation?: string; financialMetrics?: string; kpiPerformance?: string } = {};
+  private async generateCharts(
+    reportData: ReportData,
+    kpis: any
+  ): Promise<{
+    valuation?: string;
+    financialMetrics?: string;
+    kpiPerformance?: string;
+    financialTrend?: string;
+    riskGauge?: string;
+    valueMap?: string;
+  }> {
+    const charts: {
+      valuation?: string;
+      financialMetrics?: string;
+      kpiPerformance?: string;
+      financialTrend?: string;
+      riskGauge?: string;
+      valueMap?: string;
+    } = {};
 
     try {
       console.log('[PDF] Generating charts...');
-      
+
       // Valuation approaches chart
       if (reportData.asset_approach_value && reportData.income_approach_value && reportData.market_approach_value) {
         console.log('[PDF] Generating valuation chart...');
@@ -153,28 +235,152 @@ export class ProfessionalPDFGenerator {
       if (kpis) {
         console.log('[PDF] Generating KPI chart...');
         const kpiData: KPIChartData[] = [
-          { name: 'Cash Flow/Revenue', companyValue: kpis.cashFlowToRevenue * 100, industryBenchmark: 15 },
-          { name: 'Cash/Revenue', companyValue: kpis.cashToRevenue * 100, industryBenchmark: 10 },
-          { name: 'Fixed Assets/Revenue', companyValue: kpis.fixedAssetsToRevenue * 100, industryBenchmark: 20 },
-          { name: 'Total Debt/Revenue', companyValue: kpis.totalDebtToRevenue * 100, industryBenchmark: 30 },
-          { name: 'AR/Revenue', companyValue: kpis.arToRevenue * 100, industryBenchmark: 12 },
-          { name: 'Inventory/Revenue', companyValue: kpis.inventoryToRevenue * 100, industryBenchmark: 15 },
-          { name: 'Current Ratio', companyValue: kpis.currentRatio * 100, industryBenchmark: 150 },
-          { name: 'Debt/Equity', companyValue: Math.abs(kpis.debtToEquity) * 100, industryBenchmark: 100 },
+          { name: 'Cash Flow/Revenue', companyValue: (kpis.cash_flow_to_revenue || 0) * 100, industryBenchmark: 15 },
+          { name: 'Cash/Revenue', companyValue: (kpis.cash_to_revenue || 0) * 100, industryBenchmark: 10 },
+          { name: 'Fixed Assets/Revenue', companyValue: (kpis.fixed_assets_to_revenue || 0) * 100, industryBenchmark: 20 },
+          { name: 'Total Debt/Revenue', companyValue: (kpis.total_debt_to_revenue || 0) * 100, industryBenchmark: 30 },
+          { name: 'Current Ratio', companyValue: (kpis.current_ratio || 0) * 100, industryBenchmark: 150 },
+          { name: 'Debt/Equity', companyValue: Math.abs(kpis.debt_to_equity || 0) * 100, industryBenchmark: 100 },
         ];
         charts.kpiPerformance = await generateKPIChart(kpiData);
         console.log('[PDF] KPI chart generated:', charts.kpiPerformance ? 'success' : 'failed');
       }
 
-      // Financial metrics chart (if multi-year data available)
-      // Note: This requires financial_years array in reportData
-      // Will be available once expanded schema is deployed
-      
+      // Financial trend chart (if multi-year data available)
+      if (reportData.yearly_financials && reportData.yearly_financials.length > 1) {
+        console.log('[PDF] Generating financial trend chart...');
+        const sortedYears = [...reportData.yearly_financials].sort((a, b) => a.year - b.year);
+        const trendData: FinancialTrendChartData = {
+          years: sortedYears.map(y => y.year.toString()),
+          datasets: [
+            {
+              label: 'Revenue',
+              data: sortedYears.map(y => y.revenue),
+              color: 'rgba(54, 162, 235, 1)',
+            },
+            {
+              label: 'Pretax Income',
+              data: sortedYears.map(y => y.pretax_income || 0),
+              color: 'rgba(75, 192, 192, 1)',
+            },
+          ],
+        };
+        charts.financialTrend = await generateFinancialTrendChart(trendData);
+        console.log('[PDF] Financial trend chart generated:', charts.financialTrend ? 'success' : 'failed');
+      }
+
+      // Risk gauge chart
+      if (reportData.risk_score !== undefined) {
+        console.log('[PDF] Generating risk gauge...');
+        const riskData: RiskGaugeData = {
+          score: reportData.risk_score,
+          label: reportData.risk_level || this.getRiskLabel(reportData.risk_score),
+        };
+        charts.riskGauge = await generateRiskGauge(riskData);
+        console.log('[PDF] Risk gauge generated:', charts.riskGauge ? 'success' : 'failed');
+      }
+
+      // Value map chart
+      if (reportData.valuation_amount && reportData.valuation_range_low && reportData.valuation_range_high) {
+        console.log('[PDF] Generating value map...');
+        const valueMapData: ValueMapData = {
+          lowValue: reportData.valuation_range_low,
+          midValue: reportData.valuation_amount,
+          highValue: reportData.valuation_range_high,
+          companyValue: reportData.valuation_amount,
+          industryLow: reportData.valuation_range_low * 0.85,
+          industryHigh: reportData.valuation_range_high * 1.15,
+        };
+        charts.valueMap = await generateValueMap(valueMapData);
+        console.log('[PDF] Value map generated:', charts.valueMap ? 'success' : 'failed');
+      }
+
     } catch (error) {
       console.error('[PDF] Chart generation error:', error);
     }
 
     return charts;
+  }
+
+  /**
+   * Get risk label from score
+   */
+  private getRiskLabel(score: number): string {
+    if (score <= 3) return 'Low Risk';
+    if (score <= 5) return 'Moderate Risk';
+    if (score <= 7) return 'Elevated Risk';
+    return 'High Risk';
+  }
+
+  /**
+   * Generate detailed KPI pages with charts
+   */
+  private async generateDetailedKPIPages(reportData: ReportData): Promise<string> {
+    console.log('[PDF] Generating detailed KPI pages...');
+
+    // Prepare yearly financial data for KPI calculations
+    let yearlyData: { year: number; data: FinancialData }[] = [];
+
+    if (reportData.yearly_financials && reportData.yearly_financials.length > 0) {
+      yearlyData = reportData.yearly_financials.map(yf => ({
+        year: yf.year,
+        data: {
+          revenue: yf.revenue,
+          pretax_income: yf.pretax_income,
+          owner_compensation: yf.owner_compensation,
+          interest_expense: yf.interest_expense,
+          depreciation_amortization: yf.depreciation_amortization || yf.non_cash_expenses,
+          cash: yf.cash,
+          accounts_receivable: yf.accounts_receivable,
+          inventory: yf.inventory,
+          other_current_assets: yf.other_current_assets,
+          fixed_assets: yf.fixed_assets,
+          total_assets: yf.total_assets,
+          accounts_payable: yf.accounts_payable,
+          other_short_term_liabilities: yf.other_short_term_liabilities,
+          bank_loans: yf.bank_loans,
+          other_long_term_liabilities: yf.other_long_term_liabilities,
+          total_liabilities: yf.total_liabilities,
+        },
+      }));
+    } else {
+      // Fall back to current year data if no historical data
+      const currentYear = new Date().getFullYear();
+      yearlyData = [{
+        year: currentYear,
+        data: {
+          revenue: reportData.annual_revenue || 0,
+          pretax_income: reportData.pretax_income,
+          owner_compensation: reportData.owner_compensation,
+          interest_expense: reportData.interest_expense,
+          depreciation_amortization: reportData.depreciation_amortization || reportData.non_cash_expenses,
+          cash: reportData.cash,
+          accounts_receivable: reportData.accounts_receivable,
+          inventory: reportData.inventory,
+          other_current_assets: reportData.other_current_assets,
+          fixed_assets: reportData.fixed_assets,
+          total_assets: reportData.total_assets,
+          accounts_payable: reportData.accounts_payable,
+          other_short_term_liabilities: reportData.other_short_term_liabilities,
+          bank_loans: reportData.bank_loans,
+          other_long_term_liabilities: reportData.other_long_term_liabilities,
+          total_liabilities: reportData.total_liabilities,
+        },
+      }];
+    }
+
+    // Calculate detailed KPIs
+    const detailedKPIs = calculateDetailedKPIs(yearlyData, reportData.industry_benchmarks);
+
+    // Generate HTML pages for each KPI
+    try {
+      const kpiPagesHTML = await generateAllKPIDetailPages(detailedKPIs);
+      console.log('[PDF] Generated detailed KPI pages successfully');
+      return kpiPagesHTML;
+    } catch (error) {
+      console.error('[PDF] Error generating KPI detail pages:', error);
+      return '';
+    }
   }
 
   /**
@@ -228,7 +434,15 @@ export class ProfessionalPDFGenerator {
     kpis: any,
     enterprise_value: number | null,
     liquidation_value: number | null,
-    charts: { valuation?: string; financialMetrics?: string; kpiPerformance?: string }
+    charts: {
+      valuation?: string;
+      financialMetrics?: string;
+      kpiPerformance?: string;
+      financialTrend?: string;
+      riskGauge?: string;
+      valueMap?: string;
+    },
+    kpiDetailPages: string = ''
   ): Promise<string> {
     // Format currency - distinguish between 0 (actual zero) and null/undefined (not extracted)
     const fmt = (val: number | null | undefined) => {
@@ -593,6 +807,28 @@ export class ProfessionalPDFGenerator {
       tocItems.push(`<div class="toc-item"><span>Key Performance Indicators</span><span>${pageNum}</span></div>`);
       pageNum += 2; // KPIs take ~2 pages
 
+      // Financial Trends (if available)
+      if (charts.financialTrend) {
+        tocItems.push(`<div class="toc-item"><span>Financial Performance Trends</span><span>${pageNum}</span></div>`);
+        pageNum += 1;
+      }
+
+      // KPI Detail Pages (13 KPIs, approximately 1 page each)
+      if (kpiDetailPages && kpiDetailPages.length > 0) {
+        tocItems.push(`<div class="toc-item"><span>Detailed KPI Analysis</span><span>${pageNum}</span></div>`);
+        // Add sub-items for major KPI categories
+        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Profitability Metrics</span><span>${pageNum}</span></div>`);
+        pageNum += 5; // ~5 profitability KPIs
+        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Liquidity Metrics</span><span>${pageNum}</span></div>`);
+        pageNum += 2; // 2 liquidity KPIs
+        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Efficiency Metrics</span><span>${pageNum}</span></div>`);
+        pageNum += 3; // 3 efficiency KPIs
+        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Leverage Metrics</span><span>${pageNum}</span></div>`);
+        pageNum += 1; // 1 leverage KPI
+        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Growth Metrics</span><span>${pageNum}</span></div>`);
+        pageNum += 2; // growth + SDE/Revenue
+      }
+
       tocItems.push(`<div class="toc-item"><span>Executive Summary</span><span>${pageNum}</span></div>`);
       pageNum += 3; // Executive Summary takes ~3 pages (long content)
 
@@ -625,7 +861,7 @@ export class ProfessionalPDFGenerator {
         tocItems.push(`<div class="toc-item"><span>Valuation Reconciliation</span><span>${pageNum}</span></div>`);
         pageNum += 2;
       }
-      if (riskAssessment) {
+      if (riskAssessment || charts.riskGauge) {
         tocItems.push(`<div class="toc-item"><span>Risk Assessment</span><span>${pageNum}</span></div>`);
         pageNum += 2;
       }
@@ -700,6 +936,13 @@ export class ProfessionalPDFGenerator {
         <div class="col-text">Net amount realized if business is terminated and assets sold piecemeal.</div>
       </div>
     </div>
+
+    ${charts.valueMap ? `
+    <h2 style="margin-top: 40px;">Valuation Range Overview</h2>
+    <div style="margin: 20px 0; text-align: center;">
+      <img src="${charts.valueMap}" alt="Value Map" style="max-width: 100%; height: auto;"/>
+    </div>
+    ` : ''}
   </div>
 
   <!-- Financial Summary -->
@@ -795,6 +1038,23 @@ export class ProfessionalPDFGenerator {
     ` : ''}
   </div>
 
+  <!-- Financial Trends -->
+  ${charts.financialTrend ? `
+  <div class="section">
+    <h1 class="section-title">Financial Performance Trends</h1>
+    <p>This section presents the historical financial performance trends of ${companyName}, illustrating the trajectory of key financial metrics over the analyzed period.</p>
+    <div style="margin: 30px 0; text-align: center;">
+      <img src="${charts.financialTrend}" alt="Financial Trends Chart" style="max-width: 100%; height: auto;"/>
+    </div>
+    <div class="value-card">
+      <p style="margin: 0; font-size: 11pt;">Financial trends provide critical context for valuation multiples. Consistent growth supports premium valuations, while volatility may warrant discounts. The chart above illustrates the company's historical performance and trajectory.</p>
+    </div>
+  </div>
+  ` : ''}
+
+  <!-- KPI Detail Pages -->
+  ${kpiDetailPages}
+
   <!-- Executive Summary -->
   <div class="section">
     <h1 class="section-title">Executive Summary</h1>
@@ -866,12 +1126,73 @@ export class ProfessionalPDFGenerator {
   </div>
   ` : ''}
 
-  ${riskAssessment ? `
+  ${riskAssessment || charts.riskGauge ? `
   <div class="section">
     <h1 class="section-title">Risk Assessment</h1>
+
+    ${charts.riskGauge ? `
+    <div style="display: flex; gap: 40px; align-items: flex-start; margin-bottom: 30px;">
+      <div style="flex: 0 0 auto;">
+        <img src="${charts.riskGauge}" alt="Risk Score Gauge" style="max-width: 400px; height: auto;"/>
+      </div>
+      <div style="flex: 1;">
+        <h2 style="margin-top: 0; color: #333;">Risk Profile Summary</h2>
+        <p style="font-size: 11pt; line-height: 1.8; color: #444;">
+          The overall risk score reflects a comprehensive assessment of factors that may impact the business's future performance and value. This includes operational risks, financial risks, market conditions, and company-specific considerations.
+        </p>
+        <div style="background: #F5F5F5; padding: 15px; border-radius: 8px; margin-top: 15px;">
+          <p style="margin: 0; font-size: 10pt; color: #666;">
+            <strong>Risk Score Interpretation:</strong><br/>
+            1-3: Low Risk - Stable business with strong fundamentals<br/>
+            4-5: Moderate Risk - Some areas require attention<br/>
+            6-7: Elevated Risk - Notable concerns that may impact value<br/>
+            8-10: High Risk - Significant challenges present
+          </p>
+        </div>
+      </div>
+    </div>
+    ` : ''}
+
+    ${reportData.risk_factors && reportData.risk_factors.length > 0 ? `
+    <h2>Risk Factor Breakdown</h2>
+    <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 10pt;">
+      <thead>
+        <tr style="background: #0066CC; color: white;">
+          <th style="padding: 12px; text-align: left;">Risk Category</th>
+          <th style="padding: 12px; text-align: center;">Rating</th>
+          <th style="padding: 12px; text-align: center;">Score</th>
+          <th style="padding: 12px; text-align: left;">Description</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${reportData.risk_factors.map((rf: any, idx: number) => `
+          <tr style="background: ${idx % 2 === 0 ? '#F9F9F9' : 'white'};">
+            <td style="padding: 10px 12px; font-weight: 500;">${rf.category}</td>
+            <td style="padding: 10px 12px; text-align: center;">
+              <span style="
+                display: inline-block;
+                padding: 4px 12px;
+                border-radius: 12px;
+                font-size: 9pt;
+                font-weight: 600;
+                background: ${rf.rating === 'Low' ? '#E8F5E9' : rf.rating === 'High' || rf.rating === 'Critical' ? '#FFEBEE' : '#FFF8E1'};
+                color: ${rf.rating === 'Low' ? '#2E7D32' : rf.rating === 'High' || rf.rating === 'Critical' ? '#C62828' : '#F57F17'};
+              ">${rf.rating}</span>
+            </td>
+            <td style="padding: 10px 12px; text-align: center; font-weight: bold;">${rf.score}/10</td>
+            <td style="padding: 10px 12px; color: #666;">${rf.description}</td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    ` : ''}
+
+    ${riskAssessment ? `
+    <h2>Detailed Risk Analysis</h2>
     <div class="narrative">
       ${riskAssessment}
     </div>
+    ` : ''}
   </div>
   ` : ''}
 
