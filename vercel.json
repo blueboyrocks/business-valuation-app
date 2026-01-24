@@ -6,7 +6,7 @@
     },
     "app/api/reports/[id]/export/route.ts": {
       "memory": 1024,
-      "maxDuration": 60
+      "maxDuration": 300
     },
     "app/api/reports/[id]/process/route.ts": {
       "memory": 1024,
@@ -18,7 +18,11 @@
     },
     "app/api/reports/[id]/download-pdf/route.ts": {
       "memory": 1024,
-      "maxDuration": 60
+      "maxDuration": 300
+    },
+    "app/api/reports/[id]/regenerate/route.ts": {
+      "memory": 1024,
+      "maxDuration": 300
     },
     "app/api/reports/[id]/process-claude/route.ts": {
       "memory": 1024,
