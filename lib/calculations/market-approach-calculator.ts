@@ -1,5 +1,8 @@
 /**
  * Market Approach Calculator - Guideline Transaction Method
+ *
+ * CRITICAL: Integrates with MultipleValidator to prevent invalid multiples
+ * that caused the $4.1M valuation error (should have been ~$2.8M)
  */
 
 import {
@@ -19,6 +22,7 @@ import {
   formatMultiple,
   formatPercentage,
 } from './utils';
+import { createMultipleValidator } from '../valuation/multiple-validator';
 
 export interface MarketApproachInputs {
   weighted_sde: number;
@@ -34,6 +38,10 @@ export interface MarketApproachInputs {
   manual_adjustments?: MultipleAdjustment[];
   weight?: number;
   weight_rationale?: string;
+  /** NAICS code for industry-specific multiple validation */
+  naics_code?: string;
+  /** Justification for multiple selection (required for above-median) */
+  multiple_justification?: string;
 }
 
 /**
@@ -228,15 +236,54 @@ export function calculateMarketApproach(inputs: MarketApproachInputs): MarketApp
     )
   );
 
-  // Calculate value
-  const marketApproachValue = roundToThousand(benefitStreamValue * adjustedMultiple);
+  // CRITICAL: Validate multiple against industry ceiling
+  // This prevents the $4.1M error (4.4x multiple was used instead of max 4.2x)
+  let validatedMultiple = adjustedMultiple;
+  if (inputs.naics_code && multipleType === 'SDE') {
+    const validator = createMultipleValidator(inputs.naics_code);
+    const validation = validator.validateSDEMultiple(
+      adjustedMultiple,
+      inputs.multiple_justification || ''
+    );
+
+    if (!validation.valid) {
+      // Multiple exceeds ceiling - use ceiling instead
+      const industryRange = validator.getIndustryRange();
+      if (industryRange.sde?.ceiling) {
+        validatedMultiple = industryRange.sde.ceiling;
+        warnings.push(
+          `CRITICAL: Multiple ${formatMultiple(adjustedMultiple)} exceeds industry ceiling ` +
+            `of ${formatMultiple(industryRange.sde.ceiling)}. Using ceiling value to prevent overvaluation.`
+        );
+        steps.push(
+          createStep(
+            'Market',
+            'Apply industry ceiling limit',
+            `Multiple capped at ${formatMultiple(validatedMultiple)} (ceiling)`,
+            {
+              requested_multiple: adjustedMultiple,
+              industry_ceiling: industryRange.sde.ceiling,
+              rejection_reason: validation.rejection_reason || 'Exceeds industry ceiling',
+            },
+            validatedMultiple
+          )
+        );
+      }
+    } else {
+      // Add any validation warnings
+      warnings.push(...validation.warnings);
+    }
+  }
+
+  // Calculate value using validated multiple
+  const marketApproachValue = roundToThousand(benefitStreamValue * validatedMultiple);
 
   steps.push(
     createStep(
       'Market',
       'Calculate market approach value',
-      'Value = Benefit Stream × Adjusted Multiple',
-      { benefit_stream: benefitStreamValue, adjusted_multiple: adjustedMultiple },
+      'Value = Benefit Stream × Validated Multiple',
+      { benefit_stream: benefitStreamValue, validated_multiple: validatedMultiple },
       marketApproachValue
     )
   );
@@ -257,7 +304,7 @@ export function calculateMarketApproach(inputs: MarketApproachInputs): MarketApp
     base_multiple: baseMultiple,
     multiple_source: multipleRange.source,
     adjustments: appliedAdjustments,
-    adjusted_multiple: adjustedMultiple,
+    adjusted_multiple: validatedMultiple, // Use ceiling-validated multiple
     benefit_stream_value: benefitStreamValue,
     market_approach_value: marketApproachValue,
     weight,
