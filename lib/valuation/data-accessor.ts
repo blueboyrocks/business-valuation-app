@@ -1,28 +1,13 @@
 /**
  * ValuationDataAccessor - Controlled Access to Valuation Data
  *
- * This module provides a controlled interface for accessing valuation data
- * from the ValuationDataStore. Key features:
- * - Type-safe access methods
- * - Formatted value helpers
- * - Access logging for audit trails
- * - Consistency guarantees
+ * PRD-A: Provides typed getters over the frozen ValuationDataStore.
+ * All PDF generator financial value reads go through this accessor.
  */
 
 import type { ValuationDataStore } from './data-store';
-import type { IndustryData } from '../calculations/types';
 
 // ============ TYPES ============
-
-export type FinancialPeriod = 'current' | 'prior_1' | 'prior_2' | 'weighted';
-export type SDEPeriod = FinancialPeriod | 'normalized';
-export type ApproachType = 'asset' | 'income' | 'market';
-
-export interface AccessLogEntry {
-  section: string;
-  field: string;
-  timestamp: string;
-}
 
 export interface FormatOptions {
   showCents?: boolean;
@@ -33,353 +18,351 @@ export interface FormatOptions {
 
 export class ValuationDataAccessor {
   private readonly store: ValuationDataStore;
-  private accessLog: AccessLogEntry[] = [];
 
   constructor(store: ValuationDataStore) {
     this.store = store;
   }
 
-  // ============ REVENUE ACCESS ============
+  // ============ FINANCIAL ACCESS ============
 
-  /**
-   * Get revenue for a specific period
-   */
-  getRevenue(period: FinancialPeriod): number {
-    switch (period) {
-      case 'current':
-        return this.store.financial.revenue.current_year;
-      case 'prior_1':
-        return this.store.financial.revenue.prior_year_1;
-      case 'prior_2':
-        return this.store.financial.revenue.prior_year_2;
-      case 'weighted':
-        return this.store.financial.revenue.weighted_average;
-      default:
-        throw new Error(`Invalid revenue period: ${period}`);
-    }
+  getRevenue(): number {
+    return this.store.financial.revenue;
   }
 
-  /**
-   * Get formatted revenue string
-   */
-  getFormattedRevenue(period: FinancialPeriod): string {
-    return this.formatCurrency(this.getRevenue(period));
+  getRevenueFormatted(): string {
+    return this.formatCurrency(this.store.financial.revenue);
   }
 
-  // ============ SDE ACCESS ============
-
-  /**
-   * Get SDE for a specific period
-   */
-  getSDE(period: SDEPeriod): number {
-    switch (period) {
-      case 'current':
-        return this.store.financial.sde.current_year;
-      case 'prior_1':
-        return this.store.financial.sde.prior_year_1;
-      case 'prior_2':
-        return this.store.financial.sde.prior_year_2;
-      case 'weighted':
-        return this.store.financial.sde.weighted_average;
-      case 'normalized':
-        return this.store.financial.sde.normalized;
-      default:
-        throw new Error(`Invalid SDE period: ${period}`);
-    }
+  getCOGS(): number {
+    return this.store.financial.cogs;
   }
 
-  /**
-   * Get formatted SDE string
-   */
-  getFormattedSDE(period: SDEPeriod): string {
-    return this.formatCurrency(this.getSDE(period));
+  getGrossProfit(): number {
+    return this.store.financial.gross_profit;
   }
 
-  // ============ EBITDA ACCESS ============
-
-  /**
-   * Get EBITDA for a specific period
-   */
-  getEBITDA(period: FinancialPeriod): number {
-    switch (period) {
-      case 'current':
-        return this.store.financial.ebitda.current_year;
-      case 'prior_1':
-        return this.store.financial.ebitda.prior_year_1;
-      case 'prior_2':
-        return this.store.financial.ebitda.prior_year_2;
-      case 'weighted':
-        return this.store.financial.ebitda.weighted_average;
-      default:
-        throw new Error(`Invalid EBITDA period: ${period}`);
-    }
+  getGrossProfitFormatted(): string {
+    return this.formatCurrency(this.store.financial.gross_profit);
   }
 
-  /**
-   * Get formatted EBITDA string
-   */
-  getFormattedEBITDA(period: FinancialPeriod): string {
-    return this.formatCurrency(this.getEBITDA(period));
+  getSDE(): number {
+    return this.store.financial.sde;
   }
 
-  // ============ NET INCOME ACCESS ============
+  getSDEFormatted(): string {
+    return this.formatCurrency(this.store.financial.sde);
+  }
 
-  /**
-   * Get net income for a specific period
-   */
-  getNetIncome(period: FinancialPeriod): number {
-    switch (period) {
-      case 'current':
-        return this.store.financial.net_income.current_year;
-      case 'prior_1':
-        return this.store.financial.net_income.prior_year_1;
-      case 'prior_2':
-        return this.store.financial.net_income.prior_year_2;
-      case 'weighted':
-        return this.store.financial.net_income.weighted_average;
-      default:
-        throw new Error(`Invalid net income period: ${period}`);
-    }
+  getWeightedSDE(): number {
+    return this.store.financial.weighted_sde;
+  }
+
+  getWeightedSDEFormatted(): string {
+    return this.formatCurrency(this.store.financial.weighted_sde);
+  }
+
+  getEBITDA(): number {
+    return this.store.financial.ebitda;
+  }
+
+  getEBITDAFormatted(): string {
+    return this.formatCurrency(this.store.financial.ebitda);
+  }
+
+  getWeightedEBITDA(): number {
+    return this.store.financial.weighted_ebitda;
+  }
+
+  getWeightedEBITDAFormatted(): string {
+    return this.formatCurrency(this.store.financial.weighted_ebitda);
+  }
+
+  getNetIncome(): number {
+    return this.store.financial.net_income;
+  }
+
+  getNetIncomeFormatted(): string {
+    return this.formatCurrency(this.store.financial.net_income);
+  }
+
+  getOfficerCompensation(): number {
+    return this.store.financial.officer_compensation;
+  }
+
+  getInterestExpense(): number {
+    return this.store.financial.interest_expense;
+  }
+
+  getDepreciation(): number {
+    return this.store.financial.depreciation;
+  }
+
+  getAmortization(): number {
+    return this.store.financial.amortization;
+  }
+
+  getSDEByYear(): ReadonlyArray<{ period: string; sde: number }> {
+    return this.store.financial.sde_by_year;
+  }
+
+  getEBITDAByYear(): ReadonlyArray<{ period: string; ebitda: number }> {
+    return this.store.financial.ebitda_by_year;
+  }
+
+  getRevenueByYear(): ReadonlyArray<{ period: string; revenue: number }> {
+    return this.store.financial.revenue_by_year;
   }
 
   // ============ VALUATION ACCESS ============
 
-  /**
-   * Get the final concluded value
-   */
   getFinalValue(): number {
     return this.store.valuation.final_value;
   }
 
-  /**
-   * Get the value range
-   */
-  getValueRange(): { low: number; high: number } {
-    return {
-      low: this.store.valuation.value_range_low,
-      high: this.store.valuation.value_range_high,
-    };
+  getFinalValueFormatted(): string {
+    return this.formatCurrency(this.store.valuation.final_value);
   }
 
-  /**
-   * Get value from a specific approach
-   */
-  getApproachValue(approach: ApproachType): number {
-    switch (approach) {
-      case 'asset':
-        return this.store.valuation.asset_approach_value;
-      case 'income':
-        return this.store.valuation.income_approach_value;
-      case 'market':
-        return this.store.valuation.market_approach_value;
-      default:
-        throw new Error(`Invalid approach: ${approach}`);
-    }
+  getPreliminaryValue(): number {
+    return this.store.valuation.preliminary_value;
   }
 
-  /**
-   * Get weighted value (before discounts/premiums)
-   */
-  getWeightedValue(): number {
-    return this.store.valuation.weighted_value;
+  getIncomeApproachValue(): number {
+    return this.store.valuation.income_approach_value;
   }
 
-  // ============ META ACCESS ============
+  getIncomeApproachValueFormatted(): string {
+    return this.formatCurrency(this.store.valuation.income_approach_value);
+  }
 
-  /**
-   * Get company name
-   */
+  getMarketApproachValue(): number {
+    return this.store.valuation.market_approach_value;
+  }
+
+  getMarketApproachValueFormatted(): string {
+    return this.formatCurrency(this.store.valuation.market_approach_value);
+  }
+
+  getAssetApproachValue(): number {
+    return this.store.valuation.asset_approach_value;
+  }
+
+  getAssetApproachValueFormatted(): string {
+    return this.formatCurrency(this.store.valuation.asset_approach_value);
+  }
+
+  getValueRangeLow(): number {
+    return this.store.valuation.value_range_low;
+  }
+
+  getValueRangeHigh(): number {
+    return this.store.valuation.value_range_high;
+  }
+
+  getValueRangeFormatted(): string {
+    return `${this.formatCurrency(this.store.valuation.value_range_low)} - ${this.formatCurrency(this.store.valuation.value_range_high)}`;
+  }
+
+  getSDEMultiple(): number {
+    return this.store.valuation.sde_multiple;
+  }
+
+  getSDEMultipleFormatted(): string {
+    return `${this.store.valuation.sde_multiple.toFixed(2)}x`;
+  }
+
+  getCapRate(): number {
+    return this.store.valuation.cap_rate;
+  }
+
+  getCapRateFormatted(): string {
+    return `${(this.store.valuation.cap_rate * 100).toFixed(1)}%`;
+  }
+
+  getAssetWeight(): number {
+    return this.store.valuation.asset_weight;
+  }
+
+  getIncomeWeight(): number {
+    return this.store.valuation.income_weight;
+  }
+
+  getMarketWeight(): number {
+    return this.store.valuation.market_weight;
+  }
+
+  getDLOMPercentage(): number {
+    return this.store.valuation.dlom_percentage;
+  }
+
+  isDLOMApplied(): boolean {
+    return this.store.valuation.dlom_applied;
+  }
+
+  // ============ COMPANY ACCESS ============
+
   getCompanyName(): string {
-    return this.store.meta.company_name;
+    return this.store.company.name;
   }
 
-  /**
-   * Get valuation date
-   */
-  getValuationDate(): string {
-    return this.store.meta.valuation_date;
+  getIndustry(): string {
+    return this.store.company.industry;
   }
 
-  /**
-   * Get fiscal year end
-   */
+  getNAICSCode(): string {
+    return this.store.company.naics_code;
+  }
+
+  getEntityType(): string {
+    return this.store.company.entity_type;
+  }
+
   getFiscalYearEnd(): string {
-    return this.store.meta.fiscal_year_end;
-  }
-
-  /**
-   * Get industry information
-   */
-  getIndustry(): IndustryData {
-    return this.store.industry;
-  }
-
-  /**
-   * Get data period description
-   */
-  getDataPeriodDescription(): string {
-    return this.store.meta.data_period_description;
+    return this.store.company.fiscal_year_end;
   }
 
   // ============ BALANCE SHEET ACCESS ============
 
-  /**
-   * Get total assets
-   */
   getTotalAssets(): number {
-    return this.store.balance_sheet.assets.total_assets;
+    return this.store.balance_sheet.total_assets;
   }
 
-  /**
-   * Get total liabilities
-   */
   getTotalLiabilities(): number {
-    return this.store.balance_sheet.liabilities.total_liabilities;
+    return this.store.balance_sheet.total_liabilities;
   }
 
-  /**
-   * Get total equity
-   */
   getTotalEquity(): number {
-    return this.store.balance_sheet.equity.total_equity;
+    return this.store.balance_sheet.total_equity;
   }
 
-  /**
-   * Get current ratio (current assets / current liabilities)
-   */
+  getCash(): number {
+    return this.store.balance_sheet.cash;
+  }
+
+  getAccountsReceivable(): number {
+    return this.store.balance_sheet.accounts_receivable;
+  }
+
+  getInventory(): number {
+    return this.store.balance_sheet.inventory;
+  }
+
+  getFixedAssets(): number {
+    return this.store.balance_sheet.fixed_assets;
+  }
+
+  getIntangibleAssets(): number {
+    return this.store.balance_sheet.intangible_assets;
+  }
+
   getCurrentRatio(): number {
-    const currentAssets = this.store.balance_sheet.assets.current_assets.total_current_assets;
-    const currentLiabilities = this.store.balance_sheet.liabilities.current_liabilities.total_current_liabilities;
-
-    if (currentLiabilities === 0) return 0;
-    return currentAssets / currentLiabilities;
+    const cl = this.store.balance_sheet.current_liabilities;
+    if (cl === 0) return 0;
+    return this.store.balance_sheet.current_assets / cl;
   }
 
-  /**
-   * Get working capital
-   */
   getWorkingCapital(): number {
-    const currentAssets = this.store.balance_sheet.assets.current_assets.total_current_assets;
-    const currentLiabilities = this.store.balance_sheet.liabilities.current_liabilities.total_current_liabilities;
-    return currentAssets - currentLiabilities;
+    return this.store.balance_sheet.current_assets - this.store.balance_sheet.current_liabilities;
   }
 
-  /**
-   * Get debt-to-equity ratio
-   */
   getDebtToEquityRatio(): number {
-    const totalLiabilities = this.getTotalLiabilities();
-    const totalEquity = this.getTotalEquity();
+    const eq = this.store.balance_sheet.total_equity;
+    if (eq === 0) return 0;
+    return this.store.balance_sheet.total_liabilities / eq;
+  }
 
-    if (totalEquity === 0) return 0;
-    return totalLiabilities / totalEquity;
+  // ============ METADATA ACCESS ============
+
+  getValuationDate(): string {
+    return this.store.metadata.valuation_date;
+  }
+
+  getReportDate(): string {
+    return this.store.metadata.report_date;
+  }
+
+  getEngineVersion(): string {
+    return this.store.metadata.engine_version;
+  }
+
+  // ============ DERIVED METRICS ============
+
+  getEnterpriseValue(): number {
+    return this.store.valuation.final_value + this.store.balance_sheet.total_liabilities;
+  }
+
+  getEnterpriseValueFormatted(): string {
+    return this.formatCurrency(this.getEnterpriseValue());
+  }
+
+  getLiquidationValue(): number {
+    const cash = this.store.balance_sheet.cash;
+    const ar = this.store.balance_sheet.accounts_receivable * 0.7;
+    const inv = this.store.balance_sheet.inventory * 0.5;
+    const fixed = this.store.balance_sheet.fixed_assets * 0.4;
+    const liabilities = this.store.balance_sheet.total_liabilities;
+    const calculated = cash + ar + inv + fixed - liabilities;
+    if (calculated <= 0) {
+      return Math.round(this.store.valuation.asset_approach_value * 0.65);
+    }
+    return Math.max(0, calculated);
+  }
+
+  getLiquidationValueFormatted(): string {
+    return this.formatCurrency(this.getLiquidationValue());
+  }
+
+  getProfitMargin(): number {
+    if (this.store.financial.revenue === 0) return 0;
+    return this.store.financial.net_income / this.store.financial.revenue;
+  }
+
+  getSDEMargin(): number {
+    if (this.store.financial.revenue === 0) return 0;
+    return this.store.financial.sde / this.store.financial.revenue;
+  }
+
+  getEBITDAMargin(): number {
+    if (this.store.financial.revenue === 0) return 0;
+    return this.store.financial.ebitda / this.store.financial.revenue;
   }
 
   // ============ FORMATTING HELPERS ============
 
-  /**
-   * Format a number as currency
-   */
   formatCurrency(value: number, options: FormatOptions = {}): string {
+    if (value === null || value === undefined) return 'N/A';
+    if (value === 0) return '$0';
     const { showCents = false } = options;
-
     if (showCents) {
       return `$${value.toLocaleString('en-US', {
         minimumFractionDigits: 2,
         maximumFractionDigits: 2,
       })}`;
     }
-
     return `$${Math.round(value).toLocaleString('en-US')}`;
   }
 
-  /**
-   * Format a number as percentage
-   */
   formatPercentage(value: number, decimals: number = 1): string {
     return `${(value * 100).toFixed(decimals)}%`;
   }
 
-  /**
-   * Format a number as a multiple
-   */
   formatMultiple(value: number, decimals: number = 2): string {
     return `${value.toFixed(decimals)}x`;
   }
 
-  // ============ AUDIT LOGGING ============
-
-  /**
-   * Log an access to a specific field
-   */
-  logAccess(section: string, field: string): void {
-    this.accessLog.push({
-      section,
-      field,
-      timestamp: new Date().toISOString(),
-    });
-  }
-
-  /**
-   * Get the full access log
-   */
-  getAccessLog(): AccessLogEntry[] {
-    return [...this.accessLog];
-  }
-
-  /**
-   * Get access summary by section
-   */
-  getAccessSummary(): Record<string, number> {
-    const summary: Record<string, number> = {};
-
-    for (const entry of this.accessLog) {
-      summary[entry.section] = (summary[entry.section] || 0) + 1;
-    }
-
-    return summary;
-  }
-
-  /**
-   * Clear the access log
-   */
-  clearAccessLog(): void {
-    this.accessLog = [];
-  }
-
   // ============ RAW STORE ACCESS ============
 
-  /**
-   * Get the underlying data store (for advanced use cases)
-   */
   getStore(): ValuationDataStore {
     return this.store;
   }
 
-  /**
-   * Check if valuation results are available
-   */
   hasValuationResults(): boolean {
     return this.store.valuation.final_value > 0;
-  }
-
-  /**
-   * Get all financial periods that have data
-   */
-  getAvailablePeriods(): string[] {
-    const periods: string[] = [];
-    if (this.store.financial.revenue.current_year > 0) periods.push('current');
-    if (this.store.financial.revenue.prior_year_1 > 0) periods.push('prior_1');
-    if (this.store.financial.revenue.prior_year_2 > 0) periods.push('prior_2');
-    return periods;
   }
 }
 
 // ============ FACTORY FUNCTION ============
 
-/**
- * Create a new ValuationDataAccessor
- */
 export function createDataAccessor(store: ValuationDataStore): ValuationDataAccessor {
   return new ValuationDataAccessor(store);
 }

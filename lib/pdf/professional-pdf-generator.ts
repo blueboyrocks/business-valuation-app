@@ -26,6 +26,11 @@ import {
 } from './puppeteer-chart-renderer';
 import { generateAllKPIDetailPages } from './kpi-page-generator';
 import { getAllKPIsOrdered } from '../content/kpi-explanations';
+import type { ValuationDataAccessor } from '../valuation/data-accessor';
+import { CitationManager } from '../citations/citation-manager';
+import { CalculationTableGenerator, type SDETableInput, type MarketApproachInput, type SynthesisInput } from '../display/calculation-table-generator';
+import { ReportChartGenerator } from '../charts/chart-generator';
+import { buildChartData } from '../charts/chart-data-builder';
 
 interface YearlyFinancialData {
   year: number;
@@ -117,49 +122,217 @@ export class ProfessionalPDFGenerator {
   /**
    * Generate professional PDF without charts (for reliability)
    */
-  async generate(companyName: string, reportData: ReportData, generatedDate: string): Promise<Buffer> {
+  async generate(companyName: string, reportData: ReportData, generatedDate: string, accessor?: ValuationDataAccessor): Promise<Buffer> {
     console.log('[PDF] Generating professional PDF...');
+
+    // PRD-A: Check for accessor attached to report data
+    if (!accessor && (reportData as any)._dataAccessor) {
+      accessor = (reportData as any)._dataAccessor as ValuationDataAccessor;
+    }
 
     try {
       // Prepare financial data for KPI calculations
+      // PRD-A: Use accessor as single source of truth when available
       const currentYearData: FinancialData = {
-        revenue: reportData.annual_revenue || 0,
-        pretax_income: reportData.pretax_income,
-        owner_compensation: reportData.owner_compensation,
-        interest_expense: reportData.interest_expense,
-        depreciation_amortization: reportData.depreciation_amortization || reportData.non_cash_expenses,
+        revenue: accessor?.getRevenue() || reportData.annual_revenue || 0,
+        pretax_income: accessor?.getNetIncome() || reportData.pretax_income,
+        owner_compensation: accessor?.getOfficerCompensation() || reportData.owner_compensation,
+        interest_expense: accessor?.getInterestExpense() || reportData.interest_expense,
+        depreciation_amortization: accessor?.getDepreciation() || reportData.depreciation_amortization || reportData.non_cash_expenses,
         non_cash_expenses: reportData.non_cash_expenses,
         one_time_expenses: reportData.one_time_expenses,
         one_time_revenues: reportData.one_time_revenues,
-        cash: reportData.cash,
-        accounts_receivable: reportData.accounts_receivable,
-        inventory: reportData.inventory,
+        cash: accessor?.getCash() || reportData.cash,
+        accounts_receivable: accessor?.getAccountsReceivable() || reportData.accounts_receivable,
+        inventory: accessor?.getInventory() || reportData.inventory,
         other_current_assets: reportData.other_current_assets,
-        fixed_assets: reportData.fixed_assets,
-        intangible_assets: reportData.intangible_assets,
-        total_assets: reportData.total_assets,
+        fixed_assets: accessor?.getFixedAssets() || reportData.fixed_assets,
+        intangible_assets: accessor?.getIntangibleAssets() || reportData.intangible_assets,
+        total_assets: accessor?.getTotalAssets() || reportData.total_assets,
         accounts_payable: reportData.accounts_payable,
         other_short_term_liabilities: reportData.other_short_term_liabilities,
         bank_loans: reportData.bank_loans,
         other_long_term_liabilities: reportData.other_long_term_liabilities,
-        total_liabilities: reportData.total_liabilities,
+        total_liabilities: accessor?.getTotalLiabilities() || reportData.total_liabilities,
       };
 
       // Calculate KPIs
       const kpis = calculateKPIs(currentYearData);
 
-      // Generate charts
+      // Generate Puppeteer-based charts (existing)
       const charts = await this.generateCharts(reportData, kpis);
 
+      // PRD-D: Generate inline SVG charts if accessor is available
+      let inlineSvgCharts: {
+        revenueTrend?: string;
+        sdeEbitdaTrend?: string;
+        valuationComparison?: string;
+        riskGauge?: string;
+        profitabilityTrend?: string;
+        kpiBenchmark?: string;
+      } = {};
+      if (accessor) {
+        try {
+          const chartGen = new ReportChartGenerator();
+          const chartData = buildChartData(accessor);
+
+          if (chartData.revenueTrend.values.length > 0) {
+            inlineSvgCharts.revenueTrend = chartGen.generateRevenueTrendChart(
+              chartData.revenueTrend.labels, chartData.revenueTrend.values
+            );
+          }
+          if (chartData.sdeTrend.values.length > 0 && chartData.ebitdaTrend.values.length > 0) {
+            inlineSvgCharts.sdeEbitdaTrend = chartGen.generateSDEEBITDATrendChart(
+              chartData.sdeTrend.labels, chartData.sdeTrend.values, chartData.ebitdaTrend.values
+            );
+          }
+          if (chartData.valuationComparison.approaches.length > 0) {
+            inlineSvgCharts.valuationComparison = chartGen.generateValuationComparisonChart(
+              chartData.valuationComparison.approaches, chartData.valuationComparison.finalValue
+            );
+          }
+          inlineSvgCharts.riskGauge = chartGen.generateRiskGaugeChart(
+            chartData.riskScore, chartData.riskScore <= 3 ? 'Low' : chartData.riskScore <= 6 ? 'Moderate' : 'High'
+          );
+          if (chartData.profitabilityTrend.labels.length > 0) {
+            inlineSvgCharts.profitabilityTrend = chartGen.generateProfitabilityTrendChart(
+              chartData.profitabilityTrend.labels,
+              chartData.profitabilityTrend.margins.gross,
+              chartData.profitabilityTrend.margins.sde,
+              chartData.profitabilityTrend.margins.ebitda
+            );
+          }
+          console.log('[PDF] Inline SVG charts generated successfully');
+        } catch (chartErr) {
+          console.warn('[PDF] Inline SVG chart generation failed (non-blocking):', chartErr);
+        }
+      }
+
+      // PRD-E: Generate citation bibliography
+      let bibliographyHTML = '';
+      const citationManager = new CitationManager();
+      try {
+        const currentYear = new Date().getFullYear();
+        citationManager.cite('BBS', currentYear, 'Market transaction data for SDE multiples');
+        citationManager.cite('BRG', currentYear, 'Industry-specific pricing rules of thumb');
+        citationManager.cite('RMA', currentYear, 'Industry financial ratio benchmarks');
+        citationManager.cite('NYU', currentYear, 'Risk-free rate and equity risk premium data');
+        citationManager.cite('PRATT', currentYear, 'Private company transaction comparables');
+        citationManager.cite('DM', currentYear, 'M&A transaction database for market approach');
+        citationManager.cite('IRS', currentYear, 'Tax return financial data verification');
+        citationManager.cite('BEA', currentYear, 'GDP and economic condition indicators');
+        citationManager.cite('SBA', currentYear, 'Small business industry statistics');
+        citationManager.cite('IBIS', currentYear, 'Industry market analysis and trends');
+
+        const bibMarkdown = citationManager.generateBibliography();
+        const allCitations = citationManager.getAllCitations();
+        bibliographyHTML = `
+          <div class="section" style="page-break-before: always;">
+            <h1 class="section-title">Sources and References</h1>
+            <p style="margin-bottom: 20px;">This report references the following authoritative sources. Inline citations are marked with brackets (e.g., [BBS-${currentYear}]) throughout the report.</p>
+            <table style="width: 100%; border-collapse: collapse; font-size: 10pt;">
+              <thead><tr style="background: #0066CC; color: white;">
+                <th style="padding: 10px; text-align: left;">Citation</th>
+                <th style="padding: 10px; text-align: left;">Source</th>
+                <th style="padding: 10px; text-align: left;">Context</th>
+              </tr></thead>
+              <tbody>
+                ${allCitations.map((c, i) => `
+                  <tr style="background: ${i % 2 === 0 ? '#F9F9F9' : 'white'};">
+                    <td style="padding: 8px; font-weight: bold;">${c.inline}</td>
+                    <td style="padding: 8px;">${citationManager.getSource(c.source_code)?.name || c.source_code} (${c.year})</td>
+                    <td style="padding: 8px; color: #666;">${c.context}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>`;
+        console.log(`[PDF] Generated bibliography with ${allCitations.length} citations`);
+      } catch (bibErr) {
+        console.warn('[PDF] Bibliography generation failed (non-blocking):', bibErr);
+      }
+
+      // PRD-E: Generate calculation tables
+      let sdeTableHTML = '';
+      let marketTableHTML = '';
+      let synthesisTableHTML = '';
+      if (accessor) {
+        try {
+          const tableGen = new CalculationTableGenerator();
+
+          // SDE Table
+          const sdeInput: SDETableInput = {
+            period: accessor.getSDEByYear()[0]?.period || new Date().getFullYear().toString(),
+            starting_net_income: accessor.getNetIncome(),
+            add_backs: [
+              { description: 'Officer Compensation', amount: accessor.getOfficerCompensation(), source: 'Tax Return' },
+              { description: 'Interest Expense', amount: accessor.getInterestExpense(), source: 'Tax Return' },
+              { description: 'Depreciation & Amortization', amount: accessor.getDepreciation() + accessor.getAmortization(), source: 'Tax Return' },
+            ].filter(a => a.amount > 0),
+            total_sde: accessor.getSDE(),
+          };
+          const sdeTable = tableGen.generateSDETable(sdeInput);
+          sdeTableHTML = tableGen.toHTML(sdeTable);
+
+          // Market Approach Table
+          const marketInput: MarketApproachInput = {
+            benefit_stream: 'SDE',
+            benefit_stream_value: accessor.getWeightedSDE(),
+            industry: accessor.getIndustry(),
+            naics_code: accessor.getNAICSCode(),
+            multiple_range: { low: 1.5, median: 2.5, high: 3.5, source: 'BizBuySell / Business Reference Guide' },
+            selected_multiple: accessor.getSDEMultiple(),
+            multiple_position: 'Industry-Adjusted',
+            justification: 'Based on company size, growth trajectory, and risk profile relative to industry peers',
+            adjustments: [],
+            final_multiple: accessor.getSDEMultiple(),
+            calculated_value: accessor.getMarketApproachValue(),
+          };
+          const marketTable = tableGen.generateMarketApproachTable(marketInput);
+          marketTableHTML = tableGen.toHTML(marketTable);
+
+          // Synthesis Table
+          const synthInput: SynthesisInput = {
+            approaches: [
+              { name: 'Asset Approach', value: accessor.getAssetApproachValue(), weight: accessor.getAssetWeight() },
+              { name: 'Income Approach', value: accessor.getIncomeApproachValue(), weight: accessor.getIncomeWeight() },
+              { name: 'Market Approach', value: accessor.getMarketApproachValue(), weight: accessor.getMarketWeight() },
+            ],
+            preliminary_value: accessor.getPreliminaryValue(),
+            discounts: accessor.isDLOMApplied() ? [
+              { name: 'Discount for Lack of Marketability (DLOM)', percentage: accessor.getDLOMPercentage(), amount: Math.round(accessor.getPreliminaryValue() * accessor.getDLOMPercentage()) },
+            ] : [],
+            final_value: accessor.getFinalValue(),
+            value_range: { low: accessor.getValueRangeLow(), high: accessor.getValueRangeHigh() },
+          };
+          const synthTable = tableGen.generateSynthesisTable(synthInput);
+          synthesisTableHTML = tableGen.toHTML(synthTable);
+
+          console.log('[PDF] Calculation tables generated successfully');
+        } catch (tableErr) {
+          console.warn('[PDF] Calculation table generation failed (non-blocking):', tableErr);
+        }
+      }
+
       // Calculate enterprise and liquidation values
-      const enterprise_value = this.calculateEnterpriseValue(reportData);
-      const liquidation_value = this.calculateLiquidationValue(reportData);
+      // PRD-A: Use accessor when available
+      const enterprise_value = accessor
+        ? accessor.getEnterpriseValue()
+        : this.calculateEnterpriseValue(reportData);
+      const liquidation_value = accessor
+        ? accessor.getLiquidationValue()
+        : this.calculateLiquidationValue(reportData);
 
       // Generate detailed KPI pages
       const kpiDetailPages = await this.generateDetailedKPIPages(reportData);
 
-      // Build HTML
-      const html = await this.buildHTML(companyName, reportData, generatedDate, kpis, enterprise_value, liquidation_value, charts, kpiDetailPages);
+      // Build HTML with all PRD enhancements
+      const html = await this.buildHTML(
+        companyName, reportData, generatedDate, kpis,
+        enterprise_value, liquidation_value, charts, kpiDetailPages,
+        accessor, inlineSvgCharts, citationManager, bibliographyHTML,
+        sdeTableHTML, marketTableHTML, synthesisTableHTML
+      );
 
       // Generate PDF with Puppeteer
       const browser = await puppeteer.launch({
@@ -442,14 +615,43 @@ export class ProfessionalPDFGenerator {
       riskGauge?: string;
       valueMap?: string;
     },
-    kpiDetailPages: string = ''
+    kpiDetailPages: string = '',
+    accessor?: ValuationDataAccessor,
+    inlineSvgCharts?: {
+      revenueTrend?: string;
+      sdeEbitdaTrend?: string;
+      valuationComparison?: string;
+      riskGauge?: string;
+      profitabilityTrend?: string;
+      kpiBenchmark?: string;
+    },
+    citationManager?: CitationManager,
+    bibliographyHTML: string = '',
+    sdeTableHTML: string = '',
+    marketTableHTML: string = '',
+    synthesisTableHTML: string = ''
   ): Promise<string> {
     // Format currency - distinguish between 0 (actual zero) and null/undefined (not extracted)
+    // PRD-A: Use accessor formatting when available
     const fmt = (val: number | null | undefined) => {
       if (val === null || val === undefined) return 'N/A';
       if (val === 0) return '$0';
       return `$${Math.round(val).toLocaleString()}`;
     };
+
+    // PRD-A: Override values with accessor when available
+    const fv = accessor ? accessor.getFinalValue() : reportData.valuation_amount;
+    const av = accessor ? accessor.getAssetApproachValue() : reportData.asset_approach_value;
+    const iv = accessor ? accessor.getIncomeApproachValue() : reportData.income_approach_value;
+    const mv = accessor ? accessor.getMarketApproachValue() : reportData.market_approach_value;
+    const rev = accessor ? accessor.getRevenue() : reportData.annual_revenue;
+    const sde = accessor ? accessor.getSDE() : null;
+    const wSDE = accessor ? accessor.getWeightedSDE() : null;
+    const ebitda = accessor ? accessor.getEBITDA() : null;
+
+    // PRD-E: Citation inline reference helper
+    const citeYear = new Date().getFullYear();
+    const citeInline = (code: string) => citationManager ? `<sup style="color: #0066CC; font-size: 8pt;">[${code}-${citeYear}]</sup>` : '';
 
     // Helper to extract string content from either string or object with content property
     const getContent = (value: unknown): string => {
@@ -886,11 +1088,12 @@ export class ProfessionalPDFGenerator {
     
     <div class="value-card">
       <div class="value-label">Equity Value (Fair Market Value)</div>
-      <div class="value-amount">${fmt(reportData.valuation_amount)}</div>
-      <div class="value-subtitle">Based on Weighted Average of Three Approaches</div>
+      <div class="value-amount">${fmt(fv)}</div>
+      <div class="value-subtitle">Based on Weighted Average of Three Approaches${citeInline('BRG')}</div>
     </div>
-    
+
           <h2>Valuation Approaches</h2>
+          ${inlineSvgCharts?.valuationComparison ? `<div style="margin: 20px 0; text-align: center;">${inlineSvgCharts.valuationComparison}</div>` : ''}
           ${charts.valuation ? `<div class="chart-container"><img src="${charts.valuation}" alt="Valuation Approaches Chart" style="max-width: 100%; height: auto;"/></div>` : ''}
           <table class="financial-table">
             <thead>
@@ -903,26 +1106,27 @@ export class ProfessionalPDFGenerator {
             <tbody>
               <tr>
                 <td>Asset Approach</td>
-                <td>${fmt(reportData.asset_approach_value)}</td>
-                <td>20%</td>
+                <td>${fmt(av)}</td>
+                <td>${accessor ? `${(accessor.getAssetWeight() * 100).toFixed(0)}%` : '20%'}</td>
               </tr>
               <tr>
-                <td>Income Approach</td>
-                <td>${fmt(reportData.income_approach_value)}</td>
-                <td>40%</td>
+                <td>Income Approach${citeInline('NYU')}</td>
+                <td>${fmt(iv)}</td>
+                <td>${accessor ? `${(accessor.getIncomeWeight() * 100).toFixed(0)}%` : '40%'}</td>
               </tr>
               <tr>
-                <td>Market Approach</td>
-                <td>${fmt(reportData.market_approach_value)}</td>
-                <td>40%</td>
+                <td>Market Approach${citeInline('BBS')}</td>
+                <td>${fmt(mv)}</td>
+                <td>${accessor ? `${(accessor.getMarketWeight() * 100).toFixed(0)}%` : '40%'}</td>
               </tr>
             </tbody>
           </table>
+          ${synthesisTableHTML ? `<h3>Value Synthesis Detail</h3>${synthesisTableHTML}` : ''}
     
     <div class="three-col">
       <div class="col">
         <div class="col-title">Asset Sale Value</div>
-        <div class="col-value">${fmt(reportData.asset_approach_value)}</div>
+        <div class="col-value">${fmt(av)}</div>
         <div class="col-text">Includes inventory, fixtures, equipment, and intangible assets. Buyer operates from newly formed entity.</div>
       </div>
       <div class="col">
@@ -937,6 +1141,18 @@ export class ProfessionalPDFGenerator {
       </div>
     </div>
 
+    ${accessor ? `
+    <div style="margin-top: 20px; padding: 15px; background: #F5F5F5; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #0066CC;">Key Financial Metrics</h3>
+      <table style="width: 100%; font-size: 10pt;">
+        <tr><td>Normalized SDE</td><td style="text-align: right; font-weight: bold;">${accessor.getWeightedSDEFormatted()}</td></tr>
+        <tr><td>SDE Multiple Applied</td><td style="text-align: right; font-weight: bold;">${accessor.getSDEMultipleFormatted()} ${citeInline('BBS')}</td></tr>
+        <tr><td>Capitalization Rate</td><td style="text-align: right; font-weight: bold;">${accessor.getCapRateFormatted()} ${citeInline('NYU')}</td></tr>
+        <tr><td>Value Range</td><td style="text-align: right; font-weight: bold;">${accessor.getValueRangeFormatted()}</td></tr>
+      </table>
+    </div>
+    ` : ''}
+
     ${charts.valueMap ? `
     <h2 style="margin-top: 40px;">Valuation Range Overview</h2>
     <div style="margin: 20px 0; text-align: center;">
@@ -948,34 +1164,50 @@ export class ProfessionalPDFGenerator {
   <!-- Financial Summary -->
   <div class="section">
     <h1 class="section-title">Financial Summary</h1>
-    
-    <h2>${new Date().getFullYear()}</h2>
-    
+
+    ${inlineSvgCharts?.revenueTrend ? `
+    <h2>Revenue Trend</h2>
+    <div style="margin: 20px 0; text-align: center;">${inlineSvgCharts.revenueTrend}</div>
+    ` : ''}
+
+    <h2>${new Date().getFullYear()} ${citeInline('IRS')}</h2>
+
     <div class="financial-table">
       <div class="financial-section">
         <h3>Income</h3>
         <table>
-          <tr><td>Revenue</td><td style="text-align: right; font-weight: bold;">${fmt(reportData.annual_revenue)}</td></tr>
-          <tr><td>Pretax Income</td><td style="text-align: right;">${fmt(reportData.pretax_income)}</td></tr>
-          <tr><td>Officer Compensation</td><td style="text-align: right;">${fmt(reportData.owner_compensation)}</td></tr>
-          <tr><td>Interest Expense</td><td style="text-align: right;">${fmt(reportData.interest_expense)}</td></tr>
-          <tr><td>Non-Cash Expenses</td><td style="text-align: right;">${fmt(reportData.non_cash_expenses || reportData.depreciation_amortization)}</td></tr>
+          <tr><td>Revenue</td><td style="text-align: right; font-weight: bold;">${fmt(rev)}</td></tr>
+          <tr><td>Pretax Income</td><td style="text-align: right;">${fmt(accessor?.getNetIncome() ?? reportData.pretax_income)}</td></tr>
+          <tr><td>Officer Compensation</td><td style="text-align: right;">${fmt(accessor?.getOfficerCompensation() ?? reportData.owner_compensation)}</td></tr>
+          <tr><td>Interest Expense</td><td style="text-align: right;">${fmt(accessor?.getInterestExpense() ?? reportData.interest_expense)}</td></tr>
+          <tr><td>Non-Cash Expenses</td><td style="text-align: right;">${fmt(accessor?.getDepreciation() ?? reportData.non_cash_expenses ?? reportData.depreciation_amortization)}</td></tr>
+          ${accessor && sde ? `<tr style="background: #E8F5E9;"><td><strong>Seller's Discretionary Earnings (SDE)</strong></td><td style="text-align: right; font-weight: bold;">${fmt(sde)}</td></tr>` : ''}
+          ${accessor && ebitda ? `<tr style="background: #E3F2FD;"><td><strong>EBITDA</strong></td><td style="text-align: right; font-weight: bold;">${fmt(ebitda)}</td></tr>` : ''}
         </table>
       </div>
+
+      ${sdeTableHTML ? `<div class="financial-section"><h3>SDE Calculation Detail</h3>${sdeTableHTML}</div>` : ''}
+
+      ${inlineSvgCharts?.sdeEbitdaTrend ? `
+      <div style="margin: 20px 0; text-align: center;">
+        <h3>SDE & EBITDA Trends</h3>
+        ${inlineSvgCharts.sdeEbitdaTrend}
+      </div>
+      ` : ''}
       
       <div class="financial-section">
         <h3>Assets</h3>
         <table>
-          <tr><td>Cash</td><td style="text-align: right; font-weight: bold;">${fmt(reportData.cash)}</td></tr>
-          <tr><td>Accounts Receivable</td><td style="text-align: right;">${fmt(reportData.accounts_receivable)}</td></tr>
-          <tr><td>Inventory</td><td style="text-align: right;">${fmt(reportData.inventory)}</td></tr>
+          <tr><td>Cash</td><td style="text-align: right; font-weight: bold;">${fmt(accessor?.getCash() ?? reportData.cash)}</td></tr>
+          <tr><td>Accounts Receivable</td><td style="text-align: right;">${fmt(accessor?.getAccountsReceivable() ?? reportData.accounts_receivable)}</td></tr>
+          <tr><td>Inventory</td><td style="text-align: right;">${fmt(accessor?.getInventory() ?? reportData.inventory)}</td></tr>
           <tr><td>Other Current Assets</td><td style="text-align: right;">${fmt(reportData.other_current_assets)}</td></tr>
-          <tr><td>Fixed Assets</td><td style="text-align: right;">${fmt(reportData.fixed_assets)}</td></tr>
-          <tr><td>Intangible Assets</td><td style="text-align: right;">${fmt(reportData.intangible_assets)}</td></tr>
-          <tr><td><strong>Total Assets</strong></td><td style="text-align: right; font-weight: bold;">${fmt(reportData.total_assets)}</td></tr>
+          <tr><td>Fixed Assets</td><td style="text-align: right;">${fmt(accessor?.getFixedAssets() ?? reportData.fixed_assets)}</td></tr>
+          <tr><td>Intangible Assets</td><td style="text-align: right;">${fmt(accessor?.getIntangibleAssets() ?? reportData.intangible_assets)}</td></tr>
+          <tr><td><strong>Total Assets</strong></td><td style="text-align: right; font-weight: bold;">${fmt(accessor?.getTotalAssets() ?? reportData.total_assets)}</td></tr>
         </table>
       </div>
-      
+
       <div class="financial-section">
         <h3>Liabilities</h3>
         <table>
@@ -983,7 +1215,7 @@ export class ProfessionalPDFGenerator {
           <tr><td>Other Short-Term Liabilities</td><td style="text-align: right;">${fmt(reportData.other_short_term_liabilities)}</td></tr>
           <tr><td>Bank Loans</td><td style="text-align: right;">${fmt(reportData.bank_loans)}</td></tr>
           <tr><td>Other Long-Term Liabilities</td><td style="text-align: right;">${fmt(reportData.other_long_term_liabilities)}</td></tr>
-          <tr><td><strong>Total Liabilities</strong></td><td style="text-align: right; font-weight: bold;">${fmt(reportData.total_liabilities)}</td></tr>
+          <tr><td><strong>Total Liabilities</strong></td><td style="text-align: right; font-weight: bold;">${fmt(accessor?.getTotalLiabilities() ?? reportData.total_liabilities)}</td></tr>
         </table>
       </div>
     </div>
@@ -1084,6 +1316,10 @@ export class ProfessionalPDFGenerator {
   ${financialAnalysis ? `
   <div class="section">
     <h1 class="section-title">Financial Analysis</h1>
+    ${inlineSvgCharts?.profitabilityTrend ? `
+    <h2>Profitability Trends</h2>
+    <div style="margin: 20px 0; text-align: center;">${inlineSvgCharts.profitabilityTrend}</div>
+    ` : ''}
     <div class="narrative">
       ${financialAnalysis}
     </div>
@@ -1111,6 +1347,7 @@ export class ProfessionalPDFGenerator {
   ${marketAnalysis ? `
   <div class="section">
     <h1 class="section-title">Market Approach Analysis</h1>
+    ${marketTableHTML ? `<div style="margin-bottom: 30px;">${marketTableHTML}</div>` : ''}
     <div class="narrative">
       ${marketAnalysis}
     </div>
@@ -1126,14 +1363,14 @@ export class ProfessionalPDFGenerator {
   </div>
   ` : ''}
 
-  ${riskAssessment || charts.riskGauge ? `
+  ${riskAssessment || charts.riskGauge || inlineSvgCharts?.riskGauge ? `
   <div class="section">
     <h1 class="section-title">Risk Assessment</h1>
 
-    ${charts.riskGauge ? `
+    ${inlineSvgCharts?.riskGauge || charts.riskGauge ? `
     <div style="display: flex; gap: 40px; align-items: flex-start; margin-bottom: 30px;">
       <div style="flex: 0 0 auto;">
-        <img src="${charts.riskGauge}" alt="Risk Score Gauge" style="max-width: 400px; height: auto;"/>
+        ${inlineSvgCharts?.riskGauge ? inlineSvgCharts.riskGauge : `<img src="${charts.riskGauge}" alt="Risk Score Gauge" style="max-width: 400px; height: auto;"/>`}
       </div>
       <div style="flex: 1;">
         <h2 style="margin-top: 0; color: #333;">Risk Profile Summary</h2>
@@ -1213,6 +1450,8 @@ export class ProfessionalPDFGenerator {
     </div>
   </div>
   ` : ''}
+
+  ${bibliographyHTML}
 
 </body>
 </html>

@@ -86,27 +86,27 @@ export class DeterministicValidationEngine {
 
     // Check that revenue is consistent (single source of truth)
     const revenue = this.store.financial.revenue;
-    if (revenue.current_year <= 0) {
+    if (revenue <= 0) {
       criticalErrors.push('Current year revenue is missing or zero');
       issues.push({
         category: ValidationCategory.DATA_CONSISTENCY,
         severity: ValidationSeverity.CRITICAL,
         message: 'Current year revenue is missing or zero',
-        field: 'revenue.current_year',
-        actual: revenue.current_year,
+        field: 'revenue',
+        actual: revenue,
       });
     }
 
     // Check SDE is consistent
     const sde = this.store.financial.sde;
-    if (sde.current_year <= 0 && revenue.current_year > 0) {
+    if (sde <= 0 && revenue > 0) {
       errors.push('SDE is zero or negative despite positive revenue');
       issues.push({
         category: ValidationCategory.DATA_CONSISTENCY,
         severity: ValidationSeverity.ERROR,
         message: 'SDE is zero or negative despite positive revenue',
-        field: 'sde.current_year',
-        actual: sde.current_year,
+        field: 'sde',
+        actual: sde,
       });
     }
 
@@ -172,30 +172,30 @@ export class DeterministicValidationEngine {
     // So we verify relationships instead
 
     // SDE should be >= net income (since it adds back items)
-    if (financials.sde.current_year < financials.net_income.current_year) {
+    if (financials.sde < financials.net_income) {
       errors.push(
-        `SDE (${financials.sde.current_year}) is less than net income (${financials.net_income.current_year})`
+        `SDE (${financials.sde}) is less than net income (${financials.net_income})`
       );
       issues.push({
         category: ValidationCategory.CALCULATIONS,
         severity: ValidationSeverity.ERROR,
         message: 'SDE calculation error: SDE should be >= net income',
-        field: 'sde.current_year',
-        expected: `>= ${financials.net_income.current_year}`,
-        actual: financials.sde.current_year,
+        field: 'sde',
+        expected: `>= ${financials.net_income}`,
+        actual: financials.sde,
       });
     }
 
     // SDE should typically be less than revenue
-    if (financials.sde.current_year > financials.revenue.current_year) {
+    if (financials.sde > financials.revenue) {
       warnings.push(
-        `SDE (${financials.sde.current_year}) exceeds revenue (${financials.revenue.current_year})`
+        `SDE (${financials.sde}) exceeds revenue (${financials.revenue})`
       );
       issues.push({
         category: ValidationCategory.CALCULATIONS,
         severity: ValidationSeverity.WARNING,
         message: 'SDE exceeds revenue - verify add-back calculations',
-        field: 'sde.current_year',
+        field: 'sde',
       });
     }
 
@@ -216,37 +216,34 @@ export class DeterministicValidationEngine {
     const errors: string[] = [];
     const warnings: string[] = [];
 
-    const revenue = this.store.financial.revenue;
+    // Verify weighted SDE average
+    const sdeByYear = this.store.financial.sde_by_year;
+    const sdeValues = sdeByYear.map(y => y.sde).filter(v => v > 0);
 
-    // Get non-zero years
-    const values = [revenue.current_year, revenue.prior_year_1, revenue.prior_year_2].filter(
-      (v) => v > 0
-    );
-
-    if (values.length > 0) {
+    if (sdeValues.length > 0) {
       // Calculate expected weighted average
       let expectedWeighted: number;
-      if (values.length === 1) {
-        expectedWeighted = values[0];
-      } else if (values.length === 2) {
-        expectedWeighted = (values[0] * 3 + values[1] * 2) / 5;
+      if (sdeValues.length === 1) {
+        expectedWeighted = sdeValues[0];
+      } else if (sdeValues.length === 2) {
+        expectedWeighted = (sdeValues[0] * 3 + sdeValues[1] * 2) / 5;
       } else {
-        expectedWeighted = (values[0] * 3 + values[1] * 2 + values[2] * 1) / 6;
+        expectedWeighted = (sdeValues[0] * 3 + sdeValues[1] * 2 + sdeValues[2] * 1) / 6;
       }
 
       // Compare with stored value
-      const actualWeighted = revenue.weighted_average;
-      const diff = Math.abs(actualWeighted - expectedWeighted) / expectedWeighted;
+      const actualWeighted = this.store.financial.weighted_sde;
+      const diff = expectedWeighted > 0 ? Math.abs(actualWeighted - expectedWeighted) / expectedWeighted : 0;
 
       if (diff > TOLERANCE) {
         errors.push(
-          `Weighted average revenue (${actualWeighted}) doesn't match calculated value (${expectedWeighted})`
+          `Weighted average SDE (${actualWeighted}) doesn't match calculated value (${expectedWeighted})`
         );
         issues.push({
           category: ValidationCategory.CALCULATIONS,
           severity: ValidationSeverity.ERROR,
           message: 'Weighted average calculation mismatch',
-          field: 'revenue.weighted_average',
+          field: 'weighted_sde',
           expected: expectedWeighted,
           actual: actualWeighted,
         });
@@ -273,7 +270,7 @@ export class DeterministicValidationEngine {
     const financials = this.store.financial;
 
     // Check profit margin
-    const profitMargin = financials.net_income.current_year / financials.revenue.current_year;
+    const profitMargin = financials.revenue > 0 ? financials.net_income / financials.revenue : 0;
     if (profitMargin > MAX_PROFIT_MARGIN) {
       warnings.push(
         `Profit margin of ${(profitMargin * 100).toFixed(1)}% is unusually high - verify data`
@@ -287,11 +284,10 @@ export class DeterministicValidationEngine {
       });
     }
 
-    // Check revenue growth if prior year exists
-    if (financials.revenue.prior_year_1 > 0) {
-      const growth =
-        (financials.revenue.current_year - financials.revenue.prior_year_1) /
-        financials.revenue.prior_year_1;
+    // Check revenue growth if prior year exists (from revenue_by_year)
+    const revByYear = financials.revenue_by_year;
+    if (revByYear.length >= 2 && revByYear[1].revenue > 0) {
+      const growth = (revByYear[0].revenue - revByYear[1].revenue) / revByYear[1].revenue;
 
       if (growth > MAX_REVENUE_GROWTH) {
         warnings.push(
@@ -339,8 +335,8 @@ export class DeterministicValidationEngine {
     }
 
     // Check valuation to SDE ratio
-    if (financials.sde.weighted_average > 0) {
-      const multipleImplied = valuation.final_value / financials.sde.weighted_average;
+    if (financials.weighted_sde > 0) {
+      const multipleImplied = valuation.final_value / financials.weighted_sde;
 
       if (multipleImplied > MAX_MULTIPLE_TO_SDE_RATIO) {
         warnings.push(
@@ -357,8 +353,8 @@ export class DeterministicValidationEngine {
       }
 
       // For engineering services, flag if multiple > 3.5x (typical range is 2.0-3.5x)
-      const industry = this.store.industry;
-      if (industry.naics_code === '541330' && multipleImplied > 3.5) {
+      const company = this.store.company;
+      if (company.naics_code === '541330' && multipleImplied > 3.5) {
         warnings.push(
           `For Engineering Services, implied multiple of ${multipleImplied.toFixed(1)}x exceeds typical range of 2.0-3.5x`
         );
@@ -408,34 +404,34 @@ export class DeterministicValidationEngine {
     const warnings: string[] = [];
     const criticalErrors: string[] = [];
 
-    // Check required meta fields
-    if (!this.store.meta.company_name) {
+    // Check required meta/company fields
+    if (!this.store.company.name) {
       criticalErrors.push('Company name is required');
       issues.push({
         category: ValidationCategory.SCHEMA,
         severity: ValidationSeverity.CRITICAL,
         message: 'Company name is missing',
-        field: 'meta.company_name',
+        field: 'company.name',
       });
     }
 
-    if (!this.store.meta.valuation_date) {
+    if (!this.store.metadata.valuation_date) {
       criticalErrors.push('Valuation date is required');
       issues.push({
         category: ValidationCategory.SCHEMA,
         severity: ValidationSeverity.CRITICAL,
         message: 'Valuation date is missing',
-        field: 'meta.valuation_date',
+        field: 'metadata.valuation_date',
       });
     }
 
-    if (!this.store.industry.naics_code) {
+    if (!this.store.company.naics_code) {
       errors.push('Industry NAICS code is required');
       issues.push({
         category: ValidationCategory.SCHEMA,
         severity: ValidationSeverity.ERROR,
         message: 'Industry NAICS code is missing',
-        field: 'industry.naics_code',
+        field: 'company.naics_code',
       });
     }
 

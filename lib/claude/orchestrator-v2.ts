@@ -74,7 +74,9 @@ import {
 } from '../calculations';
 
 // Import QA system for post-pass validation
-import { createValuationDataStore, type ValuationDataStore, type CreateDataStoreInput } from '../valuation/data-store';
+import { type ValuationDataStore } from '../valuation/data-store';
+import { createDataStoreFromPassOutputs } from '../valuation/data-store-factory';
+import { runIndustryGate } from '../valuation/industry-gate';
 import { QAOrchestrator, type QAReport, QAStatus } from '../qa/qa-orchestrator';
 import { QualityGate, createQualityGate, type QualityScore, QualityTier } from '../qa/quality-gate';
 import { createCitationManager, type CitationManager } from '../citations/citation-manager';
@@ -532,6 +534,25 @@ export async function runTwelvePassValuation(
       pass11: pass11Result.output!,
       pass12: pass12Result.output!,
     };
+
+    // PRD-B: Industry Gate - validate narratives before transformation
+    const orchNaicsCode = pass1Result.output!.industry_classification?.naics_code || '';
+    if (orchNaicsCode) {
+      try {
+        const narrativeSections = collectNarrativeSections(pass11Result.output!);
+        const gateResult = runIndustryGate(orchNaicsCode, narrativeSections);
+        if (!gateResult.passed) {
+          console.warn(`[12-PASS] Industry gate: ${gateResult.violations.length} violations found`);
+          gateResult.violations.forEach(v => {
+            console.warn(`  - "${v.section}": keyword "${v.keyword}"`);
+          });
+        } else {
+          console.log(`[12-PASS] Industry gate passed for NAICS ${orchNaicsCode}`);
+        }
+      } catch (gateErr) {
+        console.warn(`[12-PASS] Industry gate error (non-blocking):`, gateErr);
+      }
+    }
 
     // Transform to FinalValuationReport schema (matches OUTPUT_SCHEMA.md)
     const valuationDate = pass10Result.output!.conclusion?.valuation_date ||
@@ -3383,6 +3404,7 @@ function createPassError(passNumber: number, error?: string): PassError {
 
 /**
  * Build a ValuationDataStore from calculation engine results and pass outputs.
+ * PRD-A: Uses the new data-store-factory for single source of truth.
  * Returns null if the data is insufficient to build a valid store.
  */
 function buildDataStoreFromResults(
@@ -3392,51 +3414,14 @@ function buildDataStoreFromResults(
   pass10Output: Pass10Output,
 ): ValuationDataStore | null {
   try {
-    const p1 = pass1Output as unknown as Record<string, Record<string, string>>;
-    const companyName: string =
-      (p1.company_profile?.legal_name || p1.company_profile?.company_name || calcInputs.company_name || 'Unknown Company') as string;
-
-    // Get valuation date from pass 10 or default
-    const conclusion = (pass10Output as unknown as Record<string, unknown>).conclusion as Record<string, unknown> | undefined;
-    const valuationDate = (conclusion?.valuation_date as string) || new Date().toISOString().split('T')[0];
-
-    // Determine fiscal year end from most recent period
-    const mostRecentPeriod = calcInputs.financials.periods[0]?.period || new Date().getFullYear().toString();
-    const fiscalYearEnd = `${mostRecentPeriod}-12-31`; // Default to Dec 31
-
-    const input: CreateDataStoreInput = {
-      company_name: companyName,
-      financials: calcInputs.financials,
-      balance_sheet: calcInputs.balance_sheet,
-      industry: calcInputs.industry,
-      valuation_date: valuationDate,
-      fiscal_year_end: fiscalYearEnd,
-      valuationResults: {
-        asset_approach_value: calcResults.asset_approach.adjusted_net_asset_value,
-        income_approach_value: calcResults.income_approach.income_approach_value,
-        market_approach_value: calcResults.market_approach.market_approach_value,
-        weighted_value: calcResults.synthesis.preliminary_value,
-        final_value: calcResults.synthesis.final_concluded_value,
-        value_range_low: calcResults.synthesis.value_range.low,
-        value_range_high: calcResults.synthesis.value_range.high,
-      },
-      sde_calculations: {
-        current_year: calcResults.earnings.sde_by_year[0]?.sde || 0,
-        prior_year_1: calcResults.earnings.sde_by_year[1]?.sde || 0,
-        prior_year_2: calcResults.earnings.sde_by_year[2]?.sde || 0,
-        weighted_average: calcResults.earnings.weighted_sde,
-        normalized: calcResults.earnings.weighted_sde,
-      },
-      ebitda_calculations: {
-        current_year: calcResults.earnings.ebitda_by_year[0]?.adjusted_ebitda || 0,
-        prior_year_1: calcResults.earnings.ebitda_by_year[1]?.adjusted_ebitda || 0,
-        prior_year_2: calcResults.earnings.ebitda_by_year[2]?.adjusted_ebitda || 0,
-        weighted_average: calcResults.earnings.weighted_ebitda,
-        normalized: calcResults.earnings.weighted_ebitda,
-      },
+    // Build pass outputs map for the factory
+    const passOutputs: Record<string, Record<string, unknown>> = {
+      '1': pass1Output as unknown as Record<string, unknown>,
+      '10': pass10Output as unknown as Record<string, unknown>,
     };
 
-    return createValuationDataStore(input);
+    const { store } = createDataStoreFromPassOutputs(calcResults, passOutputs);
+    return store;
   } catch (error) {
     console.warn('[12-PASS] Could not build ValuationDataStore for QA:', error instanceof Error ? error.message : error);
     return null;

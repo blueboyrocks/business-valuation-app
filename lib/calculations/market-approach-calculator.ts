@@ -23,6 +23,7 @@ import {
   formatPercentage,
 } from './utils';
 import { createMultipleValidator } from '../valuation/multiple-validator';
+import { createMultiplesLookup } from '../valuation/industry-multiples-lookup';
 
 export interface MarketApproachInputs {
   weighted_sde: number;
@@ -60,11 +61,13 @@ export function riskFactorsToAdjustments(riskFactors: RiskFactor[]): MultipleAdj
 
 /**
  * Apply adjustments to base multiple
+ * PRD-C: Uses industry ceiling instead of permissive baseMultiple * 2.0 clamp
  */
 export function applyMultipleAdjustments(
   baseMultiple: number,
   adjustments: MultipleAdjustment[],
-  steps: CalculationStep[]
+  steps: CalculationStep[],
+  industryCeiling?: number
 ): { adjustedMultiple: number; appliedAdjustments: MultipleAdjustment[] } {
   let currentMultiple = baseMultiple;
   const appliedAdjustments: MultipleAdjustment[] = [];
@@ -90,18 +93,18 @@ export function applyMultipleAdjustments(
     appliedAdjustments.push(adj);
   }
 
-  // Clamp multiple to reasonable range (0.5x to 2x base multiple)
+  // PRD-C: Clamp to industry ceiling when available, otherwise use reasonable fallback
   const MIN_MULTIPLE = 0.5;
-  const maxMultiple = baseMultiple * 2.0;
+  const maxMultiple = industryCeiling || (baseMultiple * 2.0);
   const finalMultiple = clamp(currentMultiple, MIN_MULTIPLE, maxMultiple);
 
   if (finalMultiple !== currentMultiple) {
     steps.push(
       createStep(
         'Market',
-        'Apply multiple floor/ceiling',
-        `Clamped to [${formatMultiple(MIN_MULTIPLE)}, ${formatMultiple(maxMultiple)}]`,
-        { before_clamp: currentMultiple, after_clamp: finalMultiple },
+        industryCeiling ? 'Apply industry ceiling limit' : 'Apply multiple floor/ceiling',
+        `Clamped to [${formatMultiple(MIN_MULTIPLE)}, ${formatMultiple(maxMultiple)}]${industryCeiling ? ' (industry ceiling)' : ''}`,
+        { before_clamp: currentMultiple, after_clamp: finalMultiple, industry_ceiling: industryCeiling ?? 'N/A' },
         finalMultiple
       )
     );
@@ -219,11 +222,26 @@ export function calculateMarketApproach(inputs: MarketApproachInputs): MarketApp
     warnings.push('No risk adjustments applied to market multiple.');
   }
 
-  // Apply adjustments
+  // PRD-C: Look up industry ceiling for the clamp
+  let industryCeiling: number | undefined;
+  if (inputs.naics_code) {
+    try {
+      const lookup = createMultiplesLookup();
+      const range = lookup.getSDEMultipleRange(inputs.naics_code);
+      if (range?.ceiling) {
+        industryCeiling = range.ceiling;
+      }
+    } catch {
+      // Fallback to no ceiling
+    }
+  }
+
+  // Apply adjustments with industry ceiling
   const { adjustedMultiple, appliedAdjustments } = applyMultipleAdjustments(
     baseMultiple,
     adjustments,
-    steps
+    steps,
+    industryCeiling
   );
 
   steps.push(

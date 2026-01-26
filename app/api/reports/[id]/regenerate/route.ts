@@ -43,6 +43,10 @@ import {
   mapPassOutputsToEngineInputs,
   type CalculationEngineOutput,
 } from '@/lib/calculations';
+import { createDataStoreFromResults } from '@/lib/valuation/data-store-factory';
+import type { ValuationDataAccessor } from '@/lib/valuation/data-accessor';
+import { runIndustryGate } from '@/lib/valuation/industry-gate';
+import { createMultiplesLookup } from '@/lib/valuation/industry-multiples-lookup';
 
 // Lazy-initialize Supabase client
 let supabase: ReturnType<typeof createClient> | null = null;
@@ -211,6 +215,76 @@ export async function POST(
       console.log(`[REGENERATE] Using deterministic calculation engine values`);
     } else {
       console.log(`[REGENERATE] Falling back to AI pass outputs`);
+    }
+
+    // PRD-A: Create DataStore + Accessor for single source of truth
+    let dataAccessor: ValuationDataAccessor | undefined;
+    if (hasCalcEngine && calcResults) {
+      try {
+        const reportMeta: Record<string, unknown> = {
+          company_name: report.company_name,
+          industry_name: passes.pass1?.industry_classification?.naics_description ||
+                         passes.pass4?.industry_overview?.industry_name || '',
+          naics_code: passes.pass1?.industry_classification?.naics_code || '',
+          entity_type: (passes.pass1 as any)?.company_profile?.entity_type || '',
+          annual_revenue: (passes.pass2?.income_statements?.[0] as any)?.revenue?.total_revenue || 0,
+          pretax_income: (passes.pass2?.income_statements?.[0] as any)?.net_income || 0,
+          owner_compensation: (passes.pass2?.income_statements?.[0] as any)?.operating_expenses?.officer_compensation || 0,
+          total_assets: (passes.pass3?.balance_sheets?.[0] as any)?.total_assets || 0,
+          total_liabilities: (passes.pass3?.balance_sheets?.[0] as any)?.total_liabilities || 0,
+          cash: (passes.pass3?.balance_sheets?.[0] as any)?.current_assets?.cash || 0,
+          accounts_receivable: (passes.pass3?.balance_sheets?.[0] as any)?.current_assets?.accounts_receivable || 0,
+          inventory: (passes.pass3?.balance_sheets?.[0] as any)?.current_assets?.inventory || 0,
+        };
+        const { accessor } = createDataStoreFromResults(calcResults, reportMeta);
+        dataAccessor = accessor;
+        console.log(`[REGENERATE] DataStore created. Final value: ${accessor.getFinalValueFormatted()}`);
+      } catch (dsError) {
+        console.warn(`[REGENERATE] DataStore creation failed (non-blocking):`, dsError);
+      }
+    }
+
+    // PRD-B: Industry Gate - validate narratives don't reference wrong industry
+    const naicsCode = passes.pass1?.industry_classification?.naics_code || '';
+    if (naicsCode) {
+      try {
+        const narrativeSections = [
+          { name: 'executive_summary', content: (passes.pass11 as any)?.report_narratives?.executive_summary?.content || '' },
+          { name: 'industry_analysis', content: (passes.pass11 as any)?.report_narratives?.industry_analysis?.content || '' },
+          { name: 'financial_analysis', content: (passes.pass11 as any)?.report_narratives?.financial_analysis?.content || '' },
+          { name: 'market_approach', content: (passes.pass9 as any)?.narrative || '' },
+          { name: 'income_approach', content: (passes.pass8 as any)?.narrative || '' },
+          { name: 'asset_approach', content: (passes.pass7 as any)?.narrative || '' },
+        ].filter(s => s.content.length > 0);
+
+        const gateResult = runIndustryGate(naicsCode, narrativeSections);
+        if (!gateResult.passed) {
+          console.warn(`[REGENERATE] Industry gate found ${gateResult.violations.length} violations:`);
+          gateResult.violations.forEach(v => {
+            console.warn(`  - Section "${v.section}": blocked keyword "${v.keyword}" found`);
+          });
+        } else {
+          console.log(`[REGENERATE] Industry gate passed (NAICS ${naicsCode})`);
+        }
+      } catch (gateError) {
+        console.warn(`[REGENERATE] Industry gate failed (non-blocking):`, gateError);
+      }
+    }
+
+    // PRD-C: Value Gate - validate SDE multiple doesn't exceed industry ceiling
+    if (hasCalcEngine && calcResults && naicsCode) {
+      try {
+        const sdeMultiple = calcResults.market_approach.adjusted_multiple;
+        const lookup = createMultiplesLookup();
+        const range = lookup.getSDEMultipleRange(naicsCode);
+        if (range && sdeMultiple > range.ceiling) {
+          console.warn(`[REGENERATE] VALUE GATE: SDE multiple ${sdeMultiple.toFixed(2)}x exceeds ceiling ${range.ceiling.toFixed(2)}x for NAICS ${naicsCode}. Clamped at engine level.`);
+        } else if (range) {
+          console.log(`[REGENERATE] Value gate passed: ${sdeMultiple.toFixed(2)}x within ceiling ${range.ceiling.toFixed(2)}x`);
+        }
+      } catch (vgError) {
+        console.warn(`[REGENERATE] Value gate failed (non-blocking):`, vgError);
+      }
     }
 
     // Read values from calculation engine first, fall back to AI pass outputs
@@ -449,6 +523,11 @@ export async function POST(
     reconciledReport.quality_score = qualityResult.score;
     reconciledReport.quality_grade = qualityResult.grade;
     reconciledReport.is_premium_ready = qualityResult.isPremiumReady;
+
+    // PRD-A: Attach data accessor reference for PDF generator to use
+    if (dataAccessor) {
+      (reconciledReport as any)._dataAccessor = dataAccessor;
+    }
 
     // 8. Update the report in database
     console.log(`[REGENERATE] Saving report to database...`);

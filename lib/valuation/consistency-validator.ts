@@ -68,19 +68,20 @@ export class ConsistencyValidator {
     const revenue = this.store.financial.revenue;
 
     // Check for valid revenue values
-    if (revenue.current_year <= 0) {
+    if (revenue <= 0) {
       errors.push('Current year revenue must be greater than zero');
       issues.push({
         message: 'Current year revenue must be greater than zero',
         severity: ValidationSeverity.ERROR,
-        field: 'revenue.current_year',
-        actual: revenue.current_year,
+        field: 'revenue',
+        actual: revenue,
       });
     }
 
-    // Check for significant revenue decline (>30% YoY)
-    if (revenue.prior_year_1 > 0) {
-      const yoyChange = (revenue.current_year - revenue.prior_year_1) / revenue.prior_year_1;
+    // Check for significant revenue decline (>30% YoY) using revenue_by_year
+    const revByYear = this.store.financial.revenue_by_year;
+    if (revByYear.length >= 2 && revByYear[1].revenue > 0) {
+      const yoyChange = (revByYear[0].revenue - revByYear[1].revenue) / revByYear[1].revenue;
       if (yoyChange < -0.3) {
         warnings.push(
           `Significant revenue decline of ${Math.abs(yoyChange * 100).toFixed(1)}% year-over-year`
@@ -93,11 +94,8 @@ export class ConsistencyValidator {
           actual: `${(yoyChange * 100).toFixed(1)}% change`,
         });
       }
-    }
 
-    // Check for unrealistic revenue growth (>100% YoY)
-    if (revenue.prior_year_1 > 0) {
-      const yoyChange = (revenue.current_year - revenue.prior_year_1) / revenue.prior_year_1;
+      // Check for unrealistic revenue growth (>100% YoY)
       if (yoyChange > 1.0) {
         warnings.push(
           `Unusually high revenue growth of ${(yoyChange * 100).toFixed(1)}% year-over-year - verify data accuracy`
@@ -113,20 +111,20 @@ export class ConsistencyValidator {
 
     // Check SDE is reasonable relative to revenue
     const sde = this.store.financial.sde;
-    if (sde.current_year > revenue.current_year) {
+    if (sde > revenue) {
       warnings.push('SDE exceeds revenue - verify add-back calculations');
       issues.push({
         message: 'SDE exceeds revenue',
         severity: ValidationSeverity.WARNING,
         field: 'sde',
         expected: 'SDE <= Revenue',
-        actual: `SDE: $${sde.current_year.toLocaleString()}, Revenue: $${revenue.current_year.toLocaleString()}`,
+        actual: `SDE: $${sde.toLocaleString()}, Revenue: $${revenue.toLocaleString()}`,
       });
     }
 
     // Check for negative net income (warning, not error)
     const netIncome = this.store.financial.net_income;
-    if (netIncome.current_year < 0) {
+    if (netIncome < 0) {
       warnings.push('Current year shows net loss - consider impact on valuation');
     }
 
@@ -149,14 +147,14 @@ export class ConsistencyValidator {
     const bs = this.store.balance_sheet;
 
     // Check balance sheet balance (Assets = Liabilities + Equity)
-    const totalAssets = bs.assets.total_assets;
-    const totalLiabilitiesAndEquity = bs.liabilities.total_liabilities + bs.equity.total_equity;
+    const totalAssets = bs.total_assets;
+    const totalLiabilitiesAndEquity = bs.total_liabilities + bs.total_equity;
 
     // Allow 1% tolerance for rounding
     const tolerance = Math.max(totalAssets, totalLiabilitiesAndEquity) * 0.01;
     const difference = Math.abs(totalAssets - totalLiabilitiesAndEquity);
 
-    if (difference > tolerance) {
+    if (difference > tolerance && totalAssets > 0) {
       errors.push(
         `Balance sheet does not balance. Assets ($${totalAssets.toLocaleString()}) ≠ Liabilities + Equity ($${totalLiabilitiesAndEquity.toLocaleString()})`
       );
@@ -170,21 +168,21 @@ export class ConsistencyValidator {
     }
 
     // Check for negative equity
-    if (bs.equity.total_equity < 0) {
+    if (bs.total_equity < 0) {
       warnings.push(
-        `Negative total equity of $${Math.abs(bs.equity.total_equity).toLocaleString()} indicates financial distress`
+        `Negative total equity of $${Math.abs(bs.total_equity).toLocaleString()} indicates financial distress`
       );
       issues.push({
         message: 'Negative equity indicates financial distress',
         severity: ValidationSeverity.WARNING,
-        field: 'equity.total_equity',
-        actual: bs.equity.total_equity,
+        field: 'total_equity',
+        actual: bs.total_equity,
       });
     }
 
     // Check current ratio
-    const currentAssets = bs.assets.current_assets.total_current_assets;
-    const currentLiabilities = bs.liabilities.current_liabilities.total_current_liabilities;
+    const currentAssets = bs.current_assets;
+    const currentLiabilities = bs.current_liabilities;
 
     if (currentLiabilities > 0) {
       const currentRatio = currentAssets / currentLiabilities;
@@ -197,16 +195,16 @@ export class ConsistencyValidator {
 
     // Validate current assets sum
     const calculatedCurrentAssets =
-      (bs.assets.current_assets.cash || 0) +
-      (bs.assets.current_assets.accounts_receivable || 0) -
-      (bs.assets.current_assets.allowance_for_doubtful_accounts || 0) +
-      (bs.assets.current_assets.inventory || 0) +
-      (bs.assets.current_assets.prepaid_expenses || 0) +
-      (bs.assets.current_assets.other_current_assets || 0);
+      (bs.cash || 0) +
+      (bs.accounts_receivable || 0) +
+      (bs.inventory || 0);
 
-    const currentAssetsDiff = Math.abs(calculatedCurrentAssets - currentAssets);
-    if (currentAssetsDiff > tolerance) {
-      warnings.push('Current assets components do not sum to total - verify data');
+    // Only flag if we have data and significant difference
+    if (currentAssets > 0 && calculatedCurrentAssets > 0) {
+      const currentAssetsDiff = Math.abs(calculatedCurrentAssets - currentAssets);
+      if (currentAssetsDiff > tolerance) {
+        warnings.push('Current assets components do not sum to total - verify data');
+      }
     }
 
     return {
@@ -225,44 +223,37 @@ export class ConsistencyValidator {
     const warnings: string[] = [];
     const issues: ValidationIssue[] = [];
 
-    const sde = this.store.financial.sde;
-    const netIncome = this.store.financial.net_income;
+    const calcSDE = this.store.financial.sde;
+    const calcNetIncome = this.store.financial.net_income;
 
     // SDE should be >= net income (since it adds back items)
-    if (sde.current_year < netIncome.current_year && netIncome.current_year > 0) {
+    if (calcSDE < calcNetIncome && calcNetIncome > 0) {
       errors.push('SDE is less than net income - calculation error detected');
       issues.push({
         message: 'SDE should be greater than or equal to net income',
         severity: ValidationSeverity.ERROR,
         field: 'sde',
-        expected: `>= $${netIncome.current_year.toLocaleString()}`,
-        actual: `$${sde.current_year.toLocaleString()}`,
+        expected: `>= $${calcNetIncome.toLocaleString()}`,
+        actual: `$${calcSDE.toLocaleString()}`,
       });
     }
 
-    // Weighted average should be reasonable
-    const revenue = this.store.financial.revenue;
-    if (revenue.weighted_average > 0) {
-      // Weighted average should be between min and max of the years
-      const minRevenue = Math.min(
-        revenue.current_year,
-        revenue.prior_year_1 || revenue.current_year,
-        revenue.prior_year_2 || revenue.current_year
-      );
-      const maxRevenue = Math.max(
-        revenue.current_year,
-        revenue.prior_year_1 || 0,
-        revenue.prior_year_2 || 0
-      );
-
-      if (revenue.weighted_average < minRevenue || revenue.weighted_average > maxRevenue) {
-        warnings.push('Weighted average revenue is outside the range of individual years');
+    // Weighted SDE should be reasonable
+    const sdeByYear = this.store.financial.sde_by_year;
+    if (sdeByYear.length > 0 && this.store.financial.weighted_sde > 0) {
+      const sdeValues = sdeByYear.map(y => y.sde).filter(v => v > 0);
+      if (sdeValues.length > 0) {
+        const minSDE = Math.min(...sdeValues);
+        const maxSDE = Math.max(...sdeValues);
+        if (this.store.financial.weighted_sde < minSDE || this.store.financial.weighted_sde > maxSDE) {
+          warnings.push('Weighted average SDE is outside the range of individual years');
+        }
       }
     }
 
     // EBITDA validation
-    const ebitda = this.store.financial.ebitda;
-    if (ebitda.current_year < netIncome.current_year && netIncome.current_year > 0) {
+    const calcEBITDA = this.store.financial.ebitda;
+    if (calcEBITDA < calcNetIncome && calcNetIncome > 0) {
       warnings.push(
         'EBITDA is less than net income - verify interest, taxes, depreciation, and amortization add-backs'
       );

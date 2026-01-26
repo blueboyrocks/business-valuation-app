@@ -100,10 +100,10 @@ export class QAOrchestrator {
     this.autoCorrectionEngine = createAutoCorrectionEngine();
 
     // Initialize industry validator if we have industry data
-    if (store.industry && store.industry.naics_code) {
+    if (store.company && store.company.naics_code) {
       const lock = createIndustryLock({
-        naics_code: store.industry.naics_code,
-        naics_description: store.industry.industry_name,
+        naics_code: store.company.naics_code,
+        naics_description: store.company.industry,
         locked_by_pass: 2,
       });
       this.industryValidator = createIndustryValidator(lock);
@@ -229,29 +229,31 @@ export class QAOrchestrator {
   private runLayer3(): LayerResult {
     let issuesFixed = 0;
 
-    // Attempt to correct weighted average if needed
-    const revenueData = {
-      current_year: this.store.financial.revenue.current_year,
-      prior_year_1: this.store.financial.revenue.prior_year_1,
-      prior_year_2: this.store.financial.revenue.prior_year_2,
-      weighted_average: this.store.financial.revenue.weighted_average,
-    };
-
-    const revenueCorrection = this.autoCorrectionEngine.correctWeightedAverage(revenueData);
-    if (revenueCorrection.corrected) {
-      issuesFixed++;
-    }
-
-    // Similar for SDE
+    // Attempt to correct weighted average using year-over-year data
+    const sdeByYear = this.store.financial.sde_by_year;
     const sdeData = {
-      current_year: this.store.financial.sde.current_year,
-      prior_year_1: this.store.financial.sde.prior_year_1,
-      prior_year_2: this.store.financial.sde.prior_year_2,
-      weighted_average: this.store.financial.sde.weighted_average,
+      current_year: sdeByYear[0]?.sde || this.store.financial.sde,
+      prior_year_1: sdeByYear[1]?.sde || 0,
+      prior_year_2: sdeByYear[2]?.sde || 0,
+      weighted_average: this.store.financial.weighted_sde,
     };
 
     const sdeCorrection = this.autoCorrectionEngine.correctWeightedAverage(sdeData);
     if (sdeCorrection.corrected) {
+      issuesFixed++;
+    }
+
+    // Similar for EBITDA
+    const ebitdaByYear = this.store.financial.ebitda_by_year;
+    const ebitdaData = {
+      current_year: ebitdaByYear[0]?.ebitda || this.store.financial.ebitda,
+      prior_year_1: ebitdaByYear[1]?.ebitda || 0,
+      prior_year_2: ebitdaByYear[2]?.ebitda || 0,
+      weighted_average: this.store.financial.weighted_ebitda,
+    };
+
+    const ebitdaCorrection = this.autoCorrectionEngine.correctWeightedAverage(ebitdaData);
+    if (ebitdaCorrection.corrected) {
       issuesFixed++;
     }
 
