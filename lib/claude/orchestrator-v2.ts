@@ -386,7 +386,7 @@ export async function runTwelvePassValuation(
       () => buildPass11Request(
         pass1Result.output!, pass2Result.output!, pass3Result.output!, pass4Result.output!,
         pass5Result.output!, pass6Result.output!, pass7Result.output!, pass8Result.output!,
-        pass9Result.output!, pass10Result.output!
+        pass9Result.output!, pass10Result.output!, calculationResults
       ),
       'Narratives Generation'
     );
@@ -2150,12 +2150,48 @@ ${dlomKnowledge}
 function buildPass11Request(
   pass1: Pass1Output, pass2: Pass2Output, pass3: Pass3Output, pass4: Pass4Output,
   pass5: Pass5Output, pass6: Pass6Output, pass7: Pass7Output, pass8: Pass8Output,
-  pass9: Pass9Output, pass10: Pass10Output
+  pass9: Pass9Output, pass10: Pass10Output, calcResults?: CalculationEngineOutput
 ): { system: string; prompt: string } {
   const config = getPromptConfig(11)!;
 
+  // Build deterministic calculation tables if available
+  let calculationSection = '';
+  if (calcResults) {
+    calculationSection = `
+### DETERMINISTIC CALCULATION ENGINE RESULTS (USE THESE EXACT NUMBERS)
+
+**IMPORTANT:** The following values were calculated by the deterministic calculation engine.
+You MUST use these exact figures in all narrative sections. Do NOT invent or modify these numbers.
+
+**Normalized Earnings:**
+- Weighted Average SDE: $${calcResults.earnings.weighted_sde.toLocaleString()}
+- Weighted Average EBITDA: $${calcResults.earnings.weighted_ebitda.toLocaleString()}
+
+**Valuation Approaches:**
+- Asset Approach Value: $${calcResults.asset_approach.adjusted_net_asset_value.toLocaleString()}
+- Income Approach Value: $${calcResults.income_approach.income_approach_value.toLocaleString()}
+- Market Approach Value: $${calcResults.market_approach.market_approach_value.toLocaleString()}
+
+**Final Valuation:**
+- Preliminary Weighted Value: $${calcResults.synthesis.preliminary_value.toLocaleString()}
+- Final Concluded Value: $${calcResults.synthesis.final_concluded_value.toLocaleString()}
+- Value Range: $${calcResults.synthesis.value_range.low.toLocaleString()} - $${calcResults.synthesis.value_range.high.toLocaleString()}
+
+**Key Metrics:**
+- SDE Multiple Used: ${calcResults.market_approach.adjusted_multiple?.toFixed(2) || 'N/A'}x
+- Capitalization Rate: ${(calcResults.income_approach.cap_rate_components.capitalization_rate * 100).toFixed(1)}%
+- DLOM Applied: ${calcResults.synthesis.discounts_and_premiums.dlom.applicable ? `${(calcResults.synthesis.discounts_and_premiums.dlom.percentage * 100).toFixed(0)}%` : 'No'}
+
+**Approach Weights:**
+- Asset: ${((calcResults.synthesis.approach_summary.find(a => a.approach === 'Asset')?.weight ?? 0.20) * 100).toFixed(0)}%
+- Income: ${((calcResults.synthesis.approach_summary.find(a => a.approach === 'Income')?.weight ?? 0.40) * 100).toFixed(0)}%
+- Market: ${((calcResults.synthesis.approach_summary.find(a => a.approach === 'Market')?.weight ?? 0.40) * 100).toFixed(0)}%
+`;
+  }
+
   const priorContext = `
 ## COMPLETE PRIOR PASS DATA
+${calculationSection}
 
 ### Pass 1: Company Profile
 ${JSON.stringify({

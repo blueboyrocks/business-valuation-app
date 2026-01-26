@@ -23,6 +23,7 @@ import { generateAndStorePDF } from '@/lib/pdf/auto-generate';
 import { validateReportOutput } from '@/lib/validation/report-output-validator';
 import { reconcileWithNarratives } from '@/lib/extraction/narrative-data-extractor';
 import { checkReportQuality, formatQualityReport } from '@/lib/validation/quality-checker';
+import { createDisclaimerManager, type DisclaimerContext } from '@/lib/content/disclaimers';
 import {
   Pass1Output,
   Pass2Output,
@@ -37,6 +38,7 @@ import {
   Pass11Output,
   Pass12Output,
 } from '@/lib/claude/types-v2';
+import type { CalculationEngineOutput } from '@/lib/calculations';
 
 // Lazy-initialize Supabase client
 let supabase: ReturnType<typeof createClient> | null = null;
@@ -67,10 +69,10 @@ export async function POST(
   console.log(`[REGENERATE] v4 - Starting regeneration for report ${reportId}`);
 
   try {
-    // 1. Fetch the report with pass_outputs
+    // 1. Fetch the report with pass_outputs and calculation_results
     const { data: reportData, error: reportError } = await getSupabaseClient()
       .from('reports')
-      .select('id, company_name, report_status, pass_outputs')
+      .select('id, company_name, report_status, pass_outputs, calculation_results')
       .eq('id', reportId)
       .maybeSingle();
 
@@ -94,6 +96,7 @@ export async function POST(
       company_name: string;
       report_status: string;
       pass_outputs: Record<string, unknown> | null;
+      calculation_results: CalculationEngineOutput | null;
     };
 
     // 2. Get pass outputs from the report's pass_outputs JSONB column
@@ -164,21 +167,35 @@ export async function POST(
       console.warn(`[REGENERATE] Validation warnings: ${validation.warnings.join(', ')}`);
     }
 
-    // 7. Extract key values for database and PDF generator
-    // Read values directly from passes (more reliable than relying on transform)
-    const assetValue = passes.pass7?.summary?.adjusted_net_asset_value ||
-                       passes.pass7?.asset_approach?.adjusted_book_value || 0;
-    const incomeValue = passes.pass8?.income_approach?.indicated_value_point ||
-                        passes.pass8?.income_approach?.single_period_capitalization?.adjusted_indicated_value || 0;
-    const marketValue = passes.pass9?.market_approach?.indicated_value_point ||
-                        passes.pass9?.market_approach?.guideline_transaction_method?.indicated_value_after_adjustments || 0;
+    // 7. Extract key values - PREFER deterministic calculation engine over AI
+    const calcResults = report.calculation_results;
+    const hasCalcEngine = !!calcResults?.synthesis?.final_concluded_value;
 
-    // Get concluded value from pass10, or calculate weighted average
-    const pass10Conclusion = passes.pass10?.conclusion?.concluded_value;
-    const calculatedConclusion = pass10Conclusion || (
-      (assetValue * 0.20) + (incomeValue * 0.40) + (marketValue * 0.40)
-    );
-    const concludedValue = calculatedConclusion || null;
+    if (hasCalcEngine) {
+      console.log(`[REGENERATE] Using deterministic calculation engine values`);
+    } else {
+      console.log(`[REGENERATE] No calculation engine results found, falling back to AI pass outputs`);
+    }
+
+    // Read values from calculation engine first, fall back to AI pass outputs
+    const assetValue = hasCalcEngine
+      ? calcResults!.asset_approach.adjusted_net_asset_value
+      : (passes.pass7?.summary?.adjusted_net_asset_value ||
+         passes.pass7?.asset_approach?.adjusted_book_value || 0);
+    const incomeValue = hasCalcEngine
+      ? calcResults!.income_approach.income_approach_value
+      : (passes.pass8?.income_approach?.indicated_value_point ||
+         passes.pass8?.income_approach?.single_period_capitalization?.adjusted_indicated_value || 0);
+    const marketValue = hasCalcEngine
+      ? calcResults!.market_approach.market_approach_value
+      : (passes.pass9?.market_approach?.indicated_value_point ||
+         passes.pass9?.market_approach?.guideline_transaction_method?.indicated_value_after_adjustments || 0);
+
+    // Get concluded value from calculation engine, then pass10, then weighted average
+    const concludedValue = hasCalcEngine
+      ? calcResults!.synthesis.final_concluded_value
+      : (passes.pass10?.conclusion?.concluded_value ||
+         ((assetValue * 0.20) + (incomeValue * 0.40) + (marketValue * 0.40)) || null);
 
     // Get financial data from passes (cast to any for flexible property access)
     const incomeStmt = (passes.pass2?.income_statements?.[0] || {}) as any;
@@ -212,15 +229,23 @@ export async function POST(
       valuation_amount: concludedValue,
       valuation_method: 'Weighted Multi-Approach',
       confidence_level: finalReport.valuation_synthesis?.final_valuation?.confidence_level || 'Moderate',
-      valuation_range_low: finalReport.valuation_synthesis?.final_valuation?.valuation_range_low || (concludedValue ? Math.round(concludedValue * 0.85) : 0),
-      valuation_range_high: finalReport.valuation_synthesis?.final_valuation?.valuation_range_high || (concludedValue ? Math.round(concludedValue * 1.15) : 0),
+      valuation_range_low: hasCalcEngine
+        ? calcResults!.synthesis.value_range.low
+        : (finalReport.valuation_synthesis?.final_valuation?.valuation_range_low || (concludedValue ? Math.round(concludedValue * 0.85) : 0)),
+      valuation_range_high: hasCalcEngine
+        ? calcResults!.synthesis.value_range.high
+        : (finalReport.valuation_synthesis?.final_valuation?.valuation_range_high || (concludedValue ? Math.round(concludedValue * 1.15) : 0)),
       standard_of_value: 'Fair Market Value',
 
       // Also keep nested structure for compatibility
       valuation_conclusion: {
         concluded_value: concludedValue,
-        value_range_low: finalReport.valuation_synthesis?.final_valuation?.valuation_range_low || (concludedValue ? Math.round(concludedValue * 0.85) : 0),
-        value_range_high: finalReport.valuation_synthesis?.final_valuation?.valuation_range_high || (concludedValue ? Math.round(concludedValue * 1.15) : 0),
+        value_range_low: hasCalcEngine
+          ? calcResults!.synthesis.value_range.low
+          : (finalReport.valuation_synthesis?.final_valuation?.valuation_range_low || (concludedValue ? Math.round(concludedValue * 0.85) : 0)),
+        value_range_high: hasCalcEngine
+          ? calcResults!.synthesis.value_range.high
+          : (finalReport.valuation_synthesis?.final_valuation?.valuation_range_high || (concludedValue ? Math.round(concludedValue * 1.15) : 0)),
         confidence_level: finalReport.valuation_synthesis?.final_valuation?.confidence_level || 'Moderate',
       },
 
@@ -230,9 +255,15 @@ export async function POST(
       market_approach_value: marketValue,
 
       // Approach weights as numbers (critical for web app display)
-      asset_approach_weight: 0.20,
-      income_approach_weight: 0.40,
-      market_approach_weight: 0.40,
+      asset_approach_weight: hasCalcEngine
+        ? (calcResults!.synthesis.approach_summary.find(a => a.approach === 'Asset')?.weight ?? 0.20)
+        : 0.20,
+      income_approach_weight: hasCalcEngine
+        ? (calcResults!.synthesis.approach_summary.find(a => a.approach === 'Income')?.weight ?? 0.40)
+        : 0.40,
+      market_approach_weight: hasCalcEngine
+        ? (calcResults!.synthesis.approach_summary.find(a => a.approach === 'Market')?.weight ?? 0.40)
+        : 0.40,
 
       // Liquidation value (65% of asset value per industry standard)
       liquidation_value: Math.round(assetValue * 0.65),
@@ -247,9 +278,13 @@ export async function POST(
       depreciation_amortization: opExpenses.depreciation_amortization || opExpenses.depreciation || 0,
       non_cash_expenses: opExpenses.depreciation_amortization || opExpenses.depreciation || 0,
 
-      // Normalized earnings (use any cast for flexible property access)
-      normalized_sde: (passes.pass5?.summary as any)?.normalized_sde || passes.pass5?.summary?.most_recent_sde || 0,
-      normalized_ebitda: (passes.pass5?.summary as any)?.most_recent_ebitda || passes.pass5?.summary?.most_recent_ebitda || 0,
+      // Normalized earnings - prefer deterministic calculation engine
+      normalized_sde: hasCalcEngine
+        ? calcResults!.earnings.weighted_sde
+        : ((passes.pass5?.summary as any)?.normalized_sde || passes.pass5?.summary?.most_recent_sde || 0),
+      normalized_ebitda: hasCalcEngine
+        ? calcResults!.earnings.weighted_ebitda
+        : ((passes.pass5?.summary as any)?.most_recent_ebitda || passes.pass5?.summary?.most_recent_ebitda || 0),
 
       // Balance sheet data
       cash: balanceSheet.current_assets?.cash || 0,
@@ -308,7 +343,50 @@ export async function POST(
                                 getNarrativeContent(passes.pass10?.narrative) || '',
     };
 
-    // 7b. Reconcile with narrative data (fallback for missing values)
+    // 7b. Generate and attach standard disclaimers
+    try {
+      const disclaimerManager = createDisclaimerManager();
+      const disclaimerContext: DisclaimerContext = {
+        company_name: report.company_name || 'the subject company',
+        valuation_date: finalReport.valuation_date || new Date().toISOString().split('T')[0],
+        report_date: new Date().toISOString().split('T')[0],
+        industry: reportWithQuality.industry_name || undefined,
+        naics_code: reportWithQuality.industry_naics_code || undefined,
+        standard_of_value: 'Fair Market Value',
+      };
+      const allDisclaimers = disclaimerManager.getAllDisclaimers(disclaimerContext);
+      (reportWithQuality as any).disclaimers = allDisclaimers.map(d => ({
+        title: d.title,
+        content: d.content,
+      }));
+      console.log(`[REGENERATE] Added ${allDisclaimers.length} standard disclaimers`);
+    } catch (disclaimerError) {
+      console.warn(`[REGENERATE] Disclaimer generation failed (non-blocking):`, disclaimerError);
+    }
+
+    // 7b-2. Attach calculation engine metadata if available
+    if (hasCalcEngine) {
+      (reportWithQuality as any).calculation_engine = {
+        version: calcResults!.engine_version || 'deterministic-v1',
+        total_steps: calcResults!.total_steps,
+        sde_weighted: calcResults!.earnings.weighted_sde,
+        ebitda_weighted: calcResults!.earnings.weighted_ebitda,
+        asset_value: calcResults!.asset_approach.adjusted_net_asset_value,
+        income_value: calcResults!.income_approach.income_approach_value,
+        market_value: calcResults!.market_approach.market_approach_value,
+        cap_rate: calcResults!.income_approach.cap_rate_components.capitalization_rate,
+        sde_multiple: calcResults!.market_approach.adjusted_multiple,
+        preliminary_value: calcResults!.synthesis.preliminary_value,
+        final_value: calcResults!.synthesis.final_concluded_value,
+        value_range_low: calcResults!.synthesis.value_range.low,
+        value_range_high: calcResults!.synthesis.value_range.high,
+        dlom_applied: calcResults!.synthesis.discounts_and_premiums.dlom.applicable,
+        dlom_percentage: calcResults!.synthesis.discounts_and_premiums.dlom.percentage,
+      };
+      console.log(`[REGENERATE] Attached calculation engine metadata (${calcResults!.total_steps} steps)`);
+    }
+
+    // 7c. Reconcile with narrative data (fallback for missing values)
     const narrativesForReconciliation = {
       executive_summary: finalReport.narratives?.executive_summary,
       asset_approach_narrative: finalReport.narratives?.asset_approach_narrative || passes.pass7?.narrative,
