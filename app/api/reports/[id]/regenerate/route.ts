@@ -38,7 +38,11 @@ import {
   Pass11Output,
   Pass12Output,
 } from '@/lib/claude/types-v2';
-import type { CalculationEngineOutput } from '@/lib/calculations';
+import {
+  runCalculationEngine,
+  mapPassOutputsToEngineInputs,
+  type CalculationEngineOutput,
+} from '@/lib/calculations';
 
 // Lazy-initialize Supabase client
 let supabase: ReturnType<typeof createClient> | null = null;
@@ -168,13 +172,45 @@ export async function POST(
     }
 
     // 7. Extract key values - PREFER deterministic calculation engine over AI
-    const calcResults = report.calculation_results;
-    const hasCalcEngine = !!calcResults?.synthesis?.final_concluded_value;
+    let calcResults = report.calculation_results;
+    let hasCalcEngine = !!calcResults?.synthesis?.final_concluded_value;
+
+    // If no stored calculation results, run the engine on-the-fly from pass outputs
+    if (!hasCalcEngine) {
+      console.log(`[REGENERATE] No stored calculation results. Running calculation engine on-the-fly...`);
+      try {
+        const passDataForEngine: Record<string, Record<string, unknown>> = {
+          '1': passMap.get(1) as Record<string, unknown>,
+          '2': passMap.get(2) as Record<string, unknown>,
+          '3': passMap.get(3) as Record<string, unknown>,
+          '4': passMap.get(4) as Record<string, unknown>,
+          '5': passMap.get(5) as Record<string, unknown>,
+          '6': passMap.get(6) as Record<string, unknown>,
+        };
+        const calculationInputs = mapPassOutputsToEngineInputs(passDataForEngine);
+        calcResults = runCalculationEngine(calculationInputs);
+        hasCalcEngine = !!calcResults?.synthesis?.final_concluded_value;
+
+        if (hasCalcEngine) {
+          console.log(`[REGENERATE] Calculation engine produced values. Concluded: $${calcResults!.synthesis.final_concluded_value.toLocaleString()}`);
+          // Save to database for future regenerations
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          await (getSupabaseClient().from('reports') as any)
+            .update({ calculation_results: calcResults })
+            .eq('id', reportId);
+          console.log(`[REGENERATE] Saved calculation results to database`);
+        } else {
+          console.warn(`[REGENERATE] Calculation engine ran but produced no concluded value`);
+        }
+      } catch (calcError) {
+        console.warn(`[REGENERATE] Calculation engine failed (non-blocking):`, calcError);
+      }
+    }
 
     if (hasCalcEngine) {
       console.log(`[REGENERATE] Using deterministic calculation engine values`);
     } else {
-      console.log(`[REGENERATE] No calculation engine results found, falling back to AI pass outputs`);
+      console.log(`[REGENERATE] Falling back to AI pass outputs`);
     }
 
     // Read values from calculation engine first, fall back to AI pass outputs
