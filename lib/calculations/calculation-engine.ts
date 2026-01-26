@@ -129,6 +129,7 @@ export function runCalculationEngine(inputs: CalculationEngineInputs): Calculati
     risk_factors: inputs.risk_assessment.risk_factors,
     weight: config.market_weight,
     weight_rationale: 'Reflects actual market transaction data for similar businesses',
+    naics_code: inputs.industry.naics_code,
   });
   allSteps.push(...marketApproach.calculation_steps);
   allWarnings.push(...marketApproach.warnings);

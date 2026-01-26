@@ -4,7 +4,7 @@
  *
  * Critical for fixing the $4.1M valuation error
  */
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import {
   IndustryMultiplesLookup,
   createMultiplesLookup,

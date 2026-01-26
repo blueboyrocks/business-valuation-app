@@ -17,6 +17,7 @@ describe('KPI Calculator', () => {
     depreciation: 15000,
     amortization: 5000,
     interest_expense: 10000,
+    rent: 24000,
     rent_expense: 24000,
     salaries_and_wages: 150000,
     taxes: 20000,
@@ -39,6 +40,7 @@ describe('KPI Calculator', () => {
     depreciation: 14000,
     amortization: 5000,
     interest_expense: 12000,
+    rent: 24000,
     rent_expense: 24000,
     salaries_and_wages: 140000,
     taxes: 18000,
@@ -52,21 +54,32 @@ describe('KPI Calculator', () => {
   };
 
   const sampleBalanceSheet: BalanceSheetData = {
-    as_of_date: '2024-12-31',
+    period: '2024',
     assets: {
       current_assets: {
         cash: 50000,
         accounts_receivable: 125000,
+        allowance_for_doubtful_accounts: 0,
         inventory: 100000,
         prepaid_expenses: 10000,
         other_current_assets: 5000,
         total_current_assets: 290000,
       },
       fixed_assets: {
-        property_plant_equipment: 200000,
+        land: 0,
+        buildings: 0,
+        machinery_and_equipment: 200000,
+        furniture_and_fixtures: 0,
+        vehicles: 0,
+        leasehold_improvements: 0,
         accumulated_depreciation: 80000,
         net_fixed_assets: 120000,
-        other_assets: 10000,
+      },
+      other_assets: {
+        intangible_assets: 0,
+        goodwill: 0,
+        other: 10000,
+        total_other_assets: 10000,
       },
       total_assets: 420000,
     },
@@ -79,7 +92,9 @@ describe('KPI Calculator', () => {
         total_current_liabilities: 110000,
       },
       long_term_liabilities: {
-        long_term_debt: 100000,
+        notes_payable: 100000,
+        mortgages: 0,
+        shareholder_loans: 0,
         other_long_term_liabilities: 10000,
         total_long_term_liabilities: 110000,
       },
@@ -87,7 +102,9 @@ describe('KPI Calculator', () => {
     },
     equity: {
       common_stock: 50000,
+      additional_paid_in_capital: 0,
       retained_earnings: 150000,
+      treasury_stock: 0,
       total_equity: 200000,
     },
   };
@@ -203,6 +220,7 @@ describe('KPI Calculator', () => {
         depreciation: 0,
         amortization: 0,
         interest_expense: 0,
+        rent: 0,
         rent_expense: 0,
         salaries_and_wages: 0,
         taxes: 0,
@@ -216,15 +234,20 @@ describe('KPI Calculator', () => {
       };
 
       const zeroBalanceSheet: BalanceSheetData = {
-        as_of_date: '2024-12-31',
+        period: '2024',
         assets: {
           current_assets: {
-            cash: 0, accounts_receivable: 0, inventory: 0,
+            cash: 0, accounts_receivable: 0, allowance_for_doubtful_accounts: 0,
+            inventory: 0,
             prepaid_expenses: 0, other_current_assets: 0, total_current_assets: 0,
           },
           fixed_assets: {
-            property_plant_equipment: 0, accumulated_depreciation: 0,
-            net_fixed_assets: 0, other_assets: 0,
+            land: 0, buildings: 0, machinery_and_equipment: 0,
+            furniture_and_fixtures: 0, vehicles: 0, leasehold_improvements: 0,
+            accumulated_depreciation: 0, net_fixed_assets: 0,
+          },
+          other_assets: {
+            intangible_assets: 0, goodwill: 0, other: 0, total_other_assets: 0,
           },
           total_assets: 0,
         },
@@ -234,12 +257,14 @@ describe('KPI Calculator', () => {
             other_current_liabilities: 0, total_current_liabilities: 0,
           },
           long_term_liabilities: {
-            long_term_debt: 0, other_long_term_liabilities: 0, total_long_term_liabilities: 0,
+            notes_payable: 0, mortgages: 0, shareholder_loans: 0,
+            other_long_term_liabilities: 0, total_long_term_liabilities: 0,
           },
           total_liabilities: 0,
         },
         equity: {
-          common_stock: 0, retained_earnings: 0, total_equity: 0,
+          common_stock: 0, additional_paid_in_capital: 0,
+          retained_earnings: 0, treasury_stock: 0, total_equity: 0,
         },
       };
 

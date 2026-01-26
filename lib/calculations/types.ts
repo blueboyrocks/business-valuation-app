@@ -24,6 +24,12 @@ export interface SingleYearFinancials {
   travel?: number;
   auto_expenses?: number;
   insurance?: number;
+  utilities?: number;
+  advertising?: number;
+  repairs_maintenance?: number;
+  rent_expense?: number;
+  total_deductions?: number;
+  returns_allowances?: number;
   professional_fees?: number;
   other_deductions?: number;
   discretionary_addbacks?: Array<{

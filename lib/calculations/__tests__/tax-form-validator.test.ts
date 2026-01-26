@@ -16,6 +16,7 @@ describe('Tax Form Validator', () => {
     officer_compensation: 80000,
     salaries_and_wages: 120000,
     depreciation: 20000,
+    rent: 30000,
     rent_expense: 30000,
     interest_expense: 10000,
     amortization: 5000,

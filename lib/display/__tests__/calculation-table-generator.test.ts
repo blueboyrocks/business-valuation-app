@@ -137,7 +137,7 @@ describe('CalculationTableGenerator', () => {
       const generator = createCalculationTableGenerator();
 
       const marketData = {
-        benefit_stream: 'SDE',
+        benefit_stream: 'SDE' as const,
         benefit_stream_value: 1040718,
         industry: 'Engineering Services',
         naics_code: '541330',
@@ -171,7 +171,7 @@ describe('CalculationTableGenerator', () => {
       const generator = createCalculationTableGenerator();
 
       const marketData = {
-        benefit_stream: 'SDE',
+        benefit_stream: 'SDE' as const,
         benefit_stream_value: 1000000,
         industry: 'Engineering Services',
         naics_code: '541330',
@@ -196,7 +196,7 @@ describe('CalculationTableGenerator', () => {
       const generator = createCalculationTableGenerator();
 
       const marketData = {
-        benefit_stream: 'SDE',
+        benefit_stream: 'SDE' as const,
         benefit_stream_value: 1000000,
         industry: 'Engineering Services',
         naics_code: '541330',
@@ -345,7 +345,7 @@ describe('CalculationTableGenerator', () => {
       const generator = createCalculationTableGenerator();
 
       const marketData = {
-        benefit_stream: 'SDE',
+        benefit_stream: 'SDE' as const,
         benefit_stream_value: KFACTOR_EXPECTED_SDE.weighted_average_sde,
         industry: 'Engineering Services',
         naics_code: '541330',

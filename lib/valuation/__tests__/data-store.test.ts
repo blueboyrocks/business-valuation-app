@@ -75,7 +75,7 @@ describe('ValuationDataStore', () => {
 
     it('should not allow adding new properties', () => {
       expect(() => {
-        (store as Record<string, unknown>).newProperty = 'test';
+        (store as unknown as Record<string, unknown>).newProperty = 'test';
       }).toThrow();
     });
   });

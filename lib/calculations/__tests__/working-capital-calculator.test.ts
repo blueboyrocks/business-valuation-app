@@ -7,21 +7,32 @@ import { BalanceSheetData, SingleYearFinancials } from '../types';
 
 describe('Working Capital Calculator', () => {
   const sampleBalanceSheet: BalanceSheetData = {
-    as_of_date: '2024-12-31',
+    period: '2024',
     assets: {
       current_assets: {
         cash: 50000,
         accounts_receivable: 100000,
+        allowance_for_doubtful_accounts: 0,
         inventory: 80000,
         prepaid_expenses: 10000,
         other_current_assets: 5000,
         total_current_assets: 245000,
       },
       fixed_assets: {
-        property_plant_equipment: 150000,
+        land: 0,
+        buildings: 0,
+        machinery_and_equipment: 150000,
+        furniture_and_fixtures: 0,
+        vehicles: 0,
+        leasehold_improvements: 0,
         accumulated_depreciation: 50000,
         net_fixed_assets: 100000,
-        other_assets: 5000,
+      },
+      other_assets: {
+        intangible_assets: 0,
+        goodwill: 0,
+        other: 5000,
+        total_other_assets: 5000,
       },
       total_assets: 350000,
     },
@@ -34,7 +45,9 @@ describe('Working Capital Calculator', () => {
         total_current_liabilities: 85000,
       },
       long_term_liabilities: {
-        long_term_debt: 80000,
+        notes_payable: 80000,
+        mortgages: 0,
+        shareholder_loans: 0,
         other_long_term_liabilities: 5000,
         total_long_term_liabilities: 85000,
       },
@@ -42,7 +55,9 @@ describe('Working Capital Calculator', () => {
     },
     equity: {
       common_stock: 50000,
+      additional_paid_in_capital: 0,
       retained_earnings: 130000,
+      treasury_stock: 0,
       total_equity: 180000,
     },
   };
@@ -58,6 +73,7 @@ describe('Working Capital Calculator', () => {
       depreciation: 15000,
       amortization: 5000,
       interest_expense: 10000,
+      rent: 24000,
       rent_expense: 24000,
       salaries_and_wages: 150000,
       taxes: 20000,
@@ -189,6 +205,7 @@ describe('Working Capital Calculator', () => {
         depreciation: 0,
         amortization: 0,
         interest_expense: 0,
+        rent: 0,
         rent_expense: 0,
         salaries_and_wages: 0,
         taxes: 0,
