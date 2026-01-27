@@ -17,8 +17,6 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { executePass, executeNarrativePass } from '@/lib/claude/pass-executor';
-import { aggregatePassOutputsToReportData } from '@/lib/report-aggregator';
-import { NARRATIVE_EXECUTION_ORDER } from '@/lib/claude/prompts-v2';
 
 let supabase: ReturnType<typeof createClient> | null = null;
 
@@ -63,13 +61,15 @@ export async function POST(
     // Load report + pass outputs
     const { data: reportData, error: fetchError } = await getSupabaseClient()
       .from('reports')
-      .select('id, company_name, document_text, report_data, pass_outputs')
+      .select('id, company_name, report_data, pass_outputs')
       .eq('id', reportId)
       .maybeSingle();
 
     if (fetchError || !reportData) {
+      const errMsg = fetchError?.message || 'Report not found';
+      console.error(`[SINGLE-PASS] Supabase error for ${passLabel}: ${errMsg}`);
       return NextResponse.json(
-        { success: false, error: fetchError?.message || 'Report not found' },
+        { success: false, error: errMsg },
         { status: fetchError ? 500 : 404 }
       );
     }
@@ -77,7 +77,6 @@ export async function POST(
     const report = reportData as {
       id: string;
       company_name: string;
-      document_text?: string;
       report_data: Record<string, unknown> | null;
       pass_outputs: Record<string, unknown> | null;
     };
