@@ -261,7 +261,7 @@ export class ProfessionalPDFGenerator {
             <h1 class="section-title">Sources and References</h1>
             <p style="margin-bottom: 20px;">This report references the following authoritative sources. Inline citations are marked with brackets (e.g., [BBS-${currentYear}]) throughout the report.</p>
             <table style="width: 100%; border-collapse: collapse; font-size: 10pt;">
-              <thead><tr style="background: #0066CC; color: white;">
+              <thead><tr style="background: #1E3A5F; color: white;">
                 <th style="padding: 10px; text-align: left;">Citation</th>
                 <th style="padding: 10px; text-align: left;">Source</th>
                 <th style="padding: 10px; text-align: left;">Context</th>
@@ -357,12 +357,18 @@ export class ProfessionalPDFGenerator {
       const kpiDetailPages = await this.generateDetailedKPIPages(reportData);
 
       // Build HTML with all PRD enhancements
-      const html = await this.buildHTML(
+      let html = await this.buildHTML(
         companyName, reportData, generatedDate, kpis,
         enterprise_value, liquidation_value, charts, kpiDetailPages,
         accessor, inlineSvgCharts, citationManager, bibliographyHTML,
         sdeTableHTML, marketTableHTML, synthesisTableHTML
       );
+
+      // Safety net: replace any [object Object] in rendered HTML
+      if (html.includes('[object Object]')) {
+        console.error('[PDF] SAFETY NET: Detected [object Object] in HTML. Replacing with "N/A".');
+        html = html.replace(/\[object Object\]/g, 'N/A');
+      }
 
       // Generate PDF with Puppeteer
       const browser = await puppeteer.launch({
@@ -374,13 +380,25 @@ export class ProfessionalPDFGenerator {
       const page = await browser.newPage();
       await page.setContent(html, { waitUntil: 'networkidle0' });
 
+      // Wait for Google Fonts to load
+      await page.evaluateHandle('document.fonts.ready');
+
       const pdfBuffer = Buffer.from(await page.pdf({
         format: 'Letter',
         printBackground: true,
+        displayHeaderFooter: true,
+        headerTemplate: `<div style="font-size:8pt;font-family:'Inter',Arial,sans-serif;width:100%;padding:0 0.75in;display:flex;justify-content:space-between;color:#6B7280;">
+          <span>Business Valuation Report</span>
+          <span>${companyName.replace(/'/g, '&#39;')} | Confidential</span>
+        </div>`,
+        footerTemplate: `<div style="font-size:8pt;font-family:'Inter',Arial,sans-serif;width:100%;padding:0 0.75in;display:flex;justify-content:space-between;color:#6B7280;">
+          <span>&copy; ${new Date().getFullYear()} Valuation App</span>
+          <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
+        </div>`,
         margin: {
-          top: '0.75in',
+          top: '1in',
           right: '0.75in',
-          bottom: '0.75in',
+          bottom: '0.85in',
           left: '0.75in',
         },
       }));
@@ -681,7 +699,7 @@ export class ProfessionalPDFGenerator {
 
     // PRD-E: Citation inline reference helper
     const citeYear = new Date().getFullYear();
-    const citeInline = (code: string) => citationManager ? `<sup style="color: #0066CC; font-size: 8pt;">[${code}-${citeYear}]</sup>` : '';
+    const citeInline = (code: string) => citationManager ? `<sup style="color: #1E3A5F; font-size: 8pt;">[${code}-${citeYear}]</sup>` : '';
 
     // Helper to extract string content from either string or object with content property
     const getContent = (value: unknown): string => {
@@ -737,267 +755,327 @@ export class ProfessionalPDFGenerator {
 <html>
 <head>
   <meta charset="UTF-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Merriweather:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
-    
+
     body {
-      font-family: 'Helvetica Neue', Arial, sans-serif;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       font-size: 11pt;
       line-height: 1.6;
-      color: #333;
+      color: #1F2937;
     }
-    
+
     .cover-page {
       height: 100vh;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
-      background: linear-gradient(135deg, #0066CC 0%, #004C99 100%);
+      background: linear-gradient(135deg, #1E3A5F 0%, #0F2440 100%);
       color: white;
       padding: 60px;
       page-break-after: always;
+      position: relative;
+      margin: -1in -0.75in -0.85in -0.75in;
+      padding: 1.5in 1.25in 1.35in 1.25in;
     }
-    
+
+    .cover-page::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 6px;
+      background: linear-gradient(90deg, #C9A962 0%, #E8D5A0 50%, #C9A962 100%);
+    }
+
     .cover-title {
-      font-size: 48pt;
-      font-weight: bold;
+      font-family: 'Merriweather', Georgia, serif;
+      font-size: 44pt;
+      font-weight: 700;
       margin-bottom: 20px;
+      letter-spacing: -0.5px;
     }
-    
+
     .cover-subtitle {
-      font-size: 24pt;
+      font-size: 20pt;
+      font-weight: 400;
       margin-bottom: 60px;
+      opacity: 0.9;
+      letter-spacing: 0.5px;
     }
-    
+
     .cover-company {
-      font-size: 36pt;
-      font-weight: bold;
+      font-family: 'Merriweather', Georgia, serif;
+      font-size: 32pt;
+      font-weight: 700;
       margin-bottom: 10px;
     }
-    
+
     .cover-date {
-      font-size: 14pt;
-      opacity: 0.9;
+      font-size: 13pt;
+      opacity: 0.85;
+      font-weight: 400;
     }
-    
+
     .cover-footer {
-      font-size: 10pt;
-      opacity: 0.8;
-      line-height: 1.4;
+      font-size: 9pt;
+      opacity: 0.7;
+      line-height: 1.5;
     }
-    
+
     .toc {
       page-break-after: always;
       padding: 40px 0;
     }
-    
+
     .toc h1 {
-      font-size: 32pt;
-      color: #0066CC;
+      font-family: 'Merriweather', Georgia, serif;
+      font-size: 28pt;
+      color: #1E3A5F;
       margin-bottom: 30px;
       padding-bottom: 10px;
-      border-bottom: 3px solid #0066CC;
+      border-bottom: 3px solid #C9A962;
     }
-    
+
     .toc-item {
       display: flex;
       justify-content: space-between;
       padding: 12px 0;
-      border-bottom: 1px solid #E0E0E0;
-      font-size: 12pt;
+      border-bottom: 1px solid #E5E7EB;
+      font-size: 11pt;
     }
-    
+
     .section {
       page-break-before: always;
       padding: 40px 0;
     }
-    
+
     .section-title {
-      font-size: 28pt;
+      font-family: 'Merriweather', Georgia, serif;
+      font-size: 24pt;
       color: white;
-      background: #0066CC;
+      background: linear-gradient(135deg, #1E3A5F 0%, #2E5A8F 100%);
       padding: 20px 30px;
       margin: -40px 0 30px 0;
+      letter-spacing: -0.3px;
     }
-    
+
     h2 {
-      font-size: 18pt;
-      color: #0066CC;
+      font-family: 'Merriweather', Georgia, serif;
+      font-size: 16pt;
+      color: #1E3A5F;
       margin: 30px 0 15px 0;
+      padding-bottom: 8px;
+      border-bottom: 2px solid #C9A962;
     }
-    
+
     h3 {
-      font-size: 14pt;
-      color: #333;
+      font-size: 13pt;
+      color: #1F2937;
+      font-weight: 600;
       margin: 20px 0 10px 0;
     }
-    
+
     p {
       margin-bottom: 12px;
       text-align: justify;
     }
-    
+
     .value-card {
-      background: #F5F5F5;
-      border-left: 4px solid #0066CC;
+      background: #F8FAFC;
+      border-left: 4px solid #1E3A5F;
       padding: 20px;
       margin: 20px 0;
+      border-radius: 0 8px 8px 0;
     }
-    
+
     .value-label {
       font-size: 10pt;
-      color: #666;
+      color: #6B7280;
       text-transform: uppercase;
+      letter-spacing: 0.05em;
       margin-bottom: 5px;
+      font-weight: 500;
     }
-    
+
     .value-amount {
+      font-family: 'JetBrains Mono', monospace;
       font-size: 32pt;
-      font-weight: bold;
-      color: #7CB342;
+      font-weight: 700;
+      color: #1E3A5F;
     }
-    
+
     .value-subtitle {
       font-size: 11pt;
-      color: #666;
+      color: #6B7280;
       margin-top: 5px;
     }
-    
+
     .three-col {
       display: flex;
       gap: 20px;
       margin: 30px 0;
     }
-    
+
     .col {
       flex: 1;
-      background: #F5F5F5;
+      background: #F8FAFC;
       padding: 20px;
       border-radius: 8px;
+      border-top: 3px solid #C9A962;
     }
-    
+
     .col-title {
-      font-size: 12pt;
-      font-weight: bold;
-      color: #0066CC;
+      font-size: 11pt;
+      font-weight: 600;
+      color: #1E3A5F;
       margin-bottom: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
     }
-    
+
     .col-value {
-      font-size: 24pt;
-      font-weight: bold;
-      color: #7CB342;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 22pt;
+      font-weight: 700;
+      color: #1E3A5F;
       margin-bottom: 10px;
     }
-    
+
     .col-text {
-      font-size: 10pt;
-      color: #666;
-      line-height: 1.4;
+      font-size: 9pt;
+      color: #6B7280;
+      line-height: 1.5;
     }
-    
+
     table {
       width: 100%;
-      border-collapse: collapse;
+      border-collapse: separate;
+      border-spacing: 0;
       margin: 20px 0;
       font-size: 10pt;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     }
-    
+
     thead {
-      background: #0066CC;
+      background: linear-gradient(135deg, #1E3A5F 0%, #2E5A8F 100%);
       color: white;
     }
-    
+
     th {
       padding: 12px;
       text-align: left;
-      font-weight: bold;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-size: 9pt;
     }
-    
+
     td {
       padding: 10px 12px;
-      border-bottom: 1px solid #E0E0E0;
+      border-bottom: 1px solid #E5E7EB;
     }
-    
+
     tbody tr:nth-child(even) {
-      background: #F9F9F9;
+      background: #F9FAFB;
     }
-    
+
     .financial-table {
       margin: 30px 0;
     }
-    
+
     .financial-section {
       margin-bottom: 30px;
     }
-    
+
     .financial-section h3 {
-      background: #0066CC;
+      background: linear-gradient(135deg, #1E3A5F 0%, #2E5A8F 100%);
       color: white;
       padding: 10px 15px;
       margin: 0 0 10px 0;
+      border-radius: 6px 6px 0 0;
+      font-size: 11pt;
+      letter-spacing: 0.03em;
     }
-    
+
     .kpi-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 20px;
       margin: 20px 0;
     }
-    
+
     .kpi-card {
-      background: #F5F5F5;
+      background: #F8FAFC;
       padding: 15px;
       border-radius: 8px;
-      border-left: 4px solid #7CB342;
+      border-left: 4px solid #C9A962;
     }
-    
+
     .kpi-name {
-      font-size: 10pt;
-      color: #666;
+      font-size: 9pt;
+      color: #6B7280;
       margin-bottom: 5px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      font-weight: 500;
     }
-    
+
     .kpi-value {
+      font-family: 'JetBrains Mono', monospace;
       font-size: 20pt;
-      font-weight: bold;
-      color: #333;
+      font-weight: 700;
+      color: #1F2937;
     }
-    
+
     ul {
       margin: 15px 0 15px 30px;
     }
-    
+
     li {
       margin-bottom: 8px;
     }
-    
+
     .narrative {
       font-size: 11pt;
       line-height: 1.8;
     }
-    
+
     .narrative p {
       margin-bottom: 15px;
     }
-    
+
     .narrative h2 {
       margin-top: 25px;
       margin-bottom: 15px;
     }
-    
+
     .narrative h3 {
       margin-top: 20px;
       margin-bottom: 10px;
     }
-    
+
     .narrative ul, .narrative ol {
       margin: 15px 0 15px 40px;
     }
-    
+
     .narrative li {
       margin-bottom: 10px;
     }
+
+    @media print {
+      * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
+    .value-card, .col, .kpi-card, table, .three-col, .chart-container {
+      page-break-inside: avoid;
+    }
+    .narrative h2, .narrative h3 { page-break-after: avoid; }
+    .narrative p { orphans: 3; widows: 3; }
   </style>
 </head>
 <body>
@@ -1029,15 +1107,33 @@ export class ProfessionalPDFGenerator {
       let pageNum = 3;
       const tocItems: string[] = [];
 
-      // Fixed sections (always present)
-      tocItems.push(`<div class="toc-item"><span>Your Valuation</span><span>${pageNum}</span></div>`);
-      pageNum += 2; // Your Valuation takes ~2 pages
+      // 1. Executive Summary (now first after TOC)
+      tocItems.push(`<div class="toc-item"><span>Executive Summary</span><span>${pageNum}</span></div>`);
+      pageNum += 3;
 
+      // 2. Conclusion of Value (renamed from "Your Valuation")
+      tocItems.push(`<div class="toc-item"><span>Conclusion of Value</span><span>${pageNum}</span></div>`);
+      pageNum += 2;
+
+      // 3. Company Profile
+      if (companyProfile) {
+        tocItems.push(`<div class="toc-item"><span>Company Profile</span><span>${pageNum}</span></div>`);
+        pageNum += 2;
+      }
+
+      // 4. Industry Analysis
+      if (industryAnalysis) {
+        tocItems.push(`<div class="toc-item"><span>Industry Analysis</span><span>${pageNum}</span></div>`);
+        pageNum += 2;
+      }
+
+      // 5. Financial Analysis + Financial Summary
+      if (financialAnalysis) {
+        tocItems.push(`<div class="toc-item"><span>Financial Analysis</span><span>${pageNum}</span></div>`);
+        pageNum += 2;
+      }
       tocItems.push(`<div class="toc-item"><span>Financial Summary</span><span>${pageNum}</span></div>`);
-      pageNum += 2; // Financial Summary takes ~2 pages
-
-      tocItems.push(`<div class="toc-item"><span>Key Performance Indicators</span><span>${pageNum}</span></div>`);
-      pageNum += 2; // KPIs take ~2 pages
+      pageNum += 2;
 
       // Financial Trends (if available)
       if (charts.financialTrend) {
@@ -1045,38 +1141,7 @@ export class ProfessionalPDFGenerator {
         pageNum += 1;
       }
 
-      // KPI Detail Pages (13 KPIs, approximately 1 page each)
-      if (kpiDetailPages && kpiDetailPages.length > 0) {
-        tocItems.push(`<div class="toc-item"><span>Detailed KPI Analysis</span><span>${pageNum}</span></div>`);
-        // Add sub-items for major KPI categories
-        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Profitability Metrics</span><span>${pageNum}</span></div>`);
-        pageNum += 5; // ~5 profitability KPIs
-        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Liquidity Metrics</span><span>${pageNum}</span></div>`);
-        pageNum += 2; // 2 liquidity KPIs
-        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Efficiency Metrics</span><span>${pageNum}</span></div>`);
-        pageNum += 3; // 3 efficiency KPIs
-        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Leverage Metrics</span><span>${pageNum}</span></div>`);
-        pageNum += 1; // 1 leverage KPI
-        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Growth Metrics</span><span>${pageNum}</span></div>`);
-        pageNum += 2; // growth + SDE/Revenue
-      }
-
-      tocItems.push(`<div class="toc-item"><span>Executive Summary</span><span>${pageNum}</span></div>`);
-      pageNum += 3; // Executive Summary takes ~3 pages (long content)
-
-      // Conditional sections
-      if (companyProfile) {
-        tocItems.push(`<div class="toc-item"><span>Company Profile</span><span>${pageNum}</span></div>`);
-        pageNum += 2;
-      }
-      if (industryAnalysis) {
-        tocItems.push(`<div class="toc-item"><span>Industry Analysis</span><span>${pageNum}</span></div>`);
-        pageNum += 2;
-      }
-      if (financialAnalysis) {
-        tocItems.push(`<div class="toc-item"><span>Financial Analysis</span><span>${pageNum}</span></div>`);
-        pageNum += 2;
-      }
+      // 6. Valuation Approaches (Asset, Income, Market)
       if (assetAnalysis) {
         tocItems.push(`<div class="toc-item"><span>Asset Approach</span><span>${pageNum}</span></div>`);
         pageNum += 2;
@@ -1089,29 +1154,70 @@ export class ProfessionalPDFGenerator {
         tocItems.push(`<div class="toc-item"><span>Market Approach</span><span>${pageNum}</span></div>`);
         pageNum += 2;
       }
+
+      // 7. Valuation Reconciliation
       if (valuationRecon) {
         tocItems.push(`<div class="toc-item"><span>Valuation Reconciliation</span><span>${pageNum}</span></div>`);
         pageNum += 2;
       }
+
+      // 8. Risk Assessment
       if (riskAssessment || charts.riskGauge) {
         tocItems.push(`<div class="toc-item"><span>Risk Assessment</span><span>${pageNum}</span></div>`);
         pageNum += 2;
       }
+
+      // 9. KPI Analysis
+      tocItems.push(`<div class="toc-item"><span>Key Performance Indicators</span><span>${pageNum}</span></div>`);
+      pageNum += 2;
+
+      // KPI Detail Pages
+      if (kpiDetailPages && kpiDetailPages.length > 0) {
+        tocItems.push(`<div class="toc-item"><span>Detailed KPI Analysis</span><span>${pageNum}</span></div>`);
+        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Profitability Metrics</span><span>${pageNum}</span></div>`);
+        pageNum += 5;
+        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Liquidity Metrics</span><span>${pageNum}</span></div>`);
+        pageNum += 2;
+        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Efficiency Metrics</span><span>${pageNum}</span></div>`);
+        pageNum += 3;
+        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Leverage Metrics</span><span>${pageNum}</span></div>`);
+        pageNum += 1;
+        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Growth Metrics</span><span>${pageNum}</span></div>`);
+        pageNum += 2;
+      }
+
+      // 10. Strategic Insights
       if (strategicInsights) {
         tocItems.push(`<div class="toc-item"><span>Strategic Insights</span><span>${pageNum}</span></div>`);
         pageNum += 2;
       }
+
+      // 11. Assumptions & Limiting Conditions
       if (assumptionsLimitingConditions) {
         tocItems.push(`<div class="toc-item"><span>Assumptions & Limiting Conditions</span><span>${pageNum}</span></div>`);
+        pageNum += 2;
+      }
+
+      // 12. Bibliography
+      if (bibliographyHTML) {
+        tocItems.push(`<div class="toc-item"><span>Sources and References</span><span>${pageNum}</span></div>`);
       }
 
       return tocItems.join('\n    ');
     })()}
   </div>
 
-  <!-- Your Valuation -->
-  <div class="section">
-    <h1 class="section-title">Your Valuation</h1>
+  <!-- Executive Summary (moved to front) -->
+  <div class="section" id="section-executive-summary">
+    <h1 class="section-title">Executive Summary</h1>
+    <div class="narrative">
+      ${execSummary}
+    </div>
+  </div>
+
+  <!-- Conclusion of Value (renamed from Your Valuation) -->
+  <div class="section" id="section-conclusion-of-value">
+    <h1 class="section-title">Conclusion of Value</h1>
     
     <h2>${companyName}</h2>
     ${reportData.industry_name ? `<p><strong>Industry:</strong> ${reportData.naics_code ? `${reportData.naics_code} - ` : ''}${reportData.industry_name}</p>` : ''}
@@ -1173,7 +1279,7 @@ export class ProfessionalPDFGenerator {
 
     ${accessor ? `
     <div style="margin-top: 20px; padding: 15px; background: #F5F5F5; border-radius: 8px;">
-      <h3 style="margin-top: 0; color: #0066CC;">Key Financial Metrics</h3>
+      <h3 style="margin-top: 0; color: #1E3A5F;">Key Financial Metrics</h3>
       <table style="width: 100%; font-size: 10pt;">
         <tr><td>Normalized SDE</td><td style="text-align: right; font-weight: bold;">${accessor.getWeightedSDEFormatted()}</td></tr>
         <tr><td>SDE Multiple Applied</td><td style="text-align: right; font-weight: bold;">${accessor.getSDEMultipleFormatted()} ${citeInline('BBS')}</td></tr>
@@ -1191,8 +1297,42 @@ export class ProfessionalPDFGenerator {
     ` : ''}
   </div>
 
+  <!-- Company Profile -->
+  ${companyProfile ? `
+  <div class="section" id="section-company-profile">
+    <h1 class="section-title">Company Profile</h1>
+    <div class="narrative">
+      ${companyProfile}
+    </div>
+  </div>
+  ` : ''}
+
+  <!-- Industry Analysis -->
+  ${industryAnalysis ? `
+  <div class="section" id="section-industry-analysis">
+    <h1 class="section-title">Industry Analysis</h1>
+    <div class="narrative">
+      ${industryAnalysis}
+    </div>
+  </div>
+  ` : ''}
+
+  <!-- Financial Analysis -->
+  ${financialAnalysis ? `
+  <div class="section" id="section-financial-analysis">
+    <h1 class="section-title">Financial Analysis</h1>
+    ${inlineSvgCharts?.profitabilityTrend ? `
+    <h2>Profitability Trends</h2>
+    <div style="margin: 20px 0; text-align: center;">${inlineSvgCharts.profitabilityTrend}</div>
+    ` : ''}
+    <div class="narrative">
+      ${financialAnalysis}
+    </div>
+  </div>
+  ` : ''}
+
   <!-- Financial Summary -->
-  <div class="section">
+  <div class="section" id="section-financial-summary">
     <h1 class="section-title">Financial Summary</h1>
 
     ${inlineSvgCharts?.revenueTrend ? `
@@ -1224,7 +1364,7 @@ export class ProfessionalPDFGenerator {
         ${inlineSvgCharts.sdeEbitdaTrend}
       </div>
       ` : ''}
-      
+
       <div class="financial-section">
         <h3>Assets</h3>
         <table>
@@ -1251,58 +1391,9 @@ export class ProfessionalPDFGenerator {
     </div>
   </div>
 
-  <!-- KPI Overview -->
-  <div class="section">
-    <h1 class="section-title">Key Performance Indicators</h1>
-    
-    <p>In order to better understand your company's operations, we have calculated a variety of Key Performance Indicators (KPIs) for your review and comparison to industry benchmarks.</p>
-    
-    <div class="kpi-grid">
-      <div class="kpi-card">
-        <div class="kpi-name">Cash Flow-to-Revenue</div>
-        <div class="kpi-value">${formatKPI(kpis.cash_flow_to_revenue, 'percentage')}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-name">Cash-to-Revenue</div>
-        <div class="kpi-value">${formatKPI(kpis.cash_to_revenue, 'percentage')}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-name">Fixed Assets-to-Revenue</div>
-        <div class="kpi-value">${formatKPI(kpis.fixed_assets_to_revenue, 'percentage')}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-name">Total Debt-to-Revenue</div>
-        <div class="kpi-value">${formatKPI(kpis.total_debt_to_revenue, 'percentage')}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-name">Current Ratio</div>
-        <div class="kpi-value">${formatKPI(kpis.current_ratio, 'ratio')}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-name">Profit Margin</div>
-        <div class="kpi-value">${formatKPI(kpis.profit_margin, 'percentage')}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-name">EBITDA Margin</div>
-        <div class="kpi-value">${formatKPI(kpis.ebitda_margin, 'percentage')}</div>
-      </div>
-      <div class="kpi-card">
-        <div class="kpi-name">Return on Assets</div>
-        <div class="kpi-value">${formatKPI(kpis.return_on_assets, 'percentage')}</div>
-      </div>
-    </div>
-    
-    ${charts.kpiPerformance ? `
-    <h2 style="margin-top: 40px;">KPI Performance Analysis</h2>
-    <div class="chart-container">
-      <img src="${charts.kpiPerformance}" alt="KPI Performance Chart" style="max-width: 100%; height: auto; margin: 20px 0;"/>
-    </div>
-    ` : ''}
-  </div>
-
   <!-- Financial Trends -->
   ${charts.financialTrend ? `
-  <div class="section">
+  <div class="section" id="section-financial-trends">
     <h1 class="section-title">Financial Performance Trends</h1>
     <p>This section presents the historical financial performance trends of ${companyName}, illustrating the trajectory of key financial metrics over the analyzed period.</p>
     <div style="margin: 30px 0; text-align: center;">
@@ -1314,50 +1405,9 @@ export class ProfessionalPDFGenerator {
   </div>
   ` : ''}
 
-  <!-- KPI Detail Pages -->
-  ${kpiDetailPages}
-
-  <!-- Executive Summary -->
-  <div class="section">
-    <h1 class="section-title">Executive Summary</h1>
-    <div class="narrative">
-      ${execSummary}
-    </div>
-  </div>
-
-  ${companyProfile ? `
-  <div class="section">
-    <h1 class="section-title">Company Profile</h1>
-    <div class="narrative">
-      ${companyProfile}
-    </div>
-  </div>
-  ` : ''}
-
-  ${industryAnalysis ? `
-  <div class="section">
-    <h1 class="section-title">Industry Analysis</h1>
-    <div class="narrative">
-      ${industryAnalysis}
-    </div>
-  </div>
-  ` : ''}
-
-  ${financialAnalysis ? `
-  <div class="section">
-    <h1 class="section-title">Financial Analysis</h1>
-    ${inlineSvgCharts?.profitabilityTrend ? `
-    <h2>Profitability Trends</h2>
-    <div style="margin: 20px 0; text-align: center;">${inlineSvgCharts.profitabilityTrend}</div>
-    ` : ''}
-    <div class="narrative">
-      ${financialAnalysis}
-    </div>
-  </div>
-  ` : ''}
-
+  <!-- Valuation Approaches -->
   ${assetAnalysis ? `
-  <div class="section">
+  <div class="section" id="section-asset-approach">
     <h1 class="section-title">Asset Approach Analysis</h1>
     <div class="narrative">
       ${assetAnalysis}
@@ -1366,7 +1416,7 @@ export class ProfessionalPDFGenerator {
   ` : ''}
 
   ${incomeAnalysis ? `
-  <div class="section">
+  <div class="section" id="section-income-approach">
     <h1 class="section-title">Income Approach Analysis</h1>
     <div class="narrative">
       ${incomeAnalysis}
@@ -1375,7 +1425,7 @@ export class ProfessionalPDFGenerator {
   ` : ''}
 
   ${marketAnalysis ? `
-  <div class="section">
+  <div class="section" id="section-market-approach">
     <h1 class="section-title">Market Approach Analysis</h1>
     ${marketTableHTML ? `<div style="margin-bottom: 30px;">${marketTableHTML}</div>` : ''}
     <div class="narrative">
@@ -1384,8 +1434,9 @@ export class ProfessionalPDFGenerator {
   </div>
   ` : ''}
 
+  <!-- Valuation Reconciliation -->
   ${valuationRecon ? `
-  <div class="section">
+  <div class="section" id="section-valuation-reconciliation">
     <h1 class="section-title">Valuation Reconciliation</h1>
     <div class="narrative">
       ${valuationRecon}
@@ -1393,8 +1444,9 @@ export class ProfessionalPDFGenerator {
   </div>
   ` : ''}
 
+  <!-- Risk Assessment -->
   ${riskAssessment || charts.riskGauge || inlineSvgCharts?.riskGauge ? `
-  <div class="section">
+  <div class="section" id="section-risk-assessment">
     <h1 class="section-title">Risk Assessment</h1>
 
     ${inlineSvgCharts?.riskGauge || charts.riskGauge ? `
@@ -1424,7 +1476,7 @@ export class ProfessionalPDFGenerator {
     <h2>Risk Factor Breakdown</h2>
     <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 10pt;">
       <thead>
-        <tr style="background: #0066CC; color: white;">
+        <tr style="background: #1E3A5F; color: white;">
           <th style="padding: 12px; text-align: left;">Risk Category</th>
           <th style="padding: 12px; text-align: center;">Rating</th>
           <th style="padding: 12px; text-align: center;">Score</th>
@@ -1463,8 +1515,61 @@ export class ProfessionalPDFGenerator {
   </div>
   ` : ''}
 
+  <!-- KPI Overview -->
+  <div class="section" id="section-kpi-overview">
+    <h1 class="section-title">Key Performance Indicators</h1>
+
+    <p>In order to better understand your company's operations, we have calculated a variety of Key Performance Indicators (KPIs) for your review and comparison to industry benchmarks.</p>
+
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-name">Cash Flow-to-Revenue</div>
+        <div class="kpi-value">${formatKPI(kpis.cash_flow_to_revenue, 'percentage')}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-name">Cash-to-Revenue</div>
+        <div class="kpi-value">${formatKPI(kpis.cash_to_revenue, 'percentage')}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-name">Fixed Assets-to-Revenue</div>
+        <div class="kpi-value">${formatKPI(kpis.fixed_assets_to_revenue, 'percentage')}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-name">Total Debt-to-Revenue</div>
+        <div class="kpi-value">${formatKPI(kpis.total_debt_to_revenue, 'percentage')}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-name">Current Ratio</div>
+        <div class="kpi-value">${formatKPI(kpis.current_ratio, 'ratio')}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-name">Profit Margin</div>
+        <div class="kpi-value">${formatKPI(kpis.profit_margin, 'percentage')}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-name">EBITDA Margin</div>
+        <div class="kpi-value">${formatKPI(kpis.ebitda_margin, 'percentage')}</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-name">Return on Assets</div>
+        <div class="kpi-value">${formatKPI(kpis.return_on_assets, 'percentage')}</div>
+      </div>
+    </div>
+
+    ${charts.kpiPerformance ? `
+    <h2 style="margin-top: 40px;">KPI Performance Analysis</h2>
+    <div class="chart-container">
+      <img src="${charts.kpiPerformance}" alt="KPI Performance Chart" style="max-width: 100%; height: auto; margin: 20px 0;"/>
+    </div>
+    ` : ''}
+  </div>
+
+  <!-- KPI Detail Pages -->
+  ${kpiDetailPages}
+
+  <!-- Strategic Insights -->
   ${strategicInsights ? `
-  <div class="section">
+  <div class="section" id="section-strategic-insights">
     <h1 class="section-title">Strategic Insights</h1>
     <div class="narrative">
       ${strategicInsights}
@@ -1472,8 +1577,9 @@ export class ProfessionalPDFGenerator {
   </div>
   ` : ''}
 
+  <!-- Assumptions & Limiting Conditions -->
   ${assumptionsLimitingConditions ? `
-  <div class="section">
+  <div class="section" id="section-assumptions">
     <h1 class="section-title">Assumptions & Limiting Conditions</h1>
     <div class="narrative">
       ${assumptionsLimitingConditions}
@@ -1481,6 +1587,7 @@ export class ProfessionalPDFGenerator {
   </div>
   ` : ''}
 
+  <!-- Bibliography -->
   ${bibliographyHTML}
 
 </body>

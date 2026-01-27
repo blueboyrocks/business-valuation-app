@@ -150,7 +150,8 @@ export function svgWrapper(width: number, height: number, content: string): stri
  * Escape special XML characters in text content.
  */
 function escapeXml(str: string): string {
-  return str
+  const s = typeof str === 'string' ? str : String(str ?? '');
+  return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

@@ -7,7 +7,7 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { getPassConfig, buildPassPrompt, PassConfig, getNarrativePassConfig, buildNarrativePassPrompt } from './pass-configs';
+import { getPassConfig, buildPassPrompt, PassConfig, getNarrativePassConfig, buildNarrativePassPrompt, type CalcResultsForNarrative } from './pass-configs';
 import { NARRATIVE_EXECUTION_ORDER } from './prompts-v2';
 
 export interface ExecutePassOptions {
@@ -201,7 +201,8 @@ export async function executeNarrativePass(
     report_data?: Record<string, unknown> | null;
   },
   priorPassOutputs: Record<string, unknown>,
-  priorNarratives: Record<string, unknown> = {}
+  priorNarratives: Record<string, unknown> = {},
+  calculationResults?: CalcResultsForNarrative
 ): Promise<unknown> {
   const anthropic = new Anthropic();
   const passConfig = getNarrativePassConfig(passId);
@@ -217,7 +218,8 @@ export async function executeNarrativePass(
     passId,
     report,
     priorPassOutputs,
-    priorNarratives
+    priorNarratives,
+    calculationResults
   );
 
   console.log(`[NARRATIVE ${passId}] Calling Claude API...`);
@@ -252,6 +254,19 @@ export async function executeNarrativePass(
     console.log(`[NARRATIVE ${passId}] Successfully parsed response (attempt ${attempt})`);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     console.log(`[NARRATIVE ${passId}] Word count: ${(parsed as any).word_count || 'N/A'}`);
+
+    // Post-generation validation for 11a: check that concluded value appears in content
+    if (passId === '11a' && calculationResults && calculationResults.concluded_value > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const content = (parsed as any).content || '';
+      const expectedValue = calculationResults.concluded_value.toLocaleString();
+      if (content && !content.includes(expectedValue)) {
+        console.warn(`[NARRATIVE 11a] VALUE MISMATCH WARNING: Expected concluded value $${expectedValue} not found in executive summary content.`);
+      } else {
+        console.log(`[NARRATIVE 11a] Value validation passed: $${expectedValue} found in content.`);
+      }
+    }
+
     return parsed;
   }
 
@@ -275,7 +290,8 @@ export async function executeAllNarrativePasses(
     report_data?: Record<string, unknown> | null;
   },
   priorPassOutputs: Record<string, unknown>,
-  onProgress?: (passId: string, status: 'started' | 'completed' | 'error', result?: unknown) => void
+  onProgress?: (passId: string, status: 'started' | 'completed' | 'error', result?: unknown) => void,
+  calculationResults?: CalcResultsForNarrative
 ): Promise<Record<string, unknown>> {
   const narrativeResults: Record<string, unknown> = {};
 
@@ -292,7 +308,8 @@ export async function executeAllNarrativePasses(
         reportId,
         report,
         priorPassOutputs,
-        narrativeResults // Include prior narrative results for context
+        narrativeResults, // Include prior narrative results for context
+        calculationResults
       );
 
       narrativeResults[passId] = result;

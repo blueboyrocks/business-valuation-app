@@ -497,6 +497,24 @@ export function getAllNarrativePassConfigs(): NarrativePassConfig[] {
 }
 
 /**
+ * Deterministic calculation results that override AI-generated values
+ */
+export interface CalcResultsForNarrative {
+  concluded_value: number;
+  value_range_low: number;
+  value_range_high: number;
+  sde_multiple: number;
+  weighted_sde: number;
+  weighted_ebitda: number;
+  asset_approach_value: number;
+  income_approach_value: number;
+  market_approach_value: number;
+  asset_weight: number;
+  income_weight: number;
+  market_weight: number;
+}
+
+/**
  * Build prompts for a narrative pass (11a-11k)
  */
 export function buildNarrativePassPrompt(
@@ -507,7 +525,8 @@ export function buildNarrativePassPrompt(
     report_data?: Record<string, unknown> | null;
   },
   priorPassOutputs: Record<string, unknown>,
-  priorNarratives: Record<string, unknown> = {}
+  priorNarratives: Record<string, unknown> = {},
+  calculationResults?: CalcResultsForNarrative
 ): { systemPrompt: string; userPrompt: string } {
   // Get pass outputs by number
   const pass1 = getPassOutput(priorPassOutputs, 1) as Record<string, unknown> | null;
@@ -566,6 +585,27 @@ export function buildNarrativePassPrompt(
         normalized_sde: normalizedEarnings.normalized_sde || normalizedEarnings.weighted_average_sde,
         normalized_ebitda: normalizedEarnings.normalized_ebitda || normalizedEarnings.weighted_average_ebitda,
       };
+
+      // Override with deterministic calculation engine results when available
+      let effectiveValuationResults = valuationResults;
+      if (calculationResults && calculationResults.concluded_value > 0) {
+        effectiveValuationResults = {
+          ...valuationResults,
+          concluded_value: calculationResults.concluded_value,
+          value_range_low: calculationResults.value_range_low,
+          value_range_high: calculationResults.value_range_high,
+          asset_approach: calculationResults.asset_approach_value,
+          income_approach: calculationResults.income_approach_value,
+          market_approach: calculationResults.market_approach_value,
+          asset_weight: Math.round(calculationResults.asset_weight * 100),
+          income_weight: Math.round(calculationResults.income_weight * 100),
+          market_weight: Math.round(calculationResults.market_weight * 100),
+          confidence_level: 'High',
+        };
+        financialSummary.normalized_sde = calculationResults.weighted_sde;
+        financialSummary.normalized_ebitda = calculationResults.weighted_ebitda;
+      }
+
       const otherNarratives = {
         company_overview: getNarrativeContent(priorNarratives['11b']),
         financial_analysis: getNarrativeContent(priorNarratives['11c']),
@@ -573,7 +613,7 @@ export function buildNarrativePassPrompt(
       };
       return {
         systemPrompt: PASS_11A_SYSTEM_PROMPT,
-        userPrompt: buildPass11aPrompt(companyProfile, financialSummary, valuationResults, riskAssessment, otherNarratives),
+        userPrompt: buildPass11aPrompt(companyProfile, financialSummary, effectiveValuationResults, riskAssessment, otherNarratives),
       };
     }
 
@@ -635,6 +675,21 @@ export function buildNarrativePassPrompt(
 
     case '11i': {
       // Valuation Synthesis
+      let effectiveValuation11i = valuationResults;
+      if (calculationResults && calculationResults.concluded_value > 0) {
+        effectiveValuation11i = {
+          ...valuationResults,
+          concluded_value: calculationResults.concluded_value,
+          value_range_low: calculationResults.value_range_low,
+          value_range_high: calculationResults.value_range_high,
+          asset_approach: calculationResults.asset_approach_value,
+          income_approach: calculationResults.income_approach_value,
+          market_approach: calculationResults.market_approach_value,
+          asset_weight: Math.round(calculationResults.asset_weight * 100),
+          income_weight: Math.round(calculationResults.income_weight * 100),
+          market_weight: Math.round(calculationResults.market_weight * 100),
+        };
+      }
       const approachNarratives = {
         asset: getNarrativeContent(priorNarratives['11f']),
         income: getNarrativeContent(priorNarratives['11g']),
@@ -642,7 +697,7 @@ export function buildNarrativePassPrompt(
       };
       return {
         systemPrompt: PASS_11I_SYSTEM_PROMPT,
-        userPrompt: buildPass11iPrompt(valuationResults, approachNarratives),
+        userPrompt: buildPass11iPrompt(effectiveValuation11i, approachNarratives),
       };
     }
 
@@ -678,9 +733,18 @@ export function buildNarrativePassPrompt(
         industry_operating_margin: industryBenchmarks.operating_margin || 0.10,
         industry_growth: industryBenchmarks.revenue_growth || 0.05,
       };
+      let effectiveValuation11k = valuationResults;
+      if (calculationResults && calculationResults.concluded_value > 0) {
+        effectiveValuation11k = {
+          ...valuationResults,
+          concluded_value: calculationResults.concluded_value,
+          value_range_low: calculationResults.value_range_low,
+          value_range_high: calculationResults.value_range_high,
+        };
+      }
       return {
         systemPrompt: PASS_11K_SYSTEM_PROMPT,
-        userPrompt: buildPass11kPrompt(companyProfile, financialData, riskAssessment, valuationResults),
+        userPrompt: buildPass11kPrompt(companyProfile, financialData, riskAssessment, effectiveValuation11k),
       };
     }
 

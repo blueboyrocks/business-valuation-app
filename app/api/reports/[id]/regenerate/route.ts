@@ -191,6 +191,7 @@ export async function POST(
           '4': passMap.get(4) as Record<string, unknown>,
           '5': passMap.get(5) as Record<string, unknown>,
           '6': passMap.get(6) as Record<string, unknown>,
+          '7': passMap.get(7) as Record<string, unknown>,
         };
         const calculationInputs = mapPassOutputsToEngineInputs(passDataForEngine);
         calcResults = runCalculationEngine(calculationInputs);
@@ -339,7 +340,9 @@ export async function POST(
 
     // Read values from calculation engine first, fall back to AI pass outputs
     const assetValue = hasCalcEngine
-      ? calcResults!.asset_approach.adjusted_net_asset_value
+      ? (calcResults!.asset_approach.adjusted_net_asset_value ||
+         passes.pass7?.summary?.adjusted_net_asset_value ||
+         passes.pass7?.asset_approach?.adjusted_book_value || 0)
       : (passes.pass7?.summary?.adjusted_net_asset_value ||
          passes.pass7?.asset_approach?.adjusted_book_value || 0);
     const incomeValue = hasCalcEngine

@@ -15,7 +15,7 @@ export function buildChartData(accessor: ValuationDataAccessor): ChartDataSet {
   // --- Revenue by year ---
   const revenueByYear = accessor.getRevenueByYear();
   const revenueTrend = {
-    labels: revenueByYear.map(r => r.period),
+    labels: revenueByYear.map(r => String(r.period)),
     values: revenueByYear.map(r => r.revenue),
   };
 
@@ -28,7 +28,7 @@ export function buildChartData(accessor: ValuationDataAccessor): ChartDataSet {
   // --- SDE by year ---
   const sdeByYear = accessor.getSDEByYear();
   const sdeTrend = {
-    labels: sdeByYear.map(s => s.period),
+    labels: sdeByYear.map(s => String(s.period)),
     values: sdeByYear.map(s => s.sde),
   };
 
@@ -40,7 +40,7 @@ export function buildChartData(accessor: ValuationDataAccessor): ChartDataSet {
   // --- EBITDA by year ---
   const ebitdaByYear = accessor.getEBITDAByYear();
   const ebitdaTrend = {
-    labels: ebitdaByYear.map(e => e.period),
+    labels: ebitdaByYear.map(e => String(e.period)),
     values: ebitdaByYear.map(e => e.ebitda),
   };
 
@@ -162,7 +162,7 @@ function buildProfitabilityTrend(
   const ebitdaByYear = accessor.getEBITDAByYear();
 
   // Use SDE years as the canonical labels (they typically have the most coverage)
-  const labels = sdeByYear.map(s => s.period);
+  const labels = sdeByYear.map(s => String(s.period));
 
   // Build margin arrays. Margins are expressed as percentage values (0-100).
   const grossMargins: number[] = [];

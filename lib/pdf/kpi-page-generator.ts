@@ -79,7 +79,7 @@ function generateInlineSVGChart(kpi: KPIDetailedResult): string {
       : displayBenchmark.toFixed(2);
 
   return `
-    <svg width="${chartWidth}" height="${chartHeight + 30}" xmlns="http://www.w3.org/2000/svg" style="font-family: 'Helvetica Neue', Arial, sans-serif;">
+    <svg width="${chartWidth}" height="${chartHeight + 30}" xmlns="http://www.w3.org/2000/svg" style="font-family: 'Inter', -apple-system, sans-serif;">
       <!-- Background -->
       <rect width="100%" height="100%" fill="white"/>
 
@@ -159,10 +159,10 @@ export async function generateKPIDetailPage(kpi: KPIDetailedResult, generateChar
       <!-- KPI Title -->
       <h1 style="
         font-size: 28pt;
-        color: #0066CC;
+        color: #1E3A5F;
         margin: 0 0 10px 0;
         padding-bottom: 15px;
-        border-bottom: 3px solid #0066CC;
+        border-bottom: 3px solid #1E3A5F;
       ">${kpi.name}</h1>
 
       <!-- Chart Section -->
@@ -216,7 +216,7 @@ function generateExplanationSection(explanation: KPIExplanation): string {
         background: #F5F5F5;
         padding: 12px 15px;
         margin: 0 0 15px 0;
-        border-left: 4px solid #0066CC;
+        border-left: 4px solid #1E3A5F;
       ">What Does It Mean?</h2>
       <p style="
         font-size: 11pt;
@@ -235,7 +235,7 @@ function generateExplanationSection(explanation: KPIExplanation): string {
         background: #F5F5F5;
         padding: 12px 15px;
         margin: 0 0 15px 0;
-        border-left: 4px solid #0066CC;
+        border-left: 4px solid #1E3A5F;
       ">Why Should It Matter?</h2>
       <p style="
         font-size: 11pt;
@@ -254,7 +254,7 @@ function generateExplanationSection(explanation: KPIExplanation): string {
         background: #F5F5F5;
         padding: 12px 15px;
         margin: 0 0 15px 0;
-        border-left: 4px solid #7CB342;
+        border-left: 4px solid #C9A962;
       ">Give Me An Example</h2>
       <p style="
         font-size: 11pt;

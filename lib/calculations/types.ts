@@ -304,6 +304,9 @@ export interface CalculationEngineInputs {
   industry: IndustryData;
   fair_market_salary?: number;
   risk_assessment: RiskAssessmentData;
+  pass7_asset_approach?: {
+    adjusted_net_asset_value?: number;
+  };
   config?: CalculationConfig;
 }
 

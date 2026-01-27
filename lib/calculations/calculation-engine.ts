@@ -90,6 +90,17 @@ export function runCalculationEngine(inputs: CalculationEngineInputs): Calculati
   allSteps.push(...assetApproach.calculation_steps);
   allWarnings.push(...assetApproach.warnings);
 
+  // If engine's own asset approach returns 0 but Pass 7 has a value, use Pass 7's NAV
+  if (
+    assetApproach.adjusted_net_asset_value === 0 &&
+    inputs.pass7_asset_approach?.adjusted_net_asset_value &&
+    inputs.pass7_asset_approach.adjusted_net_asset_value > 0
+  ) {
+    console.log(`[CalculationEngine] Asset Approach was $0, using Pass 7 NAV: ${inputs.pass7_asset_approach.adjusted_net_asset_value}`);
+    assetApproach.adjusted_net_asset_value = inputs.pass7_asset_approach.adjusted_net_asset_value;
+    allWarnings.push('Asset approach value overridden by Pass 7 (AI-extracted) adjusted net asset value');
+  }
+
   console.log(`[CalculationEngine] Asset Approach: ${assetApproach.adjusted_net_asset_value}`);
 
   // ========================================================================

@@ -31,13 +31,32 @@ export function safeGet<T>(obj: unknown, path: string, defaultValue: T): T {
 }
 
 /**
+ * Safely convert any value to a string.
+ * Handles the case where Pass 2 returns period as an object
+ * {start_date, end_date, period_months, fiscal_year} instead of a plain string.
+ */
+export function safeString(value: unknown, defaultValue = 'Unknown'): string {
+  if (value === null || value === undefined) return defaultValue;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number') return String(value);
+  if (typeof value === 'object') {
+    const obj = value as Record<string, unknown>;
+    if (obj.fiscal_year != null) return String(obj.fiscal_year);
+    if (typeof obj.end_date === 'string') return obj.end_date.slice(0, 4);
+    if (obj.year != null) return String(obj.year);
+    if (typeof obj.label === 'string') return obj.label;
+  }
+  return defaultValue;
+}
+
+/**
  * Map pass 2 (income statements) to financials format
  */
 function mapFinancials(pass2: Record<string, unknown>): MultiYearFinancials {
   const incomeStatements = safeGet<Array<Record<string, unknown>>>(pass2, 'income_statements', []);
 
   const periods: SingleYearFinancials[] = incomeStatements.map((stmt) => ({
-    period: safeGet<string>(stmt, 'period', 'Unknown'),
+    period: safeString((stmt as Record<string, unknown>)?.period ?? safeGet<unknown>(stmt, 'period', 'Unknown')),
     net_income: safeGet<number>(stmt, 'net_income', 0),
     gross_receipts:
       safeGet<number>(stmt, 'revenue.gross_receipts', 0) ||
@@ -82,7 +101,7 @@ function mapBalanceSheet(pass3: Record<string, unknown>): BalanceSheetData {
     safeGet<Record<string, unknown>>(pass3, 'most_recent_balance_sheet', {});
 
   return {
-    period: safeGet<string>(bs, 'period', 'Unknown'),
+    period: safeString((bs as Record<string, unknown>)?.period ?? safeGet<unknown>(bs, 'period', 'Unknown')),
     assets: {
       current_assets: {
         cash: safeGet<number>(bs, 'assets.current_assets.cash', 0),
@@ -270,9 +289,23 @@ function mapRiskAssessment(pass6: Record<string, unknown>): RiskAssessmentData {
 }
 
 /**
+ * Map pass 7 (asset approach) to extract adjusted net asset value
+ */
+function mapPass7AssetApproach(pass7: Record<string, unknown>): { adjusted_net_asset_value?: number } | undefined {
+  const summary = safeGet<Record<string, unknown>>(pass7, 'summary', {});
+  const assetApproach = safeGet<Record<string, unknown>>(pass7, 'asset_approach', {});
+  const nav =
+    safeGet<number>(summary, 'adjusted_net_asset_value', 0) ||
+    safeGet<number>(assetApproach, 'adjusted_net_asset_value', 0) ||
+    safeGet<number>(assetApproach, 'adjusted_book_value', 0);
+  if (nav === 0 && Object.keys(assetApproach).length === 0) return undefined;
+  return { adjusted_net_asset_value: nav };
+}
+
+/**
  * Main mapper function - converts pass outputs to calculation engine inputs
  *
- * @param passOutputs - Object containing outputs from passes 1-6
+ * @param passOutputs - Object containing outputs from passes 1-7
  * @returns Formatted inputs for the calculation engine
  */
 export function mapPassOutputsToEngineInputs(
@@ -284,6 +317,7 @@ export function mapPassOutputsToEngineInputs(
   const pass4 = passOutputs['4'] || {};
   const pass5 = passOutputs['5'] || {};
   const pass6 = passOutputs['6'] || {};
+  const pass7 = passOutputs['7'] || {};
 
   // Get company name from pass 1
   const companyName =
@@ -309,5 +343,6 @@ export function mapPassOutputsToEngineInputs(
     industry: mapIndustryData(pass4),
     fair_market_salary: fairMarketSalary,
     risk_assessment: mapRiskAssessment(pass6),
+    pass7_asset_approach: mapPass7AssetApproach(pass7),
   };
 }

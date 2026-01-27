@@ -62,6 +62,12 @@ Write a comprehensive Executive Summary (1,000-1,200 words) for this valuation r
 **Value Range**: $${valuationResults.value_range_low?.toLocaleString() || 'N/A'} - $${valuationResults.value_range_high?.toLocaleString() || 'N/A'}
 **Confidence Level**: ${valuationResults.confidence_level || 'Medium'}
 
+## CRITICAL: USE THESE EXACT VALUES
+The numbers above are AUTHORITATIVE from the deterministic calculation engine.
+You MUST use these exact dollar values in your narrative. Do NOT invent, round differently, or adjust them.
+When referencing the concluded value, use exactly: $${valuationResults.concluded_value?.toLocaleString() || 'Not determined'}
+When referencing approach values, use the exact figures above.
+
 ## RISK SUMMARY
 
 **Overall Risk Score**: ${riskAssessment.overall_score || 'N/A'}/10
