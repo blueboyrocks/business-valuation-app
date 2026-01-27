@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { RefreshCw, Globe, CheckCircle, AlertCircle, Loader2, ChevronDown, ChevronRight, UserCircle } from 'lucide-react';
+import { RefreshCw, Globe, CheckCircle, AlertCircle, Loader2, ChevronDown, ChevronRight, UserCircle, StopCircle } from 'lucide-react';
 import { createBrowserClient } from '@/lib/supabase/client';
 
 interface PassRerunPanelProps {
@@ -79,6 +79,7 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
   const [availablePasses, setAvailablePasses] = useState<(number | string)[]>([]);
   const [showNarratives, setShowNarratives] = useState(false);
   const [regenerateAfter, setRegenerateAfter] = useState(true);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Fetch available passes on mount
   useEffect(() => {
@@ -139,11 +140,36 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
     setSelectedPasses(prev => prev.filter(p => typeof p === 'number' && (p <= 10 || p >= 12)));
   };
 
+  const cancelRerun = async () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    setIsRunning(false);
+    setCurrentPass(null);
+    setProgressMessage('Cancelled by user');
+    setError('Re-run cancelled by user');
+
+    // Update DB so the report doesn't stay stuck in 'processing'
+    try {
+      const supabase = createBrowserClient();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase.from('reports') as any).update({
+        report_status: 'completed',
+        processing_message: 'Pass re-run cancelled by user',
+      }).eq('id', reportId);
+    } catch (dbErr) {
+      console.error('Failed to update report status after cancel:', dbErr);
+    }
+  };
+
   const runSelectedPasses = async () => {
     if (selectedPasses.length === 0) {
       setError('Please select at least one pass to re-run');
       return;
     }
+
+    // Create abort controller for this run
+    abortControllerRef.current = new AbortController();
 
     setIsRunning(true);
     setError(null);
@@ -212,6 +238,11 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
 
       // Execute passes ONE AT A TIME via the single-pass endpoint
       for (let i = 0; i < allPasses.length; i++) {
+        // Check if cancelled
+        if (abortControllerRef.current?.signal.aborted) {
+          break;
+        }
+
         const entry = allPasses[i];
         const passLabel = entry.type === 'numeric' ? `Pass ${entry.pass}` : `Narrative ${entry.pass}`;
         setCurrentPass(entry.pass);
@@ -229,6 +260,7 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
               'Content-Type': 'application/json',
             },
             body: JSON.stringify(body),
+            signal: abortControllerRef.current?.signal,
           });
 
           const result = await response.json();
@@ -242,6 +274,10 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
             console.error(`${passLabel} failed:`, result.error);
           }
         } catch (passErr) {
+          if (passErr instanceof Error && passErr.name === 'AbortError') {
+            console.log('[PassRerunPanel] Re-run cancelled by user');
+            break;
+          }
           failed.push(entry.pass);
           setFailedPasses([...failed]);
           console.error(`${passLabel} error:`, passErr);
@@ -269,6 +305,7 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
       }
       setIsRunning(false);
       setCurrentPass(null);
+      abortControllerRef.current = null;
     }
   };
 
@@ -555,6 +592,15 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
                   This may take several minutes. Please don&apos;t close this page.
                 </p>
               </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={cancelRerun}
+                className="text-red-600 border-red-300 hover:bg-red-50 flex-shrink-0"
+              >
+                <StopCircle className="h-4 w-4 mr-1" />
+                Cancel
+              </Button>
             </div>
           </div>
         )}

@@ -238,7 +238,7 @@ export default function ReportDetailPage() {
   };
 
   // Cancel processing
-  const cancelProcessing = () => {
+  const cancelProcessing = async () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
@@ -249,6 +249,18 @@ export default function ReportDetailPage() {
       error: 'Processing cancelled by user',
       canRetry: true,
     }));
+
+    // Also update the database so the report doesn't stay stuck in 'processing'
+    try {
+      const supabase = createBrowserClient();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      await (supabase.from('reports') as any).update({
+        report_status: 'error',
+        processing_message: 'Processing cancelled by user',
+      }).eq('id', params.id as string);
+    } catch (dbErr) {
+      console.error('Failed to update report status after cancel:', dbErr);
+    }
   };
 
   // Check if report can be regenerated from existing data
