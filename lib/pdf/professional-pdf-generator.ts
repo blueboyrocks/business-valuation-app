@@ -140,7 +140,24 @@ export class ProfessionalPDFGenerator {
         } catch (e) {
           console.warn('[PDF] Failed to reconstruct DataAccessor from store:', e);
         }
+      } else {
+        console.warn('[PDF] _dataAccessor found but is not a valid class instance or serialized store. Keys:', Object.keys(raw || {}).join(', '));
       }
+    }
+
+    // Runtime type check: if accessor exists, verify it has required methods
+    if (accessor && typeof accessor.getRevenue !== 'function') {
+      console.error(
+        '[PDF] Invalid accessor: expected ValuationDataAccessor instance with methods, ' +
+        `got ${typeof accessor} with keys: ${Object.keys(accessor || {}).join(', ')}. Falling back to reportData.`
+      );
+      accessor = undefined;
+    }
+
+    if (accessor) {
+      console.log('[PDF] Using DataAccessor for financial values');
+    } else {
+      console.log('[PDF] No DataAccessor available, using reportData directly');
     }
 
     try {

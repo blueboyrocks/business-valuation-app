@@ -132,8 +132,8 @@ export async function generateAndStorePDF(
           processing_message: `Valuation complete. PDF generation failed: ${errorMessage}`
         })
         .eq('id', reportId);
-    } catch {
-      // Ignore update errors
+    } catch (updateErr) {
+      console.warn('[AUTO-PDF] Failed to update report status after PDF error:', updateErr);
     }
 
     return {

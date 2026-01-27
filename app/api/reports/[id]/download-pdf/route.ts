@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ProfessionalPDFGenerator } from '@/lib/pdf/professional-pdf-generator';
+import { createDataStoreFromResults } from '@/lib/valuation/data-store-factory';
+import type { CalculationEngineOutput } from '@/lib/calculations/types';
 
 // Lazy-initialize Supabase client to avoid build-time errors
 let supabase: SupabaseClient | null = null;
@@ -82,6 +84,19 @@ export async function POST(
     console.log(`[PDF] Report data keys:`, Object.keys(reportData));
     console.log(`[PDF] Report data size: ${JSON.stringify(reportData).length} bytes`);
 
+    // Reconstruct DataAccessor from calculation_results if available
+    let accessor;
+    const calcResults = report.calculation_results as CalculationEngineOutput | null;
+    if (calcResults?.synthesis?.final_concluded_value) {
+      try {
+        const { accessor: reconstructed } = createDataStoreFromResults(calcResults, reportData as Record<string, unknown>);
+        accessor = reconstructed;
+        console.log(`[PDF] Reconstructed DataAccessor from calculation_results`);
+      } catch (e) {
+        console.warn(`[PDF] Failed to reconstruct DataAccessor:`, e);
+      }
+    }
+
     const generatedDate = new Date().toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'long',
@@ -90,7 +105,7 @@ export async function POST(
 
     console.log(`[PDF] Starting Puppeteer PDF generation...`);
     const generator = new ProfessionalPDFGenerator();
-    const pdfBuffer = await generator.generate(report.company_name, reportData, generatedDate);
+    const pdfBuffer = await generator.generate(report.company_name, reportData, generatedDate, accessor);
 
     const duration = Date.now() - startTime;
     console.log(`[PDF] ✓ PDF generated successfully`);
