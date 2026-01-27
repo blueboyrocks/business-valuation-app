@@ -574,11 +574,6 @@ export async function POST(
     reconciledReport.quality_grade = qualityResult.grade;
     reconciledReport.is_premium_ready = qualityResult.isPremiumReady;
 
-    // PRD-A: Attach data accessor reference for PDF generator to use
-    if (dataAccessor) {
-      (reconciledReport as any)._dataAccessor = dataAccessor;
-    }
-
     // 8. Update the report in database
     console.log(`[REGENERATE] Saving report to database...`);
     // Use reconciled values for the final concluded value
@@ -613,7 +608,8 @@ export async function POST(
         const result = await generateAndStorePDF(
           reportId,
           report.company_name,
-          reconciledReport as unknown as Record<string, unknown>
+          reconciledReport as unknown as Record<string, unknown>,
+          dataAccessor
         );
 
         pdfGenerated = result.success;

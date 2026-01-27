@@ -26,7 +26,7 @@ import {
 } from './puppeteer-chart-renderer';
 import { generateAllKPIDetailPages } from './kpi-page-generator';
 import { getAllKPIsOrdered } from '../content/kpi-explanations';
-import type { ValuationDataAccessor } from '../valuation/data-accessor';
+import { type ValuationDataAccessor, createDataAccessor } from '../valuation/data-accessor';
 import { CitationManager } from '../citations/citation-manager';
 import { CalculationTableGenerator, type SDETableInput, type MarketApproachInput, type SynthesisInput } from '../display/calculation-table-generator';
 import { ReportChartGenerator } from '../charts/chart-generator';
@@ -126,8 +126,21 @@ export class ProfessionalPDFGenerator {
     console.log('[PDF] Generating professional PDF...');
 
     // PRD-A: Check for accessor attached to report data
+    // Handle both class instances and plain objects (deserialized from JSON)
     if (!accessor && (reportData as any)._dataAccessor) {
-      accessor = (reportData as any)._dataAccessor as ValuationDataAccessor;
+      const raw = (reportData as any)._dataAccessor;
+      if (typeof raw.getRevenue === 'function') {
+        // Already a proper class instance
+        accessor = raw as ValuationDataAccessor;
+      } else if (raw.store) {
+        // Plain object from JSON deserialization — reconstruct class instance
+        try {
+          accessor = createDataAccessor(raw.store);
+          console.log('[PDF] Reconstructed DataAccessor from serialized store');
+        } catch (e) {
+          console.warn('[PDF] Failed to reconstruct DataAccessor from store:', e);
+        }
+      }
     }
 
     try {

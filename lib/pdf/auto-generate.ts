@@ -7,6 +7,7 @@
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ProfessionalPDFGenerator } from './professional-pdf-generator';
+import type { ValuationDataAccessor } from '../valuation/data-accessor';
 
 // Lazy-initialize Supabase client
 let supabase: SupabaseClient | null = null;
@@ -35,7 +36,8 @@ export interface AutoPDFResult {
 export async function generateAndStorePDF(
   reportId: string,
   companyName: string,
-  reportData: Record<string, unknown>
+  reportData: Record<string, unknown>,
+  accessor?: ValuationDataAccessor
 ): Promise<AutoPDFResult> {
   const startTime = Date.now();
   console.log(`[AUTO-PDF] ========================================`);
@@ -55,7 +57,7 @@ export async function generateAndStorePDF(
     const generator = new ProfessionalPDFGenerator();
 
     console.log(`[AUTO-PDF] Generating PDF with Puppeteer...`);
-    const pdfBuffer = await generator.generate(companyName, reportData, generatedDate);
+    const pdfBuffer = await generator.generate(companyName, reportData, generatedDate, accessor);
     console.log(`[AUTO-PDF] PDF generated: ${pdfBuffer.length} bytes`);
 
     // Create a safe filename

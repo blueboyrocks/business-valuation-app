@@ -54,9 +54,8 @@ const NARRATIVE_PASS_CONFIGS: PassConfig[] = [
   { passNumber: '11k', passName: 'Value Enhancement', supportsWebSearch: false, category: 'narrative', wordCount: '600-800', expert: 'Strategy Consultant', isNew: true },
 ];
 
-// Research passes with web search (12-13) + legacy pass 11
+// Research passes with web search (12-13)
 const RESEARCH_PASS_CONFIGS: PassConfig[] = [
-  { passNumber: 11, passName: 'All Narratives (Legacy)', supportsWebSearch: false, category: 'research' },
   { passNumber: 12, passName: 'Economic Conditions', supportsWebSearch: true, isNew: true, category: 'research' },
   { passNumber: 13, passName: 'Comparable Transactions', supportsWebSearch: true, isNew: true, category: 'research' },
 ];
@@ -117,11 +116,6 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
     // Select all individual narrative passes
     setSelectedPasses(NARRATIVE_PASS_CONFIGS.map(p => p.passNumber));
     setShowNarratives(true);
-  };
-
-  const selectLegacyNarratives = () => {
-    // Select the legacy single pass 11
-    setSelectedPasses([11]);
   };
 
   const selectWebSearchPasses = () => {
@@ -285,9 +279,35 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
       }
 
       // Summary
-      setProgressMessage(`Done: ${completed.length} completed, ${failed.length} failed`);
       if (failed.length > 0) {
         setError(`Passes failed: ${failed.join(', ')}`);
+      }
+
+      // Auto-regenerate report if enabled and at least some passes succeeded
+      if (regenerateAfter && completed.length > 0 && !abortControllerRef.current?.signal.aborted) {
+        setProgressMessage('Regenerating report...');
+        try {
+          const regenResponse = await fetch(`/api/reports/${reportId}/regenerate`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          });
+          const regenResult = await regenResponse.json();
+          if (regenResponse.ok && regenResult.success) {
+            setProgressMessage(`Done: ${completed.length} passes completed, report regenerated successfully`);
+          } else {
+            setProgressMessage(`Done: ${completed.length} completed, ${failed.length} failed. Report regeneration failed: ${regenResult.error || 'Unknown error'}`);
+            console.error('[PassRerunPanel] Regeneration failed:', regenResult);
+          }
+        } catch (regenErr) {
+          const regenErrMsg = regenErr instanceof Error ? regenErr.message : 'Unknown error';
+          setProgressMessage(`Done: ${completed.length} completed. Report regeneration error: ${regenErrMsg}`);
+          console.error('[PassRerunPanel] Regeneration error:', regenErr);
+        }
+      } else {
+        setProgressMessage(`Done: ${completed.length} completed, ${failed.length} failed`);
       }
 
       // Refresh report data
@@ -335,10 +355,7 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
             Clear All
           </Button>
           <Button variant="outline" size="sm" onClick={selectNarrativesOnly}>
-            Individual Narratives (11a-11k)
-          </Button>
-          <Button variant="outline" size="sm" onClick={selectLegacyNarratives}>
-            Legacy Narratives (Pass 11)
+            All Narratives (11a-11k)
           </Button>
           <Button variant="outline" size="sm" onClick={selectWebSearchPasses}>
             Web Search Passes (4, 12, 13)
@@ -485,9 +502,9 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
           )}
         </div>
 
-        {/* Research & Legacy Passes */}
+        {/* Research Passes */}
         <div className="space-y-2 border-t pt-4">
-          <h4 className="text-sm font-medium text-slate-700">Research & Legacy Passes</h4>
+          <h4 className="text-sm font-medium text-slate-700">Research Passes (12-13)</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             {RESEARCH_PASS_CONFIGS.map(config => {
               const isSelected = selectedPasses.includes(config.passNumber);
