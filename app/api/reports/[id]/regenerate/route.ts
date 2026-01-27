@@ -47,6 +47,7 @@ import { createDataStoreFromResults } from '@/lib/valuation/data-store-factory';
 import type { ValuationDataAccessor } from '@/lib/valuation/data-accessor';
 import { runIndustryGate } from '@/lib/valuation/industry-gate';
 import { createMultiplesLookup } from '@/lib/valuation/industry-multiples-lookup';
+import { createConsistencyValidator } from '@/lib/valuation/consistency-validator';
 
 // Lazy-initialize Supabase client
 let supabase: ReturnType<typeof createClient> | null = null;
@@ -244,46 +245,95 @@ export async function POST(
       }
     }
 
-    // PRD-B: Industry Gate - validate narratives don't reference wrong industry
-    const naicsCode = passes.pass1?.industry_classification?.naics_code || '';
-    if (naicsCode) {
-      try {
-        const narrativeSections = [
-          { name: 'executive_summary', content: (passes.pass11 as any)?.report_narratives?.executive_summary?.content || '' },
-          { name: 'industry_analysis', content: (passes.pass11 as any)?.report_narratives?.industry_analysis?.content || '' },
-          { name: 'financial_analysis', content: (passes.pass11 as any)?.report_narratives?.financial_analysis?.content || '' },
-          { name: 'market_approach', content: (passes.pass9 as any)?.narrative || '' },
-          { name: 'income_approach', content: (passes.pass8 as any)?.narrative || '' },
-          { name: 'asset_approach', content: (passes.pass7 as any)?.narrative || '' },
-        ].filter(s => s.content.length > 0);
-
-        const gateResult = runIndustryGate(naicsCode, narrativeSections);
-        if (!gateResult.passed) {
-          console.warn(`[REGENERATE] Industry gate found ${gateResult.violations.length} violations:`);
-          gateResult.violations.forEach(v => {
-            console.warn(`  - Section "${v.section}": blocked keyword "${v.keyword}" found`);
-          });
-        } else {
-          console.log(`[REGENERATE] Industry gate passed (NAICS ${naicsCode})`);
-        }
-      } catch (gateError) {
-        console.warn(`[REGENERATE] Industry gate failed (non-blocking):`, gateError);
+    // PRD-A Step 7: ConsistencyValidator - BLOCKS on failure
+    if (dataAccessor && hasCalcEngine && calcResults) {
+      const { store } = createDataStoreFromResults(calcResults, {
+        company_name: report.company_name,
+        industry_name: passes.pass1?.industry_classification?.naics_description ||
+                       passes.pass4?.industry_overview?.industry_name || '',
+        naics_code: passes.pass1?.industry_classification?.naics_code || '',
+        entity_type: (passes.pass1 as any)?.company_profile?.entity_type || '',
+        annual_revenue: (passes.pass2?.income_statements?.[0] as any)?.revenue?.total_revenue || 0,
+        pretax_income: (passes.pass2?.income_statements?.[0] as any)?.net_income || 0,
+        owner_compensation: (passes.pass2?.income_statements?.[0] as any)?.operating_expenses?.officer_compensation || 0,
+        total_assets: (passes.pass3?.balance_sheets?.[0] as any)?.total_assets || 0,
+        total_liabilities: (passes.pass3?.balance_sheets?.[0] as any)?.total_liabilities || 0,
+        cash: (passes.pass3?.balance_sheets?.[0] as any)?.current_assets?.cash || 0,
+        accounts_receivable: (passes.pass3?.balance_sheets?.[0] as any)?.current_assets?.accounts_receivable || 0,
+        inventory: (passes.pass3?.balance_sheets?.[0] as any)?.current_assets?.inventory || 0,
+      });
+      const validator = createConsistencyValidator(store);
+      const validationResult = validator.validateAll();
+      if (!validationResult.overall_passed) {
+        console.error(`[REGENERATE] CONSISTENCY GATE BLOCKED: ${validationResult.error_count} error(s), ${validationResult.warning_count} warning(s)`);
+        validationResult.all_errors.forEach(e => console.error(`  [ERROR] ${e}`));
+        validationResult.all_warnings.forEach(w => console.error(`  [WARN] ${w}`));
+        return NextResponse.json({
+          success: false,
+          error: `Consistency gate blocked PDF generation: ${validationResult.error_count} data consistency error(s) detected`,
+          gate: 'consistency',
+          errors: validationResult.all_errors,
+          warnings: validationResult.all_warnings,
+          hint: 'Fix data inconsistencies in pass outputs or NULL calculation_results to force re-computation.',
+        }, { status: 422 });
       }
+      console.log(`[REGENERATE] Consistency gate passed (${validationResult.warning_count} warning(s))`);
     }
 
-    // PRD-C: Value Gate - validate SDE multiple doesn't exceed industry ceiling
+    // PRD-B: Industry Gate - BLOCKS on wrong-industry references
+    const naicsCode = passes.pass1?.industry_classification?.naics_code || '';
+    if (naicsCode) {
+      const narrativeSections = [
+        { name: 'executive_summary', content: (passes.pass11 as any)?.report_narratives?.executive_summary?.content || '' },
+        { name: 'industry_analysis', content: (passes.pass11 as any)?.report_narratives?.industry_analysis?.content || '' },
+        { name: 'financial_analysis', content: (passes.pass11 as any)?.report_narratives?.financial_analysis?.content || '' },
+        { name: 'market_approach', content: (passes.pass9 as any)?.narrative || '' },
+        { name: 'income_approach', content: (passes.pass8 as any)?.narrative || '' },
+        { name: 'asset_approach', content: (passes.pass7 as any)?.narrative || '' },
+      ].filter(s => s.content.length > 0);
+
+      const gateResult = runIndustryGate(naicsCode, narrativeSections);
+      if (!gateResult.passed) {
+        console.error(`[REGENERATE] INDUSTRY GATE BLOCKED: ${gateResult.violations.length} violations found`);
+        gateResult.violations.forEach(v => {
+          console.error(`  - Section "${v.section}": blocked keyword "${v.keyword}" found near: "${v.snippet}"`);
+        });
+        return NextResponse.json({
+          success: false,
+          error: `Industry gate blocked PDF generation: ${gateResult.violations.length} wrong-industry reference(s) found in narratives`,
+          gate: 'industry',
+          violations: gateResult.violations.map(v => ({
+            section: v.section,
+            keyword: v.keyword,
+            snippet: v.snippet,
+          })),
+          hint: 'Re-run Pass 11 (narrative generation) to regenerate narratives with correct industry context, then try regeneration again.',
+        }, { status: 422 });
+      }
+      console.log(`[REGENERATE] Industry gate passed (NAICS ${naicsCode})`);
+    }
+
+    // PRD-C: Value Gate - BLOCKS if SDE multiple exceeds industry ceiling
     if (hasCalcEngine && calcResults && naicsCode) {
-      try {
-        const sdeMultiple = calcResults.market_approach.adjusted_multiple;
-        const lookup = createMultiplesLookup();
-        const range = lookup.getSDEMultipleRange(naicsCode);
-        if (range && sdeMultiple > range.ceiling) {
-          console.warn(`[REGENERATE] VALUE GATE: SDE multiple ${sdeMultiple.toFixed(2)}x exceeds ceiling ${range.ceiling.toFixed(2)}x for NAICS ${naicsCode}. Clamped at engine level.`);
-        } else if (range) {
-          console.log(`[REGENERATE] Value gate passed: ${sdeMultiple.toFixed(2)}x within ceiling ${range.ceiling.toFixed(2)}x`);
-        }
-      } catch (vgError) {
-        console.warn(`[REGENERATE] Value gate failed (non-blocking):`, vgError);
+      const sdeMultiple = calcResults.market_approach.adjusted_multiple;
+      const lookup = createMultiplesLookup();
+      const range = lookup.getSDEMultipleRange(naicsCode);
+      if (range && sdeMultiple > range.ceiling) {
+        console.error(`[REGENERATE] VALUE GATE BLOCKED: SDE multiple ${sdeMultiple.toFixed(2)}x exceeds ceiling ${range.ceiling.toFixed(2)}x for NAICS ${naicsCode}`);
+        return NextResponse.json({
+          success: false,
+          error: `Value gate blocked PDF generation: SDE multiple ${sdeMultiple.toFixed(2)}x exceeds industry ceiling of ${range.ceiling.toFixed(2)}x for NAICS ${naicsCode}`,
+          gate: 'value',
+          details: {
+            sde_multiple: sdeMultiple,
+            industry_ceiling: range.ceiling,
+            naics_code: naicsCode,
+          },
+          hint: 'NULL the calculation_results column to force re-computation with ceiling enforcement, then try regeneration again.',
+        }, { status: 422 });
+      }
+      if (range) {
+        console.log(`[REGENERATE] Value gate passed: ${sdeMultiple.toFixed(2)}x within ceiling ${range.ceiling.toFixed(2)}x`);
       }
     }
 

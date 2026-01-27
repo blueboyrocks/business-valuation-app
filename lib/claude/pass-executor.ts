@@ -23,6 +23,84 @@ export interface PassExecutionResult {
   webSearchUsed?: boolean;
 }
 
+// ============ ROBUST JSON PARSER ============
+
+/**
+ * Strip markdown code fences from a string
+ */
+function stripCodeFences(text: string): string {
+  let s = text.trim();
+  if (s.startsWith('```json')) s = s.slice(7);
+  else if (s.startsWith('```')) s = s.slice(3);
+  if (s.endsWith('```')) s = s.slice(0, -3);
+  return s.trim();
+}
+
+/**
+ * Robust JSON parser with 4-attempt recovery.
+ * Handles common issues in Claude responses:
+ * - Markdown code fences
+ * - Control characters in strings
+ * - Unescaped newlines within string values
+ * - Partial JSON where only the content field is recoverable
+ */
+function parseClaudeJSON(rawContent: string, label: string): { parsed: unknown; attempt: number } {
+  const stripped = stripCodeFences(rawContent);
+
+  // Attempt 1: Direct parse (after stripping fences)
+  try {
+    return { parsed: JSON.parse(stripped), attempt: 1 };
+  } catch {
+    console.warn(`[${label}] Attempt 1 (direct parse) failed`);
+  }
+
+  // Attempt 2: Sanitize control characters + parse
+  try {
+    const sanitized = stripped
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+    return { parsed: JSON.parse(sanitized), attempt: 2 };
+  } catch {
+    console.warn(`[${label}] Attempt 2 (control char cleanup) failed`);
+  }
+
+  // Attempt 3: Extract JSON object via regex + sanitize + parse
+  try {
+    const sanitized = rawContent.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, '');
+    const jsonMatch = sanitized.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return { parsed: JSON.parse(jsonMatch[0]), attempt: 3 };
+    }
+  } catch {
+    console.warn(`[${label}] Attempt 3 (regex extraction) failed`);
+  }
+
+  // Attempt 4: Extract just the "content" field for narrative passes
+  // This handles the case where the JSON is mostly valid but has one malformed field
+  try {
+    const contentMatch = rawContent.match(/"content"\s*:\s*"([\s\S]*?)"\s*(?:,\s*"(?:key_metrics|word_count|section)"|}\s*$)/);
+    if (contentMatch) {
+      const content = contentMatch[1]
+        .replace(/\\n/g, '\n')
+        .replace(/\\"/g, '"')
+        .replace(/\\\\/g, '\\');
+      console.warn(`[${label}] Attempt 4: recovered content field (${content.length} chars)`);
+      return {
+        parsed: { content, _partial_parse: true, section: label },
+        attempt: 4,
+      };
+    }
+  } catch {
+    console.warn(`[${label}] Attempt 4 (content extraction) failed`);
+  }
+
+  // All attempts failed — return structured error with raw text
+  console.error(`[${label}] All 4 JSON parse attempts failed. Raw length: ${rawContent.length}`);
+  return {
+    parsed: null,
+    attempt: 0,
+  };
+}
+
 /**
  * Execute a single pass of the valuation pipeline
  */
@@ -94,57 +172,21 @@ export async function executePass(
 
   console.log(`[PASS ${passNumber}] Response length: ${textContent.length} chars`);
 
-  // Parse JSON response
-  try {
-    // Clean up potential markdown code fences
-    let jsonStr = textContent.trim();
-    if (jsonStr.startsWith('```json')) {
-      jsonStr = jsonStr.slice(7);
-    }
-    if (jsonStr.startsWith('```')) {
-      jsonStr = jsonStr.slice(3);
-    }
-    if (jsonStr.endsWith('```')) {
-      jsonStr = jsonStr.slice(0, -3);
-    }
-    jsonStr = jsonStr.trim();
+  // Parse JSON response using robust 4-attempt parser
+  const { parsed, attempt } = parseClaudeJSON(textContent, `PASS ${passNumber}`);
 
-    // Try to find JSON object in the response if it doesn't start with {
-    if (!jsonStr.startsWith('{')) {
-      const jsonMatch = jsonStr.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        console.log(`[PASS ${passNumber}] Found JSON object in response text`);
-        jsonStr = jsonMatch[0];
-      }
-    }
-
-    const parsed = JSON.parse(jsonStr);
-    console.log(`[PASS ${passNumber}] Successfully parsed response`);
+  if (parsed !== null) {
+    console.log(`[PASS ${passNumber}] Successfully parsed response (attempt ${attempt})`);
     return parsed;
-
-  } catch (parseError) {
-    console.error(`[PASS ${passNumber}] JSON parse error:`, parseError);
-    console.error(`[PASS ${passNumber}] Raw content (first 500 chars):`, textContent.slice(0, 500));
-
-    // Try one more time to extract JSON from the response
-    try {
-      const jsonMatch = textContent.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const extracted = JSON.parse(jsonMatch[0]);
-        console.log(`[PASS ${passNumber}] Extracted JSON from mixed content`);
-        return extracted;
-      }
-    } catch {
-      // Fall through to return raw content
-    }
-
-    // Return raw text if JSON parsing fails
-    return {
-      raw_content: textContent,
-      parse_error: true,
-      pass_number: passNumber,
-    };
   }
+
+  // All parse attempts failed
+  console.error(`[PASS ${passNumber}] Raw content (first 500 chars):`, textContent.slice(0, 500));
+  return {
+    raw_content: textContent,
+    parse_error: true,
+    pass_number: passNumber,
+  };
 }
 
 /**
@@ -203,37 +245,23 @@ export async function executeNarrativePass(
 
   console.log(`[NARRATIVE ${passId}] Response length: ${textContent.length} chars`);
 
-  // Parse JSON response
-  try {
-    // Clean up potential markdown code fences
-    let jsonStr = textContent.trim();
-    if (jsonStr.startsWith('```json')) {
-      jsonStr = jsonStr.slice(7);
-    }
-    if (jsonStr.startsWith('```')) {
-      jsonStr = jsonStr.slice(3);
-    }
-    if (jsonStr.endsWith('```')) {
-      jsonStr = jsonStr.slice(0, -3);
-    }
-    jsonStr = jsonStr.trim();
+  // Parse JSON response using robust 4-attempt parser
+  const { parsed, attempt } = parseClaudeJSON(textContent, `NARRATIVE ${passId}`);
 
-    const parsed = JSON.parse(jsonStr);
-    console.log(`[NARRATIVE ${passId}] Successfully parsed response`);
-    console.log(`[NARRATIVE ${passId}] Word count: ${parsed.word_count || 'N/A'}`);
+  if (parsed !== null) {
+    console.log(`[NARRATIVE ${passId}] Successfully parsed response (attempt ${attempt})`);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    console.log(`[NARRATIVE ${passId}] Word count: ${(parsed as any).word_count || 'N/A'}`);
     return parsed;
-
-  } catch (parseError) {
-    console.error(`[NARRATIVE ${passId}] JSON parse error:`, parseError);
-    console.error(`[NARRATIVE ${passId}] Raw content (first 500 chars):`, textContent.slice(0, 500));
-
-    // Return raw text if JSON parsing fails
-    return {
-      content: textContent,
-      section: passId,
-      parse_error: true,
-    };
   }
+
+  // All parse attempts failed
+  console.error(`[NARRATIVE ${passId}] Raw content (first 500 chars):`, textContent.slice(0, 500));
+  return {
+    content: textContent,
+    section: passId,
+    parse_error: true,
+  };
 }
 
 /**

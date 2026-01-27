@@ -193,48 +193,65 @@ export function PassRerunPanel({ reportId, onComplete }: PassRerunPanelProps) {
     pollProgress();
 
     try {
-      // Separate numeric and narrative passes
-      const numericPasses = selectedPasses.filter(p => typeof p === 'number') as number[];
+      // Separate and sort passes for execution order
+      const numericPasses = (selectedPasses.filter(p => typeof p === 'number') as number[]).sort((a, b) => a - b);
       const narrativePasses = selectedPasses.filter(p => typeof p === 'string') as string[];
 
-      // Sort numeric passes
-      const sortedNumericPasses = [...numericPasses].sort((a, b) => a - b);
+      // Narrative execution order (11b first, 11a last — it synthesizes everything)
+      const NARRATIVE_ORDER = ['11b', '11c', '11d', '11e', '11f', '11g', '11h', '11i', '11j', '11k', '11a'];
+      const orderedNarratives = NARRATIVE_ORDER.filter(id => narrativePasses.includes(id));
 
-      const response = await fetch(`/api/reports/${reportId}/rerun-passes`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          passes: sortedNumericPasses,
-          narrativePasses: narrativePasses,
-          options: {
-            useWebSearch,
-            regenerateAfter,
-          },
-        }),
-      });
+      const allPasses: Array<{ type: 'numeric'; pass: number } | { type: 'narrative'; pass: string }> = [
+        ...numericPasses.map(p => ({ type: 'numeric' as const, pass: p })),
+        ...orderedNarratives.map(p => ({ type: 'narrative' as const, pass: p })),
+      ];
 
-      const result = await response.json();
+      const totalPasses = allPasses.length;
+      const completed: (number | string)[] = [];
+      const failed: (number | string)[] = [];
 
-      if (!response.ok) {
-        throw new Error(result.error || 'Failed to re-run passes');
+      // Execute passes ONE AT A TIME via the single-pass endpoint
+      for (let i = 0; i < allPasses.length; i++) {
+        const entry = allPasses[i];
+        const passLabel = entry.type === 'numeric' ? `Pass ${entry.pass}` : `Narrative ${entry.pass}`;
+        setCurrentPass(entry.pass);
+        setProgressMessage(`Running ${passLabel} (${i + 1}/${totalPasses})...`);
+
+        try {
+          const body: Record<string, unknown> = entry.type === 'numeric'
+            ? { passNumber: entry.pass, useWebSearch, forceRegenerate: true }
+            : { narrativePassId: entry.pass };
+
+          const response = await fetch(`/api/reports/${reportId}/run-single-pass`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(body),
+          });
+
+          const result = await response.json();
+
+          if (response.ok && result.success) {
+            completed.push(entry.pass);
+            setCompletedPasses([...completed]);
+          } else {
+            failed.push(entry.pass);
+            setFailedPasses([...failed]);
+            console.error(`${passLabel} failed:`, result.error);
+          }
+        } catch (passErr) {
+          failed.push(entry.pass);
+          setFailedPasses([...failed]);
+          console.error(`${passLabel} error:`, passErr);
+        }
       }
 
-      setCompletedPasses([
-        ...(result.passesCompleted || []),
-        ...(result.narrativePassesCompleted || [])
-      ]);
-      setFailedPasses([
-        ...(result.passesFailed || []),
-        ...(result.narrativePassesFailed || [])
-      ]);
-      setProgressMessage(`Completed ${result.passesCompleted?.length || 0} passes`);
-
-      const allFailed = [...(result.passesFailed || []), ...(result.narrativePassesFailed || [])];
-      if (allFailed.length > 0) {
-        setError(`Some passes failed: ${allFailed.join(', ')}`);
+      // Summary
+      setProgressMessage(`Done: ${completed.length} completed, ${failed.length} failed`);
+      if (failed.length > 0) {
+        setError(`Passes failed: ${failed.join(', ')}`);
       }
 
       // Refresh report data

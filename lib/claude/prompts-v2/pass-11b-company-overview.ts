@@ -27,7 +27,12 @@ export function buildPass11bPrompt(
   incomeStatements: any[],
   balanceSheet: any
 ): string {
-  const mostRecentYear = incomeStatements[0] || {};
+  const rawMostRecent = incomeStatements[0] || {};
+  // revenue may be an object { total_revenue, gross_sales, ... } per IncomeStatementYear
+  const mostRecentYear = {
+    ...rawMostRecent,
+    revenue: typeof rawMostRecent.revenue === 'object' ? rawMostRecent.revenue?.total_revenue : rawMostRecent.revenue,
+  };
 
   return `## COMPANY OVERVIEW TASK
 

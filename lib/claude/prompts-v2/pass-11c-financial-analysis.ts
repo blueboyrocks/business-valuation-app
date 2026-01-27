@@ -27,9 +27,10 @@ export function buildPass11cPrompt(
   industryBenchmarks: any
 ): string {
   // Format multi-year income data
+  // NOTE: stmt.revenue is a nested object { total_revenue, gross_sales, ... } per IncomeStatementYear
   const yearlyData = incomeStatements.map((stmt, i) => ({
-    year: stmt.year || `Year ${i + 1}`,
-    revenue: stmt.revenue,
+    year: stmt.fiscal_year || stmt.year || `Year ${i + 1}`,
+    revenue: typeof stmt.revenue === 'object' ? stmt.revenue?.total_revenue : stmt.revenue,
     grossProfit: stmt.gross_profit,
     operatingIncome: stmt.operating_income,
     netIncome: stmt.net_income,

@@ -556,8 +556,10 @@ export function buildNarrativePassPrompt(
   switch (passId) {
     case '11a': {
       // Executive Summary - needs all other narratives for context
+      // revenue may be an object { total_revenue, ... } per IncomeStatementYear - extract number
+      const rawRevenue11a = normalizedEarnings.revenue || (incomeStatements[0] as Record<string, unknown>)?.revenue;
       const financialSummary = {
-        revenue: normalizedEarnings.revenue || (incomeStatements[0] as Record<string, unknown>)?.revenue,
+        revenue: typeof rawRevenue11a === 'object' && rawRevenue11a !== null ? (rawRevenue11a as Record<string, unknown>).total_revenue : rawRevenue11a,
         revenue_cagr: normalizedEarnings.revenue_cagr || 0,
         gross_margin: normalizedEarnings.gross_margin || 0,
         operating_margin: normalizedEarnings.operating_margin || 0,
@@ -665,8 +667,10 @@ export function buildNarrativePassPrompt(
 
     case '11k': {
       // Value Enhancement Recommendations
+      // revenue may be an object { total_revenue, ... } per IncomeStatementYear - extract number
+      const rawRevenue11k = normalizedEarnings.revenue || (incomeStatements[0] as Record<string, unknown>)?.revenue;
       const financialData = {
-        revenue: normalizedEarnings.revenue || (incomeStatements[0] as Record<string, unknown>)?.revenue,
+        revenue: typeof rawRevenue11k === 'object' && rawRevenue11k !== null ? (rawRevenue11k as Record<string, unknown>).total_revenue : rawRevenue11k,
         gross_margin: normalizedEarnings.gross_margin || 0,
         operating_margin: normalizedEarnings.operating_margin || 0,
         revenue_growth: normalizedEarnings.revenue_cagr || 0,
