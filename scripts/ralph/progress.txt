@@ -1,0 +1,108 @@
+# Ralph Progress: Data Integrity + Validation + Polish (PRD H+I+J Combined)
+
+## Branch: ralph/data-integrity-validation-polish
+
+## Codebase Patterns
+- ValuationDataStore interface is the single source of truth; all fields are `readonly`
+- Factory function `createValuationDataStore` is the ONLY way to create a store - it validates required fields and deep-freezes
+- Test files that need mock ValuationDataStore objects use `buildMockStore()` helpers that construct the full interface manually (not through the factory)
+- When adding new fields to ValuationDataStore, must update 3 test mock builders: data-accessor.test.ts, consistency-validator.test.ts, deterministic-validator.test.ts
+- RiskFactor type is imported from lib/calculations/types.ts
+- Pre-existing typecheck error in lib/claude/transform-to-final-report.ts (line 1000, `risk_assessment` property) - not caused by our changes
+- deepFreeze is now exported from data-store.ts for reuse
+- DataAccessor has both old and new naming conventions: old (getIndustry, getNAICSCode, getSDEFormatted) are @deprecated, new (getIndustryName, getNaicsCode, getFormattedSDE) are canonical
+- Use getApproachValue('asset'|'income'|'market') and getApproachWeight() for generic approach access
+- formatCurrency uses Intl.NumberFormat - output format is `$X,XXX` (no cents by default)
+
+## Status: IN PROGRESS
+
+## Story Progress:
+- US-001: DONE - Enhance ValuationDataStore interface
+- US-002: DONE - Enhance DataAccessor with complete getters
+- US-003: PENDING - Create safe string utilities
+- US-004: PENDING - Unit tests for DataStore, DataAccessor, safe-string
+- US-005: PENDING - Asset approach fallback chain
+- US-006: PENDING - Remove RECONCILE override logic
+- US-007: PENDING - Wire DataAccessor into PDF (cover, exec summary, conclusion, company)
+- US-008: PENDING - Wire DataAccessor into PDF (financial, asset/income/market approach)
+- US-009: PENDING - Wire DataAccessor into PDF (reconciliation, risk, KPI, remaining)
+- US-010: PENDING - Create value consistency validator
+- US-011: PENDING - Create business rule validator
+- US-012: PENDING - Create content completeness validator
+- US-013: PENDING - Create narrative value injection system
+- US-014: PENDING - Create post-generation narrative validator
+- US-015: PENDING - Create pre-PDF quality gate
+- US-016: PENDING - Validation pipeline integration tests
+- US-017: PENDING - Professional section ordering
+- US-018: PENDING - Dynamic table of contents
+- US-019: PENDING - Design system tokens
+- US-020: PENDING - Professional table styling CSS
+- US-021: PENDING - SDE calculation detail table
+- US-022: PENDING - Cap rate buildup table
+- US-023: PENDING - Asset adjustment table
+- US-024: PENDING - Chart design standards
+- US-025: PENDING - Professional disclaimers section
+- US-026: PENDING - Wire value injection into narrative passes
+- US-027: PENDING - Wire quality gate into API endpoints
+- US-028: PENDING - End-to-end integration test
+
+## Notes:
+- Combined from PRD-H (Data Integrity), PRD-I (Validation), PRD-J (Polish)
+- Dependency order: Foundation (1-4) -> Fixes (5-6) -> PDF Wiring (7-9) -> Validators (10-15) -> Tests (16) -> Polish (17-25) -> Wiring (26-27) -> Final Test (28)
+- Key existing files: lib/valuation/data-store.ts, lib/valuation/data-accessor.ts, lib/valuation/data-store-factory.ts, lib/pdf/professional-pdf-generator.ts
+- RECONCILE logic found in: lib/extraction/narrative-data-extractor.ts, app/api/reports/[id]/regenerate/route.ts, lib/claude/prompts-v2/pass-09-market-approach.ts
+
+---
+
+## 2026-01-27 - US-001
+- What was implemented:
+  - Added DataIntegrityError class with missingFields property
+  - Added RiskInfo interface (overall_score, overall_rating, factors array)
+  - Added DataQualityInfo interface (completeness_score, years_of_data, missing_fields)
+  - Added new ValuationData fields: dlom_amount, dloc_rate, dloc_amount
+  - Added CompanyData.sic_code field
+  - Added factory validation: throws DataIntegrityError when final_value, revenue, or weighted_sde are missing/zero
+  - Exported deepFreeze function for reuse
+  - Updated all test mock builders with new required fields
+  - Added 14 new tests for PRD-H fields and DataIntegrityError validation
+- Files changed:
+  - lib/valuation/data-store.ts (enhanced interfaces, added error class, added validation)
+  - lib/valuation/__tests__/data-store.test.ts (added new field + validation tests)
+  - lib/valuation/__tests__/data-accessor.test.ts (updated mock builder)
+  - lib/valuation/__tests__/consistency-validator.test.ts (updated mock builder)
+  - lib/qa/__tests__/deterministic-validator.test.ts (updated mock builder)
+- **Learnings for future iterations:**
+  - ValuationDataStore is used by many files (6 production, 5 test). Adding fields requires updating all manual mock builders in test files.
+  - The 3 test files with manual `buildMockStore()` helpers (data-accessor, consistency-validator, deterministic-validator) don't use the factory; they construct objects directly.
+  - RiskFactor type already existed in lib/calculations/types.ts - reuse it rather than defining a new one.
+  - The factory now rejects inputs without revenue > 0 - any test creating a store through the factory MUST provide revenue.
+  - Pre-existing typecheck error in transform-to-final-report.ts is not our concern.
+---
+
+## 2026-01-27 - US-002
+- What was implemented:
+  - Added new exported types: ApproachType ('asset'|'income'|'market'), SDEType ('current'|'normalized'|'weighted'), ValueRange interface
+  - Added company getters: getIndustryName(), getNaicsCode(), getSicCode(), getLocation(), getYearsInBusiness(), getFiscalYearLabel(yearsBack)
+  - Added revenue with period lookup: getRevenue(period?), getFormattedRevenue(period?), getRevenueGrowthRate(), getFormattedRevenueGrowthRate()
+  - Added SDE with type: getSDE(type?), getFormattedSDE(type?) - supports 'current', 'normalized', 'weighted'
+  - Added formatted earnings: getFormattedNetIncome(), getFormattedEBITDA()
+  - Added margin formatters: getFormattedSDEMargin(), getFormattedEBITDAMargin(), getFormattedProfitMargin(), getFormattedGrossMargin(), getGrossMargin()
+  - Added balance sheet: getBookValue(), getFormattedTotalAssets(), getFormattedTotalLiabilities(), getFormattedBookValue(), getFormattedTotalEquity(), getFormattedCurrentRatio(), getFormattedWorkingCapital(), getFormattedDebtToEquityRatio()
+  - Added generic approach access: getApproachValue(approach), getFormattedApproachValue(approach), getApproachWeight(approach), getFormattedApproachWeight(approach)
+  - Added formatted aliases: getFormattedFinalValue(), getFormattedSDEMultiple(), getFormattedCapRate(), getFormattedPreliminaryValue()
+  - Added value range: getValueRange() returns {low, high, display}, getFormattedValueRange() returns {low, high, display} as strings
+  - Added DLOM/DLOC: getDLOMRate(), getFormattedDLOMRate(), getDLOMAmount(), getFormattedDLOMAmount(), getDLOCRate(), getFormattedDLOCRate(), getDLOCAmount()
+  - Added risk: getRiskScore(), getRiskRating(), getRiskFactors()
+  - Added data quality: getCompletenessScore(), getYearsOfData(), getMissingFields()
+  - Added getRawStore() returning Readonly<ValuationDataStore>
+  - Switched formatCurrency to use Intl.NumberFormat with style:'currency'
+  - Deprecated old method names (getIndustry, getNAICSCode, getSDEFormatted, etc.) with @deprecated JSDoc
+- Files changed:
+  - lib/valuation/data-accessor.ts (enhanced with ~60 new methods, 369→685 lines)
+- **Learnings for future iterations:**
+  - Existing callers use old method names (getIndustry, getNAICSCode, getSDEFormatted, getSDEMultipleFormatted, getCapRateFormatted, getFinalValueFormatted, getValueRangeFormatted, getStore). Keep deprecated aliases to avoid breaking changes.
+  - formatCurrency uses Intl.NumberFormat('en-US', {style:'currency'}) which produces identical output to the old `$${value.toLocaleString()}` approach.
+  - The accessor is used in: chart-data-builder.ts, professional-pdf-generator.ts, regenerate/route.ts, and all test files.
+  - getRevenue() now accepts optional period parameter but returns current revenue when called without args (backward compatible).
+  - getSDE() now accepts optional type parameter ('current'|'normalized'|'weighted') but defaults to 'current' (backward compatible).
+---
