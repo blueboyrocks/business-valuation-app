@@ -371,8 +371,44 @@ export async function POST(
 
     console.log(`[REGENERATE] Extracted values - Asset: ${assetValue}, Income: ${incomeValue}, Market: ${marketValue}, Concluded: ${concludedValue}`);
 
-    // Extract narratives from Pass 11
+    // Extract narratives from Pass 11 (aggregated) or individual passes (11a-11k)
     const pass11Narratives = (passes.pass11 as any)?.report_narratives || (passes.pass11 as any)?.narratives || {};
+
+    // Also check for individually run narrative passes (11a, 11b, etc.)
+    // These are stored separately when run via Re-Run Passes panel
+    const narrativePassKeys = ['11a', '11b', '11c', '11d', '11e', '11f', '11g', '11h', '11i', '11j', '11k'];
+    const narrativeKeyMapping: Record<string, string> = {
+      '11a': 'executive_summary',
+      '11b': 'company_overview',
+      '11c': 'financial_analysis',
+      '11d': 'industry_analysis',
+      '11e': 'risk_assessment',
+      '11f': 'asset_approach_narrative',
+      '11g': 'income_approach_narrative',
+      '11h': 'market_approach_narrative',
+      '11i': 'valuation_synthesis',
+      '11j': 'assumptions_and_limiting_conditions',
+      '11k': 'value_enhancement_recommendations',
+    };
+
+    // Aggregate individual narrative pass outputs into pass11Narratives
+    for (const passKey of narrativePassKeys) {
+      const individualPassOutput = passOutputsData[passKey] as Record<string, unknown> | undefined;
+      if (individualPassOutput) {
+        const targetKey = narrativeKeyMapping[passKey];
+        // Try multiple locations for the narrative content
+        const content =
+          (individualPassOutput as any)?.report_narratives?.[targetKey] ||
+          (individualPassOutput as any)?.narratives?.[targetKey] ||
+          (individualPassOutput as any)?.[targetKey] ||
+          (individualPassOutput as any)?.content ||
+          (individualPassOutput as any)?.narrative;
+        if (content && !pass11Narratives[targetKey]) {
+          pass11Narratives[targetKey] = content;
+          console.log(`[REGENERATE] Found narrative for ${passKey} -> ${targetKey}`);
+        }
+      }
+    }
 
     // Helper to get narrative content (handles both string and {content: string} formats)
     const getNarrativeContent = (value: any): string => {
@@ -496,14 +532,18 @@ export async function POST(
                           getNarrativeContent(pass11Narratives.value_enhancement_recommendations) ||
                           getNarrativeContent(pass11Narratives.strategic_insights) || '',
 
-      // Approach narratives (flat for web app)
+      // Approach narratives (flat for web app) - check pass11Narratives first for individually run passes
       asset_approach_analysis: getNarrativeContent(finalReport.narratives?.asset_approach_narrative) ||
+                               getNarrativeContent(pass11Narratives.asset_approach_narrative) ||
                                getNarrativeContent(passes.pass7?.narrative) || '',
       income_approach_analysis: getNarrativeContent(finalReport.narratives?.income_approach_narrative) ||
+                                getNarrativeContent(pass11Narratives.income_approach_narrative) ||
                                 getNarrativeContent(passes.pass8?.narrative) || '',
       market_approach_analysis: getNarrativeContent(finalReport.narratives?.market_approach_narrative) ||
+                                getNarrativeContent(pass11Narratives.market_approach_narrative) ||
                                 getNarrativeContent(passes.pass9?.narrative) || '',
       valuation_reconciliation: getNarrativeContent(finalReport.narratives?.valuation_synthesis_narrative) ||
+                                getNarrativeContent(pass11Narratives.valuation_synthesis) ||
                                 getNarrativeContent(passes.pass10?.narrative) || '',
 
       // Assumptions & Limiting Conditions (Pass 11j)
