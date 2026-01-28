@@ -55,7 +55,7 @@
 - US-018: DONE - Dynamic table of contents
 - US-019: DONE - Design system tokens
 - US-020: DONE - Professional table styling CSS
-- US-021: PENDING - SDE calculation detail table
+- US-021: DONE - SDE calculation detail table
 - US-022: PENDING - Cap rate buildup table
 - US-023: PENDING - Asset adjustment table
 - US-024: PENDING - Chart design standards
@@ -546,4 +546,28 @@
   - Summary tables inside info boxes (padding/background containers) don't need `<thead>` - they use `<tbody>` only with `.data-table` for consistent spacing and styling
   - The `.total-row` class uses yellow background (#FEF3C7) with font-weight 600. For other highlight colors (e.g., EBITDA's blue #E3F2FD), use inline styles instead
   - When adding new tables to the PDF, always use `class="data-table"` and use `.currency`/`.percentage`/`.total-row` classes as appropriate
+---
+
+## 2026-01-28 - US-021
+- What was implemented:
+  - Enhanced SDE calculation detail table in lib/display/calculation-table-generator.ts:
+    - Added `class="data-table"` to the SDE table's `<table>` element for professional gradient header, zebra striping, and consistent styling
+    - Added `class="currency"` to all amount cells for right-aligned monospace formatting
+    - Imported and applied `safeString()` from lib/utils/safe-string.ts to all cell values (description, formatted_amount, source) to prevent [object Object] or undefined in output
+  - Enhanced SDE table input in lib/pdf/professional-pdf-generator.ts:
+    - Split "Depreciation & Amortization" into separate "Depreciation" and "Amortization" line items for granular detail
+    - Added more specific source references: "Tax Return Schedule C / W-2" for officer comp, "Form 4562" for depreciation/amortization
+    - Added "One-Time / Non-Recurring Expenses" add-back from reportData when available (source: "Owner Reported")
+    - Maintained filter for zero-amount items (only non-zero add-backs shown)
+  - Total SDE row already uses `.total-row` class (from existing CalculationTableGenerator logic)
+  - Table already integrated at correct PDF position (after Financial Analysis section, line ~1497)
+  - All values sourced from DataAccessor (accessor.getOfficerCompensation, getInterestExpense, getDepreciation, getAmortization, getSDE, getNetIncome)
+- Files changed:
+  - lib/display/calculation-table-generator.ts (added safeString import, data-table class, currency class, safeString wrapping)
+  - lib/pdf/professional-pdf-generator.ts (enhanced SDE add-back items with granular breakdown and better sources)
+- **Learnings for future iterations:**
+  - The CalculationTableGenerator's SDE table previously used generic `<table>` without `data-table` class, so it fell through to the `table:not(.data-table)` CSS selectors. Now it uses the professional design token styles.
+  - DataStore has 4 add-back fields: officer_compensation, interest_expense, depreciation, amortization. Additional add-backs (one_time_expenses) are only in reportData, not in the DataStore/DataAccessor.
+  - The `safeString` import was added to calculation-table-generator.ts - this is the first time a display module imports from utils/safe-string.
+  - Splitting D&A into separate lines gives readers better transparency into the SDE calculation components.
 ---

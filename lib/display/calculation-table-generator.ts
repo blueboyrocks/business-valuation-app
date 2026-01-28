@@ -13,6 +13,8 @@
  * This is a PREMIUM feature that differentiates high-quality reports.
  */
 
+import { safeString } from '../utils/safe-string';
+
 // ============ TYPES ============
 
 export interface TableRow {
@@ -418,7 +420,7 @@ export class CalculationTableGenerator {
     let html = `<div class="calculation-table sde-table">
       <h3>${table.title}</h3>
       <p><strong>Period:</strong> ${table.period}</p>
-      <table>
+      <table class="data-table">
         <thead>
           <tr>
             <th>Description</th>
@@ -438,9 +440,9 @@ export class CalculationTableGenerator {
 
       html += `
           <tr class="${rowClass}">
-            <td style="${indent}">${row.description}</td>
-            <td>${row.formatted_amount}</td>
-            <td>${row.source || ''}</td>
+            <td style="${indent}">${safeString(row.description)}</td>
+            <td class="currency">${safeString(row.formatted_amount)}</td>
+            <td>${safeString(row.source, '')}</td>
           </tr>`;
     }
 

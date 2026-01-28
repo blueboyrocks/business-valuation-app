@@ -375,7 +375,7 @@
         "Typecheck passes"
       ],
       "priority": 21,
-      "passes": false,
+      "passes": true,
       "notes": "Check lib/display/add-back-schedule.ts and lib/display/calculation-table-generator.ts for existing logic. May enhance existing generators rather than creating from scratch."
     },
     {

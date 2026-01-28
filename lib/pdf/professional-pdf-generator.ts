@@ -293,15 +293,21 @@ export class ProfessionalPDFGenerator {
         try {
           const tableGen = new CalculationTableGenerator();
 
-          // SDE Table
+          // SDE Table - comprehensive add-back breakdown with sources
+          const sdeAddBacks: Array<{ description: string; amount: number; source: string }> = [
+            { description: 'Officer Compensation', amount: accessor.getOfficerCompensation(), source: 'Tax Return Schedule C / W-2' },
+            { description: 'Interest Expense', amount: accessor.getInterestExpense(), source: 'Tax Return' },
+            { description: 'Depreciation', amount: accessor.getDepreciation(), source: 'Form 4562' },
+            { description: 'Amortization', amount: accessor.getAmortization(), source: 'Form 4562' },
+          ];
+          // Include one-time/non-recurring expenses from reportData if available
+          if (reportData.one_time_expenses && reportData.one_time_expenses > 0) {
+            sdeAddBacks.push({ description: 'One-Time / Non-Recurring Expenses', amount: reportData.one_time_expenses, source: 'Owner Reported' });
+          }
           const sdeInput: SDETableInput = {
             period: accessor.getSDEByYear()[0]?.period || new Date().getFullYear().toString(),
             starting_net_income: accessor.getNetIncome(),
-            add_backs: [
-              { description: 'Officer Compensation', amount: accessor.getOfficerCompensation(), source: 'Tax Return' },
-              { description: 'Interest Expense', amount: accessor.getInterestExpense(), source: 'Tax Return' },
-              { description: 'Depreciation & Amortization', amount: accessor.getDepreciation() + accessor.getAmortization(), source: 'Tax Return' },
-            ].filter(a => a.amount > 0),
+            add_backs: sdeAddBacks.filter(a => a.amount > 0),
             total_sde: accessor.getSDE(),
           };
           const sdeTable = tableGen.generateSDETable(sdeInput);
