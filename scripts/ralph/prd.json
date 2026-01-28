@@ -337,7 +337,7 @@
         "Typecheck passes"
       ],
       "priority": 19,
-      "passes": false,
+      "passes": true,
       "notes": "Check lib/charts/theme.ts for existing theme. Consolidate into one design system file. The PDF generator's inline styles should reference these tokens."
     },
     {

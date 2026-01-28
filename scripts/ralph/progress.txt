@@ -29,6 +29,7 @@
 - generateTocEntries() accepts optional sectionContents Map<string,string> for content-length-based page estimation; entries include sectionNumber for numbered TOC items
 - Consistency validator checks ALL dollar amounts in a section when ANY keyword for a metric appears; mock section text in critical sections (executiveSummary, conclusionOfValue) should avoid including non-final-value dollar amounts to prevent false positive mismatches
 - Validation pipeline tests use buildMockStore() with a generic "Apex Consulting Group" Professional Services firm - not K-Force specific
+- lib/pdf/design-tokens.ts is the centralized design system: COLORS, CHART_COLOR_PALETTE, TYPOGRAPHY, FONT_SIZES, and generateDesignTokenCSS(). Use these for any new PDF styling or chart coloring.
 
 ## Status: IN PROGRESS
 
@@ -51,7 +52,7 @@
 - US-016: DONE - Validation pipeline integration tests
 - US-017: DONE - Professional section ordering
 - US-018: DONE - Dynamic table of contents
-- US-019: PENDING - Design system tokens
+- US-019: DONE - Design system tokens
 - US-020: PENDING - Professional table styling CSS
 - US-021: PENDING - SDE calculation detail table
 - US-022: PENDING - Cap rate buildup table
@@ -500,4 +501,22 @@
   - Always-present sections (executiveSummary, conclusionOfValue, financialSummary, keyPerformanceIndicators) are added unconditionally to presentSections, but only some have content variables for the sectionContents map.
   - The TOC dotted leader uses a flex element with border-bottom: 1px dotted - this renders correctly in PDF/HTML contexts where CSS leaders (content: leader('.')) may not be supported.
   - The sectionNumber is a sequential counter across present sections only (skipping absent sections), starting at 1.
+---
+
+## 2026-01-28 - US-019
+- What was implemented:
+  - Created lib/pdf/design-tokens.ts as the centralized design system file
+  - COLORS constant with 10 named colors: primary (#1E3A5F navy), primaryLight (#2E5A8F), accent (#C9A962 gold), positive (#059669), negative (#DC2626), text (#1F2937), textLight (#6B7280), background (#FFFFFF), backgroundAlt (#F9FAFB), border (#E5E7EB)
+  - CHART_COLOR_PALETTE array: ['#1E3A5F', '#059669', '#C9A962', '#7C3AED', '#DC2626', '#0891B2']
+  - TYPOGRAPHY constant with 3 font stacks: headingFont (Merriweather/Georgia/serif), bodyFont (Inter/system/sans-serif), monoFont (JetBrains Mono/monospace)
+  - FONT_SIZES constant: h1 (28pt), h2 (18pt), h3 (14pt), body (11pt), small (10pt), xs (9pt)
+  - generateDesignTokenCSS() function that outputs a <style> block with CSS custom properties and .data-table professional table styling (gradient header, zebra striping, total-row highlight, currency/percentage alignment)
+  - All constants exported with `as const` for type safety
+- Files changed:
+  - lib/pdf/design-tokens.ts (new file, ~130 lines)
+- **Learnings for future iterations:**
+  - lib/charts/theme.ts already has CHART_COLORS with similar values (primary, secondary, accent) but uses different keys and additional chart-specific colors (danger, warning, success, grid). The design-tokens.ts is the broader system; chart theme.ts remains the chart-specific config.
+  - The PDF generator (professional-pdf-generator.ts) has a massive inline <style> block (lines 762-1124) with hardcoded color values. Future stories can import COLORS/TYPOGRAPHY from design-tokens.ts to replace those literals.
+  - COLORS.backgroundAlt uses #F9FAFB (matching the PDF generator's tbody tr:nth-child(even)) while CHART_COLORS.backgroundAlt uses #F5F5F5 - slight difference exists between PDF and chart contexts.
+  - The generateDesignTokenCSS() includes both CSS custom properties (:root vars) and .data-table class styles. The data-table styles are included here because US-020 needs them and they're a core part of the design system.
 ---
