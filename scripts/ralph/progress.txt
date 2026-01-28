@@ -41,7 +41,7 @@
 - US-010: DONE - Create value consistency validator
 - US-011: DONE - Create business rule validator
 - US-012: DONE - Create content completeness validator
-- US-013: PENDING - Create narrative value injection system
+- US-013: DONE - Create narrative value injection system
 - US-014: PENDING - Create post-generation narrative validator
 - US-015: PENDING - Create pre-PDF quality gate
 - US-016: PENDING - Validation pipeline integration tests
@@ -343,4 +343,30 @@
   - The match uses bidirectional contains check: normalized key includes pattern OR pattern includes normalized key - this handles both partial and full section name matches
   - countWords strips HTML tags first since section content may be HTML from the PDF generator
   - No DataAccessor dependency needed - this validator only needs section text content
+---
+
+## 2026-01-28 - US-013
+- What was implemented:
+  - Created new directory lib/narratives/ and file lib/narratives/value-injection.ts
+  - Exported function: generateAuthoritativeValuesBlock(accessor) - generates a formatted text block with all authoritative financial values from the DataAccessor, including:
+    - Company information (name, industry, NAICS code, valuation date)
+    - Valuation conclusion (fair market value, value range, SDE multiple, DLOM status)
+    - Financial metrics (revenue, SDE current and normalized, SDE margin, EBITDA, net income)
+    - Valuation approaches (all 3 with values and weights)
+    - Balance sheet summary (total assets, liabilities, book value, working capital)
+    - Risk profile (score and rating)
+    - STRICT RULES section enforcing exact figure usage
+  - Exported function: buildNarrativePrompt(section, accessor, additionalContext?) - combines values block with section-specific writing instructions
+  - Section-specific instructions defined for: executive_summary (600-900 words), company_profile (300-500 words), industry_analysis (300-400 words), risk_assessment (300-400 words)
+  - Default instruction for unlisted sections: professional tone, exact value matching
+  - NarrativePromptOptions interface exported for additional context
+- Files changed:
+  - lib/narratives/value-injection.ts (new file, ~150 lines)
+- **Learnings for future iterations:**
+  - lib/narratives/ directory is new - created for this story. No existing narrative generation utilities existed.
+  - The value injection system is intentionally decoupled from the prompt files in lib/claude/prompts-v2/ - it generates a text block, not a prompt structure. This makes it easy to prepend to any existing prompt.
+  - Section keys in SECTION_INSTRUCTIONS use snake_case (e.g., 'executive_summary') to match the orchestrator's section naming convention found in prompts-v2/pass-11*.ts files.
+  - The values block uses a delimited format (===== markers) so it's visually distinct when prepended to prompts.
+  - Only 4 section-specific instructions are defined; the default instruction handles all other sections. Future stories may add more section-specific guidance.
+  - US-026 will wire this into the actual narrative generation passes in orchestrator-v2.ts.
 ---

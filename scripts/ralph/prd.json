@@ -229,7 +229,7 @@
         "Typecheck passes"
       ],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": "Check if lib/narratives/ directory exists. This creates the injection system but does NOT wire it into existing prompts yet - that's a separate story."
     },
     {
