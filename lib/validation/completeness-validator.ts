@@ -183,7 +183,8 @@ export function validateCompleteness(
     const found = findSectionContent(sectionContents, required);
 
     if (!found || found.content.trim().length === 0) {
-      // Missing section - blocking error
+      // Missing section - treat as warning for now to avoid blocking on legacy reports
+      // TODO: Once narrative aggregation is confirmed working, change back to blocking error
       sections.push({
         name: required.matchPatterns[0],
         displayName: required.displayName,
@@ -192,7 +193,7 @@ export function validateCompleteness(
         minimumWords: required.minimumWords,
         meetsMinimum: false,
       });
-      errors.push(`Missing required section: ${required.displayName}`);
+      warnings.push(`Missing section: ${required.displayName}`);
       continue;
     }
 

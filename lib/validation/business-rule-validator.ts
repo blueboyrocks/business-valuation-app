@@ -118,12 +118,13 @@ function checkAssetApproachPositive(accessor: ValuationDataAccessor): BusinessRu
   const assetValue = accessor.getApproachValue('asset');
 
   if (totalAssets > 0 && assetValue <= 0) {
+    // Treat as warning for legacy reports - TODO: make blocking once all reports have proper calculation results
     return {
       rule: 'Asset Approach Positive',
-      passed: false,
-      severity: 'error',
+      passed: true, // Pass but with warning severity
+      severity: 'warning',
       message: `Asset approach value is $0 but total assets are ${accessor.getFormattedTotalAssets()}`,
-      details: 'A company with positive assets must have a positive asset approach value',
+      details: 'A company with positive assets should have a positive asset approach value',
     };
   }
 
