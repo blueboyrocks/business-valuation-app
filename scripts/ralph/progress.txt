@@ -23,6 +23,8 @@
 - In professional-pdf-generator.ts, accessor is optional - always use `accessor ? accessor.method() : fallbackValue` pattern
 - Use canonical accessor method names (getFormattedSDE, getFormattedValueRange, getFormattedApproachWeight) not deprecated ones (getSDEFormatted, getValueRangeFormatted)
 - Wrap accessor string outputs in safeString() when embedding in HTML text nodes to prevent [object Object] or undefined
+- TypeScript target doesn't support Map for-of iteration directly; use `Array.from(map.keys())` pattern instead of `for (const [k,v] of map)`
+- lib/validation/ directory contains cross-section validators (consistency, business rules, completeness); lib/valuation/ contains internal DataStore validators
 
 ## Status: IN PROGRESS
 
@@ -36,7 +38,7 @@
 - US-007: DONE - Wire DataAccessor into PDF (cover, exec summary, conclusion, company)
 - US-008: DONE - Wire DataAccessor into PDF (financial, asset/income/market approach)
 - US-009: DONE - Wire DataAccessor into PDF (reconciliation, risk, KPI, remaining)
-- US-010: PENDING - Create value consistency validator
+- US-010: DONE - Create value consistency validator
 - US-011: PENDING - Create business rule validator
 - US-012: PENDING - Create content completeness validator
 - US-013: PENDING - Create narrative value injection system
@@ -274,4 +276,29 @@
   - formatKPI() handles null -> 'N/A' but doesn't protect against NaN; wrapping in safeString() adds that safety layer
   - The bibliography section uses CitationManager-generated strings, not financial values from reportData - safeString wrapping is defensive protection
   - All 6 remaining sections now follow the same pattern: accessor summary box (when accessor defined) at top, followed by charts/content
+---
+
+## 2026-01-28 - US-010
+- What was implemented:
+  - Created lib/validation/consistency-validator.ts - a value consistency validator that compares section text against authoritative DataAccessor values
+  - Exported types: ConsistencyCheck, ConsistencyResult
+  - Main function: validateValueConsistency(accessor, sectionContents: Map<string,string>) returns ConsistencyResult with passed, checks, errors, warnings
+  - Checks 4 metrics: Final Value/Concluded Value (1% tolerance), SDE Multiple (5% tolerance), Normalized SDE (1% tolerance), Revenue (1% tolerance)
+  - extractCurrencyValues() uses regex to find $X,XXX,XXX patterns and $X.XM/B shorthand
+  - extractMultiples() finds Xx and "X times" patterns
+  - Each metric has keyword-based matching to identify which extracted values correspond to which metric
+  - Critical sections (executiveSummary, conclusionOfValue, etc.) produce errors on mismatch; non-critical sections produce warnings
+  - getContext() provides surrounding text for each match to aid debugging
+  - Candidates filtered to within 10x range of authoritative value to avoid false positives from unrelated numbers
+  - Used Array.from(map.keys()) instead of for-of on Map to avoid downlevelIteration TS config issue
+- Files changed:
+  - lib/validation/consistency-validator.ts (new file, ~230 lines)
+  - scripts/ralph/prd.json (US-010 passes: true)
+  - scripts/ralph/progress.txt (updated status, added progress entry)
+- **Learnings for future iterations:**
+  - The existing lib/valuation/consistency-validator.ts validates DataStore internal consistency (financial ratios, balance sheet). The new lib/validation/consistency-validator.ts validates cross-section text value consistency - they are complementary, not duplicates.
+  - TypeScript target in this project doesn't support Map iteration via for-of directly - use Array.from(map.keys()) pattern instead.
+  - lib/validation/ already had quality-checker.ts and report-output-validator.ts - the new file sits alongside them.
+  - Currency regex must handle both full format ($1,234,567) and shorthand ($1.2M) to catch values in narrative text.
+  - Multiple extraction needs upper bound filter (< 100) to avoid matching things like "100x" that might be percentage references.
 ---
