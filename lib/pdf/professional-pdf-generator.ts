@@ -270,9 +270,9 @@ export class ProfessionalPDFGenerator {
               <tbody>
                 ${allCitations.map((c, i) => `
                   <tr style="background: ${i % 2 === 0 ? '#F9F9F9' : 'white'};">
-                    <td style="padding: 8px; font-weight: bold;">${c.inline}</td>
-                    <td style="padding: 8px;">${citationManager.getSource(c.source_code)?.name || c.source_code} (${c.year})</td>
-                    <td style="padding: 8px; color: #666;">${c.context}</td>
+                    <td style="padding: 8px; font-weight: bold;">${safeString(c.inline, '')}</td>
+                    <td style="padding: 8px;">${safeString(citationManager.getSource(c.source_code)?.name || c.source_code, '')} (${safeString(c.year, '')})</td>
+                    <td style="padding: 8px; color: #666;">${safeString(c.context, '')}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -1622,6 +1622,38 @@ export class ProfessionalPDFGenerator {
   ${valuationRecon ? `
   <div class="section" id="section-valuation-reconciliation">
     <h1 class="section-title">Valuation Reconciliation</h1>
+    ${accessor ? `
+    <div style="margin-bottom: 24px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #1E3A5F;">Reconciliation Summary</h3>
+      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Asset Approach Value</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachValue('asset')}</td>
+          <td style="text-align: right; color: #6B7280; padding-left: 12px;">${accessor.getFormattedApproachWeight('asset')}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Income Approach Value</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachValue('income')}</td>
+          <td style="text-align: right; color: #6B7280; padding-left: 12px;">${accessor.getFormattedApproachWeight('income')}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Market Approach Value</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachValue('market')}</td>
+          <td style="text-align: right; color: #6B7280; padding-left: 12px;">${accessor.getFormattedApproachWeight('market')}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">DLOM Adjustment</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedDLOMAmount()}</td>
+          <td style="text-align: right; color: #6B7280; padding-left: 12px;">${accessor.getFormattedDLOMRate()}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; font-weight: 600;">Concluded Fair Market Value</td>
+          <td style="text-align: right; font-weight: bold; color: #1E3A5F; font-size: 11pt;">${accessor.getFormattedFinalValue()}</td>
+          <td style="text-align: right; color: #6B7280; padding-left: 12px;">${accessor.getFormattedValueRange().display}</td>
+        </tr>
+      </table>
+    </div>
+    ` : ''}
     <div class="narrative">
       ${valuationRecon}
     </div>
@@ -1632,6 +1664,22 @@ export class ProfessionalPDFGenerator {
   ${riskAssessment || charts.riskGauge || inlineSvgCharts?.riskGauge ? `
   <div class="section" id="section-risk-assessment">
     <h1 class="section-title">Risk Assessment</h1>
+
+    ${accessor ? `
+    <div style="margin-bottom: 24px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #1E3A5F;">Risk Profile Overview</h3>
+      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Overall Risk Score</td>
+          <td style="text-align: right; font-weight: bold; color: #1E3A5F;">${accessor.getRiskScore()}/10</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0;">Risk Rating</td>
+          <td style="text-align: right; font-weight: bold;">${safeString(accessor.getRiskRating(), 'N/A')}</td>
+        </tr>
+      </table>
+    </div>
+    ` : ''}
 
     ${inlineSvgCharts?.riskGauge || charts.riskGauge ? `
     <div style="display: flex; gap: 40px; align-items: flex-start; margin-bottom: 30px;">
@@ -1670,7 +1718,7 @@ export class ProfessionalPDFGenerator {
       <tbody>
         ${reportData.risk_factors.map((rf: any, idx: number) => `
           <tr style="background: ${idx % 2 === 0 ? '#F9F9F9' : 'white'};">
-            <td style="padding: 10px 12px; font-weight: 500;">${rf.category}</td>
+            <td style="padding: 10px 12px; font-weight: 500;">${safeString(rf.category, 'N/A')}</td>
             <td style="padding: 10px 12px; text-align: center;">
               <span style="
                 display: inline-block;
@@ -1680,10 +1728,10 @@ export class ProfessionalPDFGenerator {
                 font-weight: 600;
                 background: ${rf.rating === 'Low' ? '#E8F5E9' : rf.rating === 'High' || rf.rating === 'Critical' ? '#FFEBEE' : '#FFF8E1'};
                 color: ${rf.rating === 'Low' ? '#2E7D32' : rf.rating === 'High' || rf.rating === 'Critical' ? '#C62828' : '#F57F17'};
-              ">${rf.rating}</span>
+              ">${safeString(rf.rating, 'N/A')}</span>
             </td>
-            <td style="padding: 10px 12px; text-align: center; font-weight: bold;">${rf.score}/10</td>
-            <td style="padding: 10px 12px; color: #666;">${rf.description}</td>
+            <td style="padding: 10px 12px; text-align: center; font-weight: bold;">${safeString(rf.score, 'N/A')}/10</td>
+            <td style="padding: 10px 12px; color: #666;">${safeString(rf.description, '')}</td>
           </tr>
         `).join('')}
       </tbody>
@@ -1705,38 +1753,62 @@ export class ProfessionalPDFGenerator {
 
     <p>In order to better understand your company's operations, we have calculated a variety of Key Performance Indicators (KPIs) for your review and comparison to industry benchmarks.</p>
 
+    ${accessor ? `
+    <div style="margin-bottom: 24px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #1E3A5F;">Source Financial Metrics</h3>
+      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Annual Revenue</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedRevenue()}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">SDE Margin</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDEMargin()}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">EBITDA Margin</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedEBITDAMargin()}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0;">Current Ratio</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedCurrentRatio()}</td>
+        </tr>
+      </table>
+    </div>
+    ` : ''}
+
     <div class="kpi-grid">
       <div class="kpi-card">
         <div class="kpi-name">Cash Flow-to-Revenue</div>
-        <div class="kpi-value">${formatKPI(kpis.cash_flow_to_revenue, 'percentage')}</div>
+        <div class="kpi-value">${safeString(formatKPI(kpis.cash_flow_to_revenue, 'percentage'), 'N/A')}</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-name">Cash-to-Revenue</div>
-        <div class="kpi-value">${formatKPI(kpis.cash_to_revenue, 'percentage')}</div>
+        <div class="kpi-value">${safeString(formatKPI(kpis.cash_to_revenue, 'percentage'), 'N/A')}</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-name">Fixed Assets-to-Revenue</div>
-        <div class="kpi-value">${formatKPI(kpis.fixed_assets_to_revenue, 'percentage')}</div>
+        <div class="kpi-value">${safeString(formatKPI(kpis.fixed_assets_to_revenue, 'percentage'), 'N/A')}</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-name">Total Debt-to-Revenue</div>
-        <div class="kpi-value">${formatKPI(kpis.total_debt_to_revenue, 'percentage')}</div>
+        <div class="kpi-value">${safeString(formatKPI(kpis.total_debt_to_revenue, 'percentage'), 'N/A')}</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-name">Current Ratio</div>
-        <div class="kpi-value">${formatKPI(kpis.current_ratio, 'ratio')}</div>
+        <div class="kpi-value">${safeString(formatKPI(kpis.current_ratio, 'ratio'), 'N/A')}</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-name">Profit Margin</div>
-        <div class="kpi-value">${formatKPI(kpis.profit_margin, 'percentage')}</div>
+        <div class="kpi-value">${safeString(formatKPI(kpis.profit_margin, 'percentage'), 'N/A')}</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-name">EBITDA Margin</div>
-        <div class="kpi-value">${formatKPI(kpis.ebitda_margin, 'percentage')}</div>
+        <div class="kpi-value">${safeString(formatKPI(kpis.ebitda_margin, 'percentage'), 'N/A')}</div>
       </div>
       <div class="kpi-card">
         <div class="kpi-name">Return on Assets</div>
-        <div class="kpi-value">${formatKPI(kpis.return_on_assets, 'percentage')}</div>
+        <div class="kpi-value">${safeString(formatKPI(kpis.return_on_assets, 'percentage'), 'N/A')}</div>
       </div>
     </div>
 
@@ -1755,6 +1827,29 @@ export class ProfessionalPDFGenerator {
   ${strategicInsights ? `
   <div class="section" id="section-strategic-insights">
     <h1 class="section-title">Strategic Insights</h1>
+    ${accessor ? `
+    <div style="margin-bottom: 24px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #1E3A5F;">Company Snapshot</h3>
+      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Company</td>
+          <td style="text-align: right; font-weight: bold;">${safeString(accessor.getCompanyName(), companyName)}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Annual Revenue</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedRevenue()}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">SDE</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDE()}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0;">Concluded Value</td>
+          <td style="text-align: right; font-weight: bold; color: #1E3A5F;">${accessor.getFormattedFinalValue()}</td>
+        </tr>
+      </table>
+    </div>
+    ` : ''}
     <div class="narrative">
       ${strategicInsights}
     </div>
@@ -1765,6 +1860,11 @@ export class ProfessionalPDFGenerator {
   ${assumptionsLimitingConditions ? `
   <div class="section" id="section-assumptions">
     <h1 class="section-title">Assumptions & Limiting Conditions</h1>
+    ${accessor ? `
+    <p style="font-size: 10pt; color: #6B7280; margin-bottom: 16px;">
+      This valuation of <strong>${safeString(accessor.getCompanyName(), companyName)}</strong> is subject to the following assumptions and limiting conditions as of the valuation date of <strong>${safeString(accessor.getValuationDate(), generatedDate)}</strong>.
+    </p>
+    ` : ''}
     <div class="narrative">
       ${assumptionsLimitingConditions}
     </div>

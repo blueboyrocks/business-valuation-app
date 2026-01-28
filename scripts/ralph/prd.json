@@ -136,7 +136,7 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "Continue wiring in lib/pdf/professional-pdf-generator.ts. Focus ONLY on financial analysis and the three valuation approach sections."
     },
     {
@@ -153,7 +153,7 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "Final PDF wiring pass in lib/pdf/professional-pdf-generator.ts. Cover remaining sections: reconciliation, risk, KPIs, strategic insights, disclaimers, sources."
     },
     {

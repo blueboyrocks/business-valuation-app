@@ -34,8 +34,8 @@
 - US-005: DONE - Asset approach fallback chain
 - US-006: DONE - Remove RECONCILE override logic
 - US-007: DONE - Wire DataAccessor into PDF (cover, exec summary, conclusion, company)
-- US-008: PENDING - Wire DataAccessor into PDF (financial, asset/income/market approach)
-- US-009: PENDING - Wire DataAccessor into PDF (reconciliation, risk, KPI, remaining)
+- US-008: DONE - Wire DataAccessor into PDF (financial, asset/income/market approach)
+- US-009: DONE - Wire DataAccessor into PDF (reconciliation, risk, KPI, remaining)
 - US-010: PENDING - Create value consistency validator
 - US-011: PENDING - Create business rule validator
 - US-012: PENDING - Create content completeness validator
@@ -237,4 +237,41 @@
   - safeString() is useful for wrapping accessor.getCompanyName() etc. to prevent [object Object] or undefined in cover page/company profile where values are displayed as plain text
   - Enterprise value and liquidation value are computed separately (not from accessor) and don't need accessor wiring - they use their own calculation logic
   - The exec summary section content is markdown narrative - adding a financial highlights box after the narrative is the correct pattern for injecting accessor-sourced values
+---
+
+## 2026-01-28 - US-008
+- What was implemented:
+  - Wired DataAccessor into 4 additional PDF sections in lib/pdf/professional-pdf-generator.ts:
+  - **Financial Analysis**: Added "Key Financial Metrics" summary box with accessor.getFormattedRevenue(), getFormattedRevenueGrowthRate(), getFormattedSDE(), getFormattedEBITDA(), getFormattedSDEMargin(), getFormattedGrossMargin(), getFormattedTotalAssets(), getFormattedTotalLiabilities(), getFormattedBookValue(), getFormattedCurrentRatio()
+  - **Asset Approach**: Added "Asset Approach Summary" box with accessor.getFormattedApproachValue('asset'), getFormattedApproachWeight('asset'), getFormattedTotalAssets(), getFormattedTotalLiabilities(), getFormattedBookValue()
+  - **Income Approach**: Added "Income Approach Summary" box with accessor.getFormattedApproachValue('income'), getFormattedApproachWeight('income'), getFormattedSDE('normalized'), getFormattedCapRate()
+  - **Market Approach**: Added "Market Approach Summary" box with accessor.getFormattedApproachValue('market'), getFormattedApproachWeight('market'), getFormattedSDE('normalized'), getFormattedSDEMultiple()
+  - All summary boxes use conditional rendering (only when accessor is defined) with consistent styling matching the pattern from US-007
+- Files changed:
+  - lib/pdf/professional-pdf-generator.ts (added accessor-sourced summary boxes to 4 sections, +120 lines)
+- **Learnings for future iterations:**
+  - The Financial Summary section (separate from Financial Analysis) already had accessor wiring with fallback pattern `accessor?.method() ?? reportData.field` - no changes needed there
+  - Narrative sections (financial_analysis, asset_approach_analysis, etc.) come from reportData/narratives as markdown content - these are narrative text, not financial values, so they correctly use reportData
+  - The pattern for each section is: accessor summary box at the top, then charts if any, then narrative content below
+  - Market approach section had existing marketTableHTML placement - the summary box was added before it to maintain flow
+---
+
+## 2026-01-28 - US-009
+- What was implemented:
+  - Wired DataAccessor into 5 remaining PDF sections in lib/pdf/professional-pdf-generator.ts:
+  - **Valuation Reconciliation**: Added "Reconciliation Summary" box with all 3 approach values and weights, DLOM adjustment with rate, and concluded fair market value with value range display
+  - **Risk Assessment**: Added "Risk Profile Overview" box with accessor.getRiskScore() and accessor.getRiskRating() via safeString(). Wrapped risk_factors table cell values (category, rating, score, description) in safeString() to prevent [object Object]/undefined
+  - **KPI Overview**: Added "Source Financial Metrics" box with accessor.getFormattedRevenue(), getFormattedSDEMargin(), getFormattedEBITDAMargin(), getFormattedCurrentRatio(). Wrapped all 8 KPI card values in safeString() to protect against NaN from formatKPI()
+  - **Strategic Insights**: Added "Company Snapshot" box with accessor company name, revenue, SDE, and concluded value
+  - **Assumptions & Limiting Conditions**: Added introductory paragraph with accessor.getCompanyName() and accessor.getValuationDate() via safeString()
+  - **Sources/Bibliography**: Wrapped citation table values (inline, source name, year, context) in safeString()
+- Files changed:
+  - lib/pdf/professional-pdf-generator.ts (added accessor-sourced summary boxes to 5 sections, wrapped existing values in safeString)
+- **Learnings for future iterations:**
+  - The valuation reconciliation section only has narrative content (from valuation_synthesis) - no pre-existing financial value embedding, making it safe to add accessor summary box at top
+  - Risk factors come from reportData.risk_factors (array of objects with category, rating, score, description) - these are NOT from the DataAccessor since they're detailed per-factor data. The accessor only provides aggregate risk score and rating
+  - KPI values are computed by calculateKPIs() from yearlyData financial data - these are independent calculations, not stored in the DataStore. The accessor summary box provides the authoritative source metrics that underpin the KPI calculations
+  - formatKPI() handles null -> 'N/A' but doesn't protect against NaN; wrapping in safeString() adds that safety layer
+  - The bibliography section uses CitationManager-generated strings, not financial values from reportData - safeString wrapping is defensive protection
+  - All 6 remaining sections now follow the same pattern: accessor summary box (when accessor defined) at top, followed by charts/content
 ---
