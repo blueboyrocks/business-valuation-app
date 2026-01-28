@@ -844,10 +844,53 @@ export class ProfessionalPDFGenerator {
 
     .toc-item {
       display: flex;
-      justify-content: space-between;
-      padding: 12px 0;
-      border-bottom: 1px solid #E5E7EB;
+      align-items: baseline;
+      padding: 10px 0;
       font-size: 11pt;
+      line-height: 1.4;
+    }
+
+    .toc-number {
+      flex: 0 0 36px;
+      font-weight: 600;
+      color: #1E3A5F;
+    }
+
+    .toc-title {
+      flex: 1 1 auto;
+      overflow: hidden;
+    }
+
+    .toc-leader {
+      flex: 1 0 20px;
+      border-bottom: 1px dotted #9CA3AF;
+      margin: 0 8px;
+      position: relative;
+      top: -4px;
+    }
+
+    .toc-page {
+      flex: 0 0 auto;
+      text-align: right;
+      font-weight: 600;
+      color: #1E3A5F;
+    }
+
+    .toc-sub-item {
+      display: flex;
+      align-items: baseline;
+      padding: 6px 0 6px 36px;
+      font-size: 10pt;
+      color: #6B7280;
+    }
+
+    .toc-sub-item .toc-title {
+      font-style: italic;
+    }
+
+    .toc-sub-item .toc-page {
+      color: #6B7280;
+      font-weight: 400;
     }
 
     .section {
@@ -1109,51 +1152,68 @@ export class ProfessionalPDFGenerator {
   <div class="toc">
     <h1>Contents</h1>
     ${(() => {
-      // Build set of present sections based on available content
+      // Build set of present sections and content map for dynamic page estimation
       const presentSections = new Set<string>();
+      const sectionContents = new Map<string, string>();
 
       // Always-present sections
       presentSections.add('executiveSummary');
+      sectionContents.set('executiveSummary', execSummary || '');
       presentSections.add('conclusionOfValue');
       presentSections.add('financialSummary');
       presentSections.add('keyPerformanceIndicators');
 
       // Conditional sections
-      if (companyProfile) presentSections.add('companyProfile');
-      if (industryAnalysis) presentSections.add('industryAnalysis');
-      if (financialAnalysis) presentSections.add('financialAnalysis');
-      if (charts.financialTrend) presentSections.add('financialTrends');
-      if (assetAnalysis) presentSections.add('assetApproach');
-      if (incomeAnalysis) presentSections.add('incomeApproach');
-      if (marketAnalysis) presentSections.add('marketApproach');
-      if (valuationRecon) presentSections.add('valuationReconciliation');
-      if (riskAssessment || charts.riskGauge || inlineSvgCharts?.riskGauge) presentSections.add('riskAssessment');
-      if (strategicInsights) presentSections.add('strategicInsights');
-      if (assumptionsLimitingConditions) presentSections.add('assumptionsAndConditions');
-      if (bibliographyHTML) presentSections.add('sourcesAndReferences');
+      if (companyProfile) { presentSections.add('companyProfile'); sectionContents.set('companyProfile', companyProfile); }
+      if (industryAnalysis) { presentSections.add('industryAnalysis'); sectionContents.set('industryAnalysis', industryAnalysis); }
+      if (financialAnalysis) { presentSections.add('financialAnalysis'); sectionContents.set('financialAnalysis', financialAnalysis); }
+      if (charts.financialTrend) { presentSections.add('financialTrends'); }
+      if (assetAnalysis) { presentSections.add('assetApproach'); sectionContents.set('assetApproach', assetAnalysis); }
+      if (incomeAnalysis) { presentSections.add('incomeApproach'); sectionContents.set('incomeApproach', incomeAnalysis); }
+      if (marketAnalysis) { presentSections.add('marketApproach'); sectionContents.set('marketApproach', marketAnalysis); }
+      if (valuationRecon) { presentSections.add('valuationReconciliation'); sectionContents.set('valuationReconciliation', valuationRecon); }
+      if (riskAssessment || charts.riskGauge || inlineSvgCharts?.riskGauge) { presentSections.add('riskAssessment'); if (riskAssessment) sectionContents.set('riskAssessment', riskAssessment); }
+      if (strategicInsights) { presentSections.add('strategicInsights'); sectionContents.set('strategicInsights', strategicInsights); }
+      if (assumptionsLimitingConditions) { presentSections.add('assumptionsAndConditions'); sectionContents.set('assumptionsAndConditions', assumptionsLimitingConditions); }
+      if (bibliographyHTML) { presentSections.add('sourcesAndReferences'); sectionContents.set('sourcesAndReferences', bibliographyHTML); }
 
-      // Generate TOC entries using centralized ordering
-      const tocEntries = generateTocEntries(presentSections);
+      // Generate TOC entries with content-based page estimation
+      const tocEntries = generateTocEntries(presentSections, sectionContents);
       const tocItems: string[] = [];
 
       for (const entry of tocEntries) {
-        tocItems.push(`<div class="toc-item"><span>${entry.displayName}</span><span>${entry.pageNumber}</span></div>`);
+        tocItems.push(
+          `<div class="toc-item">` +
+          `<span class="toc-number">${entry.sectionNumber}.</span>` +
+          `<span class="toc-title">${entry.displayName}</span>` +
+          `<span class="toc-leader"></span>` +
+          `<span class="toc-page">${entry.pageNumber}</span>` +
+          `</div>`
+        );
       }
 
       // KPI Detail Pages (sub-items appended after KPI section)
       if (kpiDetailPages && kpiDetailPages.length > 0) {
         const kpiEntry = tocEntries.find(e => e.key === 'keyPerformanceIndicators');
         let detailPageNum = kpiEntry ? kpiEntry.pageNumber + 2 : 20;
-        tocItems.push(`<div class="toc-item"><span>Detailed KPI Analysis</span><span>${detailPageNum}</span></div>`);
-        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Profitability Metrics</span><span>${detailPageNum}</span></div>`);
-        detailPageNum += 5;
-        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Liquidity Metrics</span><span>${detailPageNum}</span></div>`);
-        detailPageNum += 2;
-        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Efficiency Metrics</span><span>${detailPageNum}</span></div>`);
-        detailPageNum += 3;
-        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Leverage Metrics</span><span>${detailPageNum}</span></div>`);
-        detailPageNum += 1;
-        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Growth Metrics</span><span>${detailPageNum}</span></div>`);
+        const kpiSubItems = [
+          'Profitability Metrics',
+          'Liquidity Metrics',
+          'Efficiency Metrics',
+          'Leverage Metrics',
+          'Growth Metrics',
+        ];
+        const kpiPageIncrements = [5, 2, 3, 1, 1];
+        for (let i = 0; i < kpiSubItems.length; i++) {
+          tocItems.push(
+            `<div class="toc-sub-item">` +
+            `<span class="toc-title">${kpiSubItems[i]}</span>` +
+            `<span class="toc-leader"></span>` +
+            `<span class="toc-page">${detailPageNum}</span>` +
+            `</div>`
+          );
+          detailPageNum += kpiPageIncrements[i];
+        }
       }
 
       return tocItems.join('\n    ');

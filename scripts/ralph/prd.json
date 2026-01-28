@@ -303,7 +303,7 @@
         "Typecheck passes"
       ],
       "priority": 17,
-      "passes": false,
+      "passes": true,
       "notes": "Update lib/pdf/professional-pdf-generator.ts section ordering. Check current ordering logic first."
     },
     {
@@ -320,7 +320,7 @@
         "Typecheck passes"
       ],
       "priority": 18,
-      "passes": false,
+      "passes": true,
       "notes": "Implement in lib/pdf/professional-pdf-generator.ts. The TOC can use estimated page numbers based on word count (exact page numbers require two-pass rendering which is complex)."
     },
     {

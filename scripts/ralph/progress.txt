@@ -25,6 +25,8 @@
 - Wrap accessor string outputs in safeString() when embedding in HTML text nodes to prevent [object Object] or undefined
 - TypeScript target doesn't support Map for-of iteration directly; use `Array.from(map.keys())` pattern instead of `for (const [k,v] of map)`
 - lib/validation/ directory contains cross-section validators (consistency, business rules, completeness); lib/valuation/ contains internal DataStore validators
+- PROFESSIONAL_SECTION_ORDER in lib/pdf/section-ordering.ts is the canonical section ordering reference; use generateTocEntries() for TOC, getOrderedSections() for section iteration
+- generateTocEntries() accepts optional sectionContents Map<string,string> for content-length-based page estimation; entries include sectionNumber for numbered TOC items
 - Consistency validator checks ALL dollar amounts in a section when ANY keyword for a metric appears; mock section text in critical sections (executiveSummary, conclusionOfValue) should avoid including non-final-value dollar amounts to prevent false positive mismatches
 - Validation pipeline tests use buildMockStore() with a generic "Apex Consulting Group" Professional Services firm - not K-Force specific
 
@@ -47,8 +49,8 @@
 - US-014: DONE - Create post-generation narrative validator
 - US-015: DONE - Create pre-PDF quality gate
 - US-016: DONE - Validation pipeline integration tests
-- US-017: PENDING - Professional section ordering
-- US-018: PENDING - Dynamic table of contents
+- US-017: DONE - Professional section ordering
+- US-018: DONE - Dynamic table of contents
 - US-019: PENDING - Design system tokens
 - US-020: PENDING - Professional table styling CSS
 - US-021: PENDING - SDE calculation detail table
@@ -448,4 +450,54 @@
   - The `buildMockStore()` pattern with section-level overrides (`buildMockStore({ valuation: { ...buildMockStore().valuation, field: newValue } })`) works well for creating targeted test variants.
   - The `generateWords(minWords, sentences)` helper is useful for creating section content that meets minimum word count requirements while embedding specific test phrases.
   - Pre-existing test failures (4 tests in 3 files: calculation-engine, data-quality-scorer, tax-form-validator) continue to be unrelated to our work.
+---
+
+## 2026-01-28 - US-017
+- What was implemented:
+  - Created lib/pdf/section-ordering.ts with PROFESSIONAL_SECTION_ORDER constant defining 18 sections in canonical order
+  - SectionDefinition interface with key, displayName, estimatedPages for each section
+  - getOrderedSections() function takes a section Map and returns ordered array of present sections
+  - generateTocEntries() function builds TOC entries with estimated page numbers from a Set of present section keys
+  - getSectionDisplayName() utility for looking up display names by key
+  - Order: executiveSummary, conclusionOfValue, companyProfile, industryAnalysis, financialAnalysis, financialSummary, sdeCalculationTable, financialTrends, assetApproach, incomeApproach, capRateBuildupTable, marketApproach, valuationReconciliation, riskAssessment, keyPerformanceIndicators, strategicInsights, assumptionsAndConditions, sourcesAndReferences
+  - Updated professional-pdf-generator.ts TOC generation to use generateTocEntries() instead of ad-hoc inline ordering
+  - Executive Summary is first content section after TOC (page 3)
+  - Industry Analysis is included when content is available
+  - KPI Detail Pages handled as sub-items after KPI section
+  - sdeCalculationTable and capRateBuildupTable placeholders included in order for future US-021/US-022
+- Files changed:
+  - lib/pdf/section-ordering.ts (new file, ~100 lines)
+  - lib/pdf/professional-pdf-generator.ts (imported section-ordering, replaced TOC generation)
+- **Learnings for future iterations:**
+  - The PDF generator renders sections via a massive inline HTML template literal (lines 1084-1879). It is NOT data-driven - section HTML is hardcoded in order. The PROFESSIONAL_SECTION_ORDER constant serves as the canonical reference for this ordering and is used by the TOC generator.
+  - The section rendering order in the template already matches PROFESSIONAL_SECTION_ORDER. Any future section reordering would require moving the HTML blocks in the template to match.
+  - Some sections are always present (executiveSummary, conclusionOfValue, financialSummary, keyPerformanceIndicators), while others are conditional on content availability.
+  - riskAssessment section renders if ANY of: riskAssessment narrative, charts.riskGauge, or inlineSvgCharts.riskGauge are truthy.
+  - KPI Detail Pages are sub-sections, not a top-level entry in PROFESSIONAL_SECTION_ORDER. They're handled separately in the TOC as indented sub-items.
+  - coverPage and tableOfContents are implicit (always pages 1-2) and not in the order constant since they aren't content sections.
+---
+
+## 2026-01-28 - US-018
+- What was implemented:
+  - Enhanced generateTocEntries() in lib/pdf/section-ordering.ts to accept optional sectionContents Map for content-based page estimation
+  - Added countContentWords() helper that strips HTML tags and counts words
+  - Added estimatePages() that uses ~350 words/page heuristic with minimum 1 page per section
+  - generateTocEntries() now returns sectionNumber alongside displayName, pageNumber, and key
+  - Updated TOC CSS in professional-pdf-generator.ts with professional styling:
+    - Dotted leaders between section title and page number (.toc-leader with border-bottom: 1px dotted)
+    - Section numbers in navy bold (.toc-number)
+    - Proper flexbox layout with baseline alignment
+    - Sub-item styling for KPI detail pages (.toc-sub-item)
+  - Updated TOC HTML generation to build a sectionContents Map from available content variables
+  - TOC items now render with numbered sections (e.g., "1. Executive Summary ....... 3")
+  - KPI sub-items use consistent dotted leader styling instead of inline styles
+  - Falls back to static estimatedPages when content is not available for a section
+- Files changed:
+  - lib/pdf/section-ordering.ts (added content-based page estimation, sectionNumber output)
+  - lib/pdf/professional-pdf-generator.ts (TOC CSS enhancement, TOC HTML generation with section numbers, dotted leaders, content map)
+- **Learnings for future iterations:**
+  - The conclusionOfValue section is always-present but has no dedicated content string variable - its content is generated inline from accessor/reportData. Don't try to set sectionContents for it.
+  - Always-present sections (executiveSummary, conclusionOfValue, financialSummary, keyPerformanceIndicators) are added unconditionally to presentSections, but only some have content variables for the sectionContents map.
+  - The TOC dotted leader uses a flex element with border-bottom: 1px dotted - this renders correctly in PDF/HTML contexts where CSS leaders (content: leader('.')) may not be supported.
+  - The sectionNumber is a sequential counter across present sections only (skipping absent sections), starting at 1.
 ---

@@ -65,17 +65,59 @@ export function getOrderedSections(
 }
 
 /**
+ * Approximate words per page for content-based page estimation.
+ * A typical PDF page with 11pt body text, margins, and some headings/tables
+ * holds approximately 350 words of narrative content. Sections with charts
+ * or tables have lower effective word density.
+ */
+const WORDS_PER_PAGE = 350;
+
+/**
+ * Minimum pages per section (even short sections take at least 1 page
+ * due to page-break-before styling).
+ */
+const MIN_PAGES_PER_SECTION = 1;
+
+/**
+ * Strips HTML tags from content and counts words.
+ */
+function countContentWords(html: string): number {
+  const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!text) return 0;
+  return text.split(' ').length;
+}
+
+/**
+ * Estimates the number of pages a section will occupy based on its content length.
+ * Falls back to the static estimatedPages value when no content is provided.
+ */
+function estimatePages(section: SectionDefinition, content?: string): number {
+  if (!content) {
+    return section.estimatedPages;
+  }
+  const words = countContentWords(content);
+  const estimated = Math.ceil(words / WORDS_PER_PAGE);
+  return Math.max(MIN_PAGES_PER_SECTION, estimated);
+}
+
+/**
  * Generates TOC items with estimated page numbers based on which sections
  * are present. Cover page is page 1, TOC is page 2, content starts at page 3.
  *
+ * When sectionContents is provided, page numbers are estimated from actual
+ * content length (word count). Otherwise, static estimatedPages values are used.
+ *
  * @param presentSectionKeys - Set of section keys that are present in the report
- * @returns Array of { displayName, pageNumber } for TOC rendering
+ * @param sectionContents - Optional map of section key to HTML content for dynamic page estimation
+ * @returns Array of { displayName, pageNumber, key, sectionNumber } for TOC rendering
  */
 export function generateTocEntries(
-  presentSectionKeys: Set<string>
-): Array<{ displayName: string; pageNumber: number; key: string }> {
-  const entries: Array<{ displayName: string; pageNumber: number; key: string }> = [];
+  presentSectionKeys: Set<string>,
+  sectionContents?: Map<string, string>
+): Array<{ displayName: string; pageNumber: number; key: string; sectionNumber: number }> {
+  const entries: Array<{ displayName: string; pageNumber: number; key: string; sectionNumber: number }> = [];
   let pageNum = 3; // Page 1: Cover, Page 2: TOC
+  let sectionNum = 1;
 
   for (const section of PROFESSIONAL_SECTION_ORDER) {
     if (presentSectionKeys.has(section.key)) {
@@ -83,8 +125,11 @@ export function generateTocEntries(
         displayName: section.displayName,
         pageNumber: pageNum,
         key: section.key,
+        sectionNumber: sectionNum,
       });
-      pageNum += section.estimatedPages;
+      const content = sectionContents ? sectionContents.get(section.key) : undefined;
+      pageNum += estimatePages(section, content);
+      sectionNum++;
     }
   }
 
