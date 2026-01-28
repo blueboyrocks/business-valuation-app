@@ -103,7 +103,7 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "RECONCILE logic found in 3 files: lib/extraction/narrative-data-extractor.ts, app/api/reports/[id]/regenerate/route.ts, lib/claude/prompts-v2/pass-09-market-approach.ts. Be careful not to break the fill-missing-data use case - only prevent OVERWRITING existing values."
     },
     {
@@ -120,7 +120,7 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "Primary file: lib/pdf/professional-pdf-generator.ts (63.7KB). This is a large file - focus ONLY on cover page, exec summary, conclusion, and company profile sections. Read the file first to find the relevant section generator functions."
     },
     {

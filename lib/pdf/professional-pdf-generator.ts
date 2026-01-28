@@ -27,6 +27,7 @@ import {
 import { generateAllKPIDetailPages } from './kpi-page-generator';
 import { getAllKPIsOrdered } from '../content/kpi-explanations';
 import { type ValuationDataAccessor, createDataAccessor } from '../valuation/data-accessor';
+import { safeString } from '../utils/safe-string';
 import { CitationManager } from '../citations/citation-manager';
 import { CalculationTableGenerator, type SDETableInput, type MarketApproachInput, type SynthesisInput } from '../display/calculation-table-generator';
 import { ReportChartGenerator } from '../charts/chart-generator';
@@ -1087,11 +1088,16 @@ export class ProfessionalPDFGenerator {
       <div class="cover-subtitle">Professional Valuation Analysis</div>
     </div>
     <div>
-      <div class="cover-company">${companyName}</div>
-      <div class="cover-date">Valuation Date: ${reportData.valuation_date || generatedDate}</div>
+      <div class="cover-company">${accessor ? safeString(accessor.getCompanyName(), companyName) : companyName}</div>
+      <div class="cover-date">Valuation Date: ${accessor ? safeString(accessor.getValuationDate(), generatedDate) : (reportData.valuation_date || generatedDate)}</div>
       <div class="cover-date">Report Generated: ${generatedDate}</div>
-      ${reportData.industry_name ? `<div class="cover-date">Industry: ${reportData.industry_name}</div>` : ''}
-      ${reportData.naics_code ? `<div class="cover-date">NAICS Code: ${reportData.naics_code}</div>` : ''}
+      ${accessor ? `<div class="cover-date">Concluded Fair Market Value: ${accessor.getFormattedFinalValue()}</div>` : ''}
+      ${(() => {
+        const industryName = accessor ? safeString(accessor.getIndustryName()) : (reportData.industry_name || '');
+        const naicsCode = accessor ? safeString(accessor.getNaicsCode()) : (reportData.naics_code || '');
+        if (!industryName) return '';
+        return `<div class="cover-date">Industry: ${naicsCode ? `${naicsCode} - ` : ''}${industryName}</div>`;
+      })()}
     </div>
     <div class="cover-footer">
       This report provides general estimates of fair market value for internal use only. It should not be used to obtain credit or for any commercial purposes. The estimates are based on information provided and publicly available data.
@@ -1213,18 +1219,58 @@ export class ProfessionalPDFGenerator {
     <div class="narrative">
       ${execSummary}
     </div>
+    ${accessor ? `
+    <div style="margin-top: 30px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #1E3A5F;">Key Financial Highlights</h3>
+      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Annual Revenue</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedRevenue()}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Seller's Discretionary Earnings (SDE)</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDE()}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Concluded Fair Market Value</td>
+          <td style="text-align: right; font-weight: bold; color: #1E3A5F;">${accessor.getFormattedFinalValue()}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Value Range</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedValueRange().display}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Asset Approach (${accessor.getFormattedApproachWeight('asset')})</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachValue('asset')}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Income Approach (${accessor.getFormattedApproachWeight('income')})</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachValue('income')}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0;">Market Approach (${accessor.getFormattedApproachWeight('market')})</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachValue('market')}</td>
+        </tr>
+      </table>
+    </div>
+    ` : ''}
   </div>
 
   <!-- Conclusion of Value (renamed from Your Valuation) -->
   <div class="section" id="section-conclusion-of-value">
     <h1 class="section-title">Conclusion of Value</h1>
-    
-    <h2>${companyName}</h2>
-    ${reportData.industry_name ? `<p><strong>Industry:</strong> ${reportData.naics_code ? `${reportData.naics_code} - ` : ''}${reportData.industry_name}</p>` : ''}
-    
+
+    <h2>${accessor ? safeString(accessor.getCompanyName(), companyName) : companyName}</h2>
+    ${(() => {
+      const industryName = accessor ? safeString(accessor.getIndustryName()) : (reportData.industry_name || '');
+      const naicsCode = accessor ? safeString(accessor.getNaicsCode()) : (reportData.naics_code || '');
+      if (!industryName) return '';
+      return `<p><strong>Industry:</strong> ${naicsCode ? `${naicsCode} - ` : ''}${industryName}</p>`;
+    })()}
+
     <div class="value-card">
       <div class="value-label">Equity Value (Fair Market Value)</div>
-      <div class="value-amount">${fmt(fv)}</div>
+      <div class="value-amount">${accessor ? accessor.getFormattedFinalValue() : fmt(fv)}</div>
       <div class="value-subtitle">Based on Weighted Average of Three Approaches${citeInline('BRG')}</div>
     </div>
 
@@ -1242,27 +1288,27 @@ export class ProfessionalPDFGenerator {
             <tbody>
               <tr>
                 <td>Asset Approach</td>
-                <td>${fmt(av)}</td>
-                <td>${accessor ? `${(accessor.getAssetWeight() * 100).toFixed(0)}%` : '20%'}</td>
+                <td>${accessor ? accessor.getFormattedApproachValue('asset') : fmt(av)}</td>
+                <td>${accessor ? accessor.getFormattedApproachWeight('asset') : '20%'}</td>
               </tr>
               <tr>
                 <td>Income Approach${citeInline('NYU')}</td>
-                <td>${fmt(iv)}</td>
-                <td>${accessor ? `${(accessor.getIncomeWeight() * 100).toFixed(0)}%` : '40%'}</td>
+                <td>${accessor ? accessor.getFormattedApproachValue('income') : fmt(iv)}</td>
+                <td>${accessor ? accessor.getFormattedApproachWeight('income') : '40%'}</td>
               </tr>
               <tr>
                 <td>Market Approach${citeInline('BBS')}</td>
-                <td>${fmt(mv)}</td>
-                <td>${accessor ? `${(accessor.getMarketWeight() * 100).toFixed(0)}%` : '40%'}</td>
+                <td>${accessor ? accessor.getFormattedApproachValue('market') : fmt(mv)}</td>
+                <td>${accessor ? accessor.getFormattedApproachWeight('market') : '40%'}</td>
               </tr>
             </tbody>
           </table>
           ${synthesisTableHTML ? `<h3>Value Synthesis Detail</h3>${synthesisTableHTML}` : ''}
-    
+
     <div class="three-col">
       <div class="col">
         <div class="col-title">Asset Sale Value</div>
-        <div class="col-value">${fmt(av)}</div>
+        <div class="col-value">${accessor ? accessor.getFormattedApproachValue('asset') : fmt(av)}</div>
         <div class="col-text">Includes inventory, fixtures, equipment, and intangible assets. Buyer operates from newly formed entity.</div>
       </div>
       <div class="col">
@@ -1281,10 +1327,10 @@ export class ProfessionalPDFGenerator {
     <div style="margin-top: 20px; padding: 15px; background: #F5F5F5; border-radius: 8px;">
       <h3 style="margin-top: 0; color: #1E3A5F;">Key Financial Metrics</h3>
       <table style="width: 100%; font-size: 10pt;">
-        <tr><td>Normalized SDE</td><td style="text-align: right; font-weight: bold;">${accessor.getWeightedSDEFormatted()}</td></tr>
-        <tr><td>SDE Multiple Applied</td><td style="text-align: right; font-weight: bold;">${accessor.getSDEMultipleFormatted()} ${citeInline('BBS')}</td></tr>
-        <tr><td>Capitalization Rate</td><td style="text-align: right; font-weight: bold;">${accessor.getCapRateFormatted()} ${citeInline('NYU')}</td></tr>
-        <tr><td>Value Range</td><td style="text-align: right; font-weight: bold;">${accessor.getValueRangeFormatted()}</td></tr>
+        <tr><td>Normalized SDE</td><td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDE('weighted')}</td></tr>
+        <tr><td>SDE Multiple Applied</td><td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDEMultiple()} ${citeInline('BBS')}</td></tr>
+        <tr><td>Capitalization Rate</td><td style="text-align: right; font-weight: bold;">${accessor.getFormattedCapRate()} ${citeInline('NYU')}</td></tr>
+        <tr><td>Value Range</td><td style="text-align: right; font-weight: bold;">${accessor.getFormattedValueRange().display}</td></tr>
       </table>
     </div>
     ` : ''}
@@ -1301,6 +1347,24 @@ export class ProfessionalPDFGenerator {
   ${companyProfile ? `
   <div class="section" id="section-company-profile">
     <h1 class="section-title">Company Profile</h1>
+    ${accessor ? `
+    <div style="margin-bottom: 20px; padding: 15px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
+      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0; font-weight: bold; width: 160px;">Company Name</td>
+          <td style="padding: 6px 0;">${safeString(accessor.getCompanyName())}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0; font-weight: bold;">Industry</td>
+          <td style="padding: 6px 0;">${safeString(accessor.getIndustryName())}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0; font-weight: bold;">NAICS Code</td>
+          <td style="padding: 6px 0;">${safeString(accessor.getNaicsCode())}</td>
+        </tr>
+      </table>
+    </div>
+    ` : ''}
     <div class="narrative">
       ${companyProfile}
     </div>

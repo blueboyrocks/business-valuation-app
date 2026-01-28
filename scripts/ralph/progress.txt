@@ -18,6 +18,11 @@
 - DataAccessor.formatPercentage expects decimal input (0.156 -> "15.6%"); safePercentage expects already-percentage input (25.5 -> "25.5%")
 - DataAccessor edge cases: returns 0 for margins/ratios when denominator is 0 (revenue, current_liabilities, equity)
 - Test edge cases use `buildMockStore({ financial: { ...store.financial, revenue: 0 } })` pattern for section-level overrides
+- reconcileWithNarratives() accepts `{ hasCalculationEngine: boolean }` option - when true, it skips calc engine authoritative fields (approach values, revenue, concluded value)
+- Data flow is one-directional: Calculation Engine -> DataStore -> Narratives. Narratives NEVER modify calculation values.
+- In professional-pdf-generator.ts, accessor is optional - always use `accessor ? accessor.method() : fallbackValue` pattern
+- Use canonical accessor method names (getFormattedSDE, getFormattedValueRange, getFormattedApproachWeight) not deprecated ones (getSDEFormatted, getValueRangeFormatted)
+- Wrap accessor string outputs in safeString() when embedding in HTML text nodes to prevent [object Object] or undefined
 
 ## Status: IN PROGRESS
 
@@ -27,8 +32,8 @@
 - US-003: DONE - Create safe string utilities
 - US-004: DONE - Unit tests for DataStore, DataAccessor, safe-string
 - US-005: DONE - Asset approach fallback chain
-- US-006: PENDING - Remove RECONCILE override logic
-- US-007: PENDING - Wire DataAccessor into PDF (cover, exec summary, conclusion, company)
+- US-006: DONE - Remove RECONCILE override logic
+- US-007: DONE - Wire DataAccessor into PDF (cover, exec summary, conclusion, company)
 - US-008: PENDING - Wire DataAccessor into PDF (financial, asset/income/market approach)
 - US-009: PENDING - Wire DataAccessor into PDF (reconciliation, risk, KPI, remaining)
 - US-010: PENDING - Create value consistency validator
@@ -193,4 +198,43 @@
   - Two pre-existing test failures exist in data-quality-scorer.test.ts and tax-form-validator.test.ts - not related to our changes.
   - The `safeNumber` utility from calculations/utils.ts safely converts undefined/null to 0, useful for optional input params.
   - There are TWO different asset approach implementations: lib/calculations/asset-approach-calculator.ts (detailed, used by calculation engine) and lib/valuation/engine.ts (simplified, legacy). Only the former was updated.
+---
+
+## 2026-01-28 - US-006
+- What was implemented:
+  - Added `hasCalculationEngine` option to `reconcileWithNarratives()` to prevent narrative values from overwriting deterministic calculation engine values
+  - When `hasCalculationEngine: true`, the function skips all calc-engine-authoritative fields: asset_approach_value, income_approach_value, market_approach_value, annual_revenue, valuation_amount
+  - The concluded value fallback calculation (weighted average from approach values) is also skipped when the calc engine has already produced a concluded value
+  - Updated the regenerate route to pass `{ hasCalculationEngine: hasCalcEngine }` to `reconcileWithNarratives()`
+  - Verified pass-09-market-approach.ts "RECONCILE" mentions are legitimate prompt instructions (reconciling SDE vs revenue multiples within the market approach) - no code changes needed
+  - Data flow is now strictly one-directional: Calculation Engine -> DataStore -> Narratives
+- Files changed:
+  - lib/extraction/narrative-data-extractor.ts (added hasCalculationEngine guard, improved docs)
+  - app/api/reports/[id]/regenerate/route.ts (passes hasCalculationEngine flag to reconcile)
+- **Learnings for future iterations:**
+  - `reconcileWithNarratives()` has only one caller: the regenerate route. Any changes to its signature are low-risk.
+  - `extractDataFromNarratives()` is only called internally by `reconcileWithNarratives()` - it's not exported independently for use elsewhere.
+  - The pass-09-market-approach.ts uses "RECONCILE" in prompt text to instruct the AI to reconcile SDE vs revenue multiple methods within the market approach - this is legitimate analytical guidance, not a code path that overwrites values.
+  - The `hasCalcEngine` variable in regenerate/route.ts is true when `calcResults?.synthesis?.final_concluded_value` exists.
+  - Pre-existing test failures (4 tests in 3 files: calculation-engine, data-quality-scorer, tax-form-validator) continue to be unrelated to our work.
+---
+
+## 2026-01-28 - US-007
+- What was implemented:
+  - Wired DataAccessor into 4 PDF sections in lib/pdf/professional-pdf-generator.ts:
+  - **Cover Page**: Uses accessor.getCompanyName(), accessor.getValuationDate(), accessor.getFormattedFinalValue(), accessor.getIndustryName(), accessor.getNaicsCode() with safeString() fallbacks
+  - **Executive Summary**: Added "Key Financial Highlights" box using accessor.getFormattedRevenue(), getFormattedSDE(), getFormattedFinalValue(), getFormattedValueRange().display, getFormattedApproachValue/Weight for all 3 approaches
+  - **Conclusion of Value**: Replaced raw reportData access with accessor methods throughout: getFormattedFinalValue() for main value card, getFormattedApproachValue/Weight('asset'|'income'|'market') for approach table, getFormattedSDE('weighted') for normalized SDE, getFormattedSDEMultiple(), getFormattedCapRate(), getFormattedValueRange().display for key metrics. Used canonical method names instead of deprecated ones.
+  - **Company Profile**: Added company info header box using accessor.getCompanyName(), getIndustryName(), getNaicsCode() with safeString() wrappers
+  - Added import for safeString from lib/utils/safe-string.ts
+  - All accessor usage has graceful fallbacks (ternary with reportData values when accessor is undefined)
+- Files changed:
+  - lib/pdf/professional-pdf-generator.ts (added safeString import, updated cover page, exec summary, conclusion of value, company profile sections)
+- **Learnings for future iterations:**
+  - The PDF generator's buildHTML method receives accessor as an optional parameter - all accessor usage MUST have fallback paths for when accessor is undefined
+  - The file uses template literals extensively for HTML generation - accessor calls are embedded directly in template expressions
+  - The Conclusion of Value section was already partially wired with accessor (old deprecated method names) - updated to use canonical names (getFormattedSDE('weighted') vs getWeightedSDEFormatted(), getFormattedValueRange().display vs getValueRangeFormatted())
+  - safeString() is useful for wrapping accessor.getCompanyName() etc. to prevent [object Object] or undefined in cover page/company profile where values are displayed as plain text
+  - Enterprise value and liquidation value are computed separately (not from accessor) and don't need accessor wiring - they use their own calculation logic
+  - The exec summary section content is markdown narrative - adding a financial highlights box after the narrative is the correct pattern for injecting accessor-sourced values
 ---
