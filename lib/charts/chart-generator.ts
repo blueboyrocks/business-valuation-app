@@ -7,7 +7,7 @@
  * using string-based SVG construction for Puppeteer/HTML-to-PDF rendering.
  */
 
-import { CHART_COLORS, CHART_DIMENSIONS, CHART_FONTS } from './theme';
+import { CHART_COLORS, CHART_SERIES_PALETTE, CHART_DIMENSIONS, CHART_FONTS } from './theme';
 import { rect, line, text, circle, path, svgWrapper, gridLines, yAxis, xAxis } from './svg-primitives';
 
 // ============ DATA INTERFACES ============
@@ -117,6 +117,13 @@ export class ReportChartGenerator {
 
     const parts: string[] = [];
 
+    // Gradient definition for revenue bars
+    const gradientDef = `<defs><linearGradient id="revenueBarGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${CHART_COLORS.primary}" stop-opacity="1"/>
+      <stop offset="100%" stop-color="${CHART_COLORS.secondary}" stop-opacity="0.85"/>
+    </linearGradient></defs>`;
+    parts.push(gradientDef);
+
     // Background
     parts.push(rect(0, 0, width, height, CHART_COLORS.background));
 
@@ -146,7 +153,7 @@ export class ReportChartGenerator {
       const barHeight = (values[i] / maxVal) * plotHeight;
       const by = plotBottom - barHeight;
 
-      parts.push(rect(bx, by, barWidth, barHeight, CHART_COLORS.primary, { rx: 3 }));
+      parts.push(rect(bx, by, barWidth, barHeight, 'url(#revenueBarGrad)', { rx: 3 }));
 
       // Value label above bar
       parts.push(text(centerX, by - 6, formatCompactCurrency(values[i]), {
@@ -246,20 +253,24 @@ export class ReportChartGenerator {
       }
     };
 
-    plotLine(sdeValues, CHART_COLORS.primary);
-    plotLine(ebitdaValues, CHART_COLORS.secondary);
+    // Use design token palette: navy for SDE, green for EBITDA
+    const sdeColor = CHART_SERIES_PALETTE[0]; // navy
+    const ebitdaColor = CHART_SERIES_PALETTE[1]; // green
+
+    plotLine(sdeValues, sdeColor);
+    plotLine(ebitdaValues, ebitdaColor);
 
     // Legend
     const legendY = height - 10;
     const legendCenterX = width / 2;
     // SDE legend item
-    parts.push(rect(legendCenterX - 100, legendY - 8, 12, 12, CHART_COLORS.primary, { rx: 2 }));
+    parts.push(rect(legendCenterX - 100, legendY - 8, 12, 12, sdeColor, { rx: 2 }));
     parts.push(text(legendCenterX - 84, legendY + 2, 'SDE', {
       fontSize: CHART_FONTS.valueSize,
       fill: CHART_COLORS.text,
     }));
     // EBITDA legend item
-    parts.push(rect(legendCenterX + 20, legendY - 8, 12, 12, CHART_COLORS.secondary, { rx: 2 }));
+    parts.push(rect(legendCenterX + 20, legendY - 8, 12, 12, ebitdaColor, { rx: 2 }));
     parts.push(text(legendCenterX + 36, legendY + 2, 'EBITDA', {
       fontSize: CHART_FONTS.valueSize,
       fill: CHART_COLORS.text,
@@ -295,7 +306,8 @@ export class ReportChartGenerator {
     const plotBottom = height - padding.bottom;
     const plotWidth = plotRight - plotLeft;
 
-    const defaultColors = [CHART_COLORS.primary, CHART_COLORS.secondary, CHART_COLORS.accent, CHART_COLORS.success];
+    // Use centralized design token palette for approach bars
+    const defaultColors = [CHART_SERIES_PALETTE[0], CHART_SERIES_PALETTE[1], CHART_SERIES_PALETTE[2], CHART_SERIES_PALETTE[3]];
     const allValues = [...approaches.map(a => a.value), finalValue];
     const maxVal = niceMax(Math.max(...allValues));
 
@@ -306,6 +318,17 @@ export class ReportChartGenerator {
     const startY = plotTop + (availableHeight - totalBarsHeight) / 2;
 
     const parts: string[] = [];
+
+    // Gradient definitions for each approach bar
+    const gradientDefs: string[] = [];
+    for (let i = 0; i < barCount; i++) {
+      const color = approaches[i].color || defaultColors[i % defaultColors.length];
+      gradientDefs.push(`<linearGradient id="approachGrad${i}" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0%" stop-color="${color}" stop-opacity="1"/>
+        <stop offset="100%" stop-color="${color}" stop-opacity="0.7"/>
+      </linearGradient>`);
+    }
+    parts.push(`<defs>${gradientDefs.join('')}</defs>`);
 
     // Background
     parts.push(rect(0, 0, width, height, CHART_COLORS.background));
@@ -333,7 +356,6 @@ export class ReportChartGenerator {
     // Horizontal bars
     for (let i = 0; i < barCount; i++) {
       const approach = approaches[i];
-      const color = approach.color || defaultColors[i % defaultColors.length];
       const by = startY + i * (barHeight + 12);
       const bw = (approach.value / maxVal) * plotWidth;
 
@@ -345,8 +367,8 @@ export class ReportChartGenerator {
         fontWeight: '500',
       }));
 
-      // Bar
-      parts.push(rect(plotLeft, by, Math.max(bw, 2), barHeight, color, { rx: 3, opacity: 0.85 }));
+      // Bar with gradient fill
+      parts.push(rect(plotLeft, by, Math.max(bw, 2), barHeight, `url(#approachGrad${i})`, { rx: 3 }));
 
       // Value at end of bar
       const labelX = plotLeft + bw + 6;
@@ -596,17 +618,22 @@ export class ReportChartGenerator {
       }
     };
 
-    plotSeries(grossMargins, CHART_COLORS.accent);
-    plotSeries(sdeMargins, CHART_COLORS.primary);
-    plotSeries(ebitdaMargins, CHART_COLORS.secondary);
+    // Use design token palette: gold for gross, navy for SDE, green for EBITDA
+    const grossColor = CHART_SERIES_PALETTE[2]; // gold
+    const sdeSeriesColor = CHART_SERIES_PALETTE[0]; // navy
+    const ebitdaSeriesColor = CHART_SERIES_PALETTE[1]; // green
+
+    plotSeries(grossMargins, grossColor);
+    plotSeries(sdeMargins, sdeSeriesColor);
+    plotSeries(ebitdaMargins, ebitdaSeriesColor);
 
     // Legend
     const legendY = height - 6;
     const legendStartX = width / 2 - 130;
     const items = [
-      { label: 'Gross Margin', color: CHART_COLORS.accent },
-      { label: 'SDE Margin', color: CHART_COLORS.primary },
-      { label: 'EBITDA Margin', color: CHART_COLORS.secondary },
+      { label: 'Gross Margin', color: grossColor },
+      { label: 'SDE Margin', color: sdeSeriesColor },
+      { label: 'EBITDA Margin', color: ebitdaSeriesColor },
     ];
     let lx = legendStartX;
     for (const item of items) {
@@ -682,32 +709,34 @@ export class ReportChartGenerator {
       const kpi = kpis[i];
       const groupCenterX = plotLeft + groupWidth * (i + 0.5);
 
-      // Company bar (left of center)
+      // Company bar (left of center) — navy from palette
+      const compColor = CHART_SERIES_PALETTE[0];
       const compBarX = groupCenterX - subBarWidth - subBarGap / 2;
       const compBarH = (kpi.companyValue / maxVal) * plotHeight;
       const compBarY = plotBottom - compBarH;
-      parts.push(rect(compBarX, compBarY, subBarWidth, compBarH, CHART_COLORS.primary, { rx: 2 }));
+      parts.push(rect(compBarX, compBarY, subBarWidth, compBarH, compColor, { rx: 2 }));
 
       // Company value label
       parts.push(text(compBarX + subBarWidth / 2, compBarY - 5, `${kpi.companyValue.toFixed(1)}%`, {
         fontSize: CHART_FONTS.axisSize,
         fontWeight: 'bold',
         anchor: 'middle',
-        fill: CHART_COLORS.primary,
+        fill: compColor,
       }));
 
-      // Benchmark bar (right of center)
+      // Benchmark bar (right of center) — gold from palette
+      const benchColor = CHART_SERIES_PALETTE[2];
       const benchBarX = groupCenterX + subBarGap / 2;
       const benchBarH = (kpi.benchmark / maxVal) * plotHeight;
       const benchBarY = plotBottom - benchBarH;
-      parts.push(rect(benchBarX, benchBarY, subBarWidth, benchBarH, CHART_COLORS.secondary, { rx: 2, opacity: 0.75 }));
+      parts.push(rect(benchBarX, benchBarY, subBarWidth, benchBarH, benchColor, { rx: 2, opacity: 0.75 }));
 
       // Benchmark value label
       parts.push(text(benchBarX + subBarWidth / 2, benchBarY - 5, `${kpi.benchmark.toFixed(1)}%`, {
         fontSize: CHART_FONTS.axisSize,
         fontWeight: 'bold',
         anchor: 'middle',
-        fill: CHART_COLORS.secondary,
+        fill: benchColor,
       }));
 
       // KPI name label below
@@ -721,12 +750,12 @@ export class ReportChartGenerator {
     // Legend
     const legendY = height - 6;
     const legendCenterX = width / 2;
-    parts.push(rect(legendCenterX - 110, legendY - 8, 10, 10, CHART_COLORS.primary, { rx: 2 }));
+    parts.push(rect(legendCenterX - 110, legendY - 8, 10, 10, CHART_SERIES_PALETTE[0], { rx: 2 }));
     parts.push(text(legendCenterX - 96, legendY + 1, 'Company', {
       fontSize: CHART_FONTS.axisSize,
       fill: CHART_COLORS.text,
     }));
-    parts.push(rect(legendCenterX + 10, legendY - 8, 10, 10, CHART_COLORS.secondary, { rx: 2 }));
+    parts.push(rect(legendCenterX + 10, legendY - 8, 10, 10, CHART_SERIES_PALETTE[2], { rx: 2 }));
     parts.push(text(legendCenterX + 24, legendY + 1, 'Benchmark', {
       fontSize: CHART_FONTS.axisSize,
       fill: CHART_COLORS.text,

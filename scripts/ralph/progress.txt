@@ -58,7 +58,7 @@
 - US-021: DONE - SDE calculation detail table
 - US-022: DONE - Cap rate buildup table
 - US-023: DONE - Asset adjustment table
-- US-024: PENDING - Chart design standards
+- US-024: DONE - Chart design standards
 - US-025: PENDING - Professional disclaimers section
 - US-026: PENDING - Wire value injection into narrative passes
 - US-027: PENDING - Wire quality gate into API endpoints
@@ -623,4 +623,35 @@
   - "Other Assets" is computed as the difference between total_assets and the sum of individually tracked categories. This includes intangible_assets and any items not broken out.
   - The asset adjustment table follows the same pattern as capRateBuiltupTableToHTML: a dedicated HTML method separate from toHTML() since the table structure differs from SDE/Market/Synthesis tables.
   - Default adjustments in the table generator match those in asset-approach-calculator.ts: 5% AR allowance and 10% inventory obsolescence.
+---
+
+## 2026-01-28 - US-024
+- What was implemented:
+  - Updated lib/charts/theme.ts to derive all colors from the centralized design system (lib/pdf/design-tokens.ts):
+    - CHART_COLORS now imports COLORS, using primary, primaryLight, accent, positive, negative, text, textLight, background, backgroundAlt, and border from design tokens
+    - Grid color changed from standalone #E0E0E0 to COLORS.border (#E5E7EB) for consistency
+    - Success color changed from #4CAF50 to COLORS.positive (#059669) to match design system green
+    - Danger color changed from #F44336 to COLORS.negative (#DC2626) to match design system red
+    - BackgroundAlt unified from #F5F5F5 to COLORS.backgroundAlt (#F9FAFB)
+  - Added CHART_SERIES_PALETTE re-export from design tokens (navy, green, gold, purple, red, cyan) for multi-series chart coloring
+  - CHART_FONTS.family now references TYPOGRAPHY.bodyFont (Inter) from design tokens instead of hardcoded string
+  - Updated lib/charts/chart-generator.ts to use centralized palette:
+    - Revenue Trend: bars now use gradient fill (navy → lighter navy) via SVG <defs><linearGradient>
+    - SDE/EBITDA Trend: series use CHART_SERIES_PALETTE[0] (navy) and [1] (green) instead of CHART_COLORS.primary/secondary
+    - Valuation Comparison: approach bars use CHART_SERIES_PALETTE colors and gradient fills (solid → 70% opacity horizontal gradient)
+    - Profitability Margins: three series use CHART_SERIES_PALETTE[2] (gold), [0] (navy), [1] (green)
+    - KPI Benchmark: company bars use CHART_SERIES_PALETTE[0] (navy), benchmark bars use [2] (gold) for better visual distinction
+  - All chart generators already had value labels (above bars, at line points, at bar ends) - confirmed present
+  - Grid lines already used subtle styling (strokeWidth: 0.5, dashArray: '3,3') - now using lighter design token border color
+  - All 5 chart types (revenue trend, SDE/EBITDA trend, valuation comparison, risk gauge, profitability margins) + KPI benchmark verified
+- Files changed:
+  - lib/charts/theme.ts (imports from design-tokens.ts, derived all colors and fonts)
+  - lib/charts/chart-generator.ts (imports CHART_SERIES_PALETTE, gradient fills, palette colors for all multi-series charts)
+- **Learnings for future iterations:**
+  - CHART_COLORS.warning (#FFC107 amber) has no direct equivalent in design tokens - it's chart-specific for the risk gauge's yellow segments. Kept as a standalone value.
+  - The risk gauge uses a green-yellow-red gradient across 10 arc segments with intermediate colors (#8BC34A light green). These are chart-specific semantic colors for risk visualization, not general theme colors.
+  - SVG gradient fills use <defs><linearGradient> elements - must be placed inside the SVG element (via svgWrapper). The gradient IDs (revenueBarGrad, approachGrad0/1/2) must be unique per SVG.
+  - CHART_SERIES_PALETTE is the ordered 6-color array: navy[0], green[1], gold[2], purple[3], red[4], cyan[5]. Use consistent indices across related charts for visual coherence.
+  - The KPI page generator (lib/pdf/kpi-page-generator.ts) has its own hardcoded CSS colors (#1E3A5F, #C9A962) - these are HTML page styling, not chart SVG colors. They could be updated in a future story to use design tokens.
+  - svg-primitives.ts imports from theme.ts, so the color changes propagate automatically to grid lines, axes, and default text styles.
 ---

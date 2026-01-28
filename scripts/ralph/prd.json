@@ -431,7 +431,7 @@
         "Typecheck passes"
       ],
       "priority": 24,
-      "passes": false,
+      "passes": true,
       "notes": "Primary files: lib/charts/chart-generator.ts and lib/charts/theme.ts. Update theme to use design tokens, ensure all chart generators inherit the theme."
     },
     {
