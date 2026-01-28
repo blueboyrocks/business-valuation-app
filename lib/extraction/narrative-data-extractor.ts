@@ -197,15 +197,38 @@ export function extractDataFromNarratives(
 }
 
 /**
- * Reconcile structured data with narrative-extracted data
- * Uses narrative values as fallback when structured data is missing
+ * Reconcile structured data with narrative-extracted data.
+ *
+ * IMPORTANT: This function only FILLS MISSING data (null, undefined, or 0).
+ * It NEVER overwrites existing calculation engine values. The data flow is
+ * one-directional: Calculation Engine -> DataStore -> Narratives.
+ * Narratives receive values but never modify them.
+ *
+ * @param structuredData - The structured report data (may already have calculation engine values)
+ * @param narratives - Narrative sections to extract fallback values from
+ * @param options - Optional configuration
+ * @param options.hasCalculationEngine - If true, skip reconciliation for fields that the
+ *   calculation engine is authoritative over (approach values, concluded value, revenue).
+ *   This prevents narrative-extracted values from ever overwriting deterministic calculations.
  */
 export function reconcileWithNarratives(
   structuredData: any,
-  narratives: Record<string, string | { content: string } | undefined>
+  narratives: Record<string, string | { content: string } | undefined>,
+  options?: { hasCalculationEngine?: boolean }
 ): any {
+  const hasCalcEngine = options?.hasCalculationEngine ?? false;
   const narrativeData = extractDataFromNarratives(narratives);
   const reconciled = { ...structuredData };
+
+  // Fields that the calculation engine is authoritative over.
+  // When the calc engine has run, these fields must NEVER be overwritten by narrative data.
+  const calculationEngineFields = new Set([
+    'asset_approach_value',
+    'income_approach_value',
+    'market_approach_value',
+    'annual_revenue',
+    'valuation_amount',
+  ]);
 
   // Map narrative fields to structured data fields
   const mappings: Array<{
@@ -224,22 +247,27 @@ export function reconcileWithNarratives(
   let reconciliationsMade = 0;
 
   for (const { narrativeKey, structuredKey, minValue } of mappings) {
+    // GUARD: Never overwrite calculation engine authoritative fields
+    if (hasCalcEngine && calculationEngineFields.has(structuredKey)) {
+      continue;
+    }
+
     const currentValue = reconciled[structuredKey];
     const narrativeValue = narrativeData[narrativeKey];
 
-    // If structured data is missing or zero, use narrative value
+    // Only fill MISSING data (null, undefined, or 0) - never overwrite existing values
     if ((!currentValue || currentValue === 0) && narrativeValue && narrativeValue > 0) {
       // Apply minimum value filter if specified
       if (minValue && narrativeValue < minValue) continue;
 
-      console.log(`[RECONCILE] Using narrative value for ${structuredKey}: $${narrativeValue.toLocaleString()}`);
+      console.log(`[RECONCILE] Filling missing value for ${structuredKey}: $${narrativeValue.toLocaleString()}`);
       reconciled[structuredKey] = narrativeValue;
       reconciliationsMade++;
     }
   }
 
-  // Calculate concluded value if missing but approach values exist
-  if (!reconciled.valuation_amount || reconciled.valuation_amount === 0) {
+  // Calculate concluded value ONLY if missing AND no calculation engine
+  if (!hasCalcEngine && (!reconciled.valuation_amount || reconciled.valuation_amount === 0)) {
     const asset = reconciled.asset_approach_value || 0;
     const income = reconciled.income_approach_value || 0;
     const market = reconciled.market_approach_value || 0;
@@ -264,7 +292,9 @@ export function reconcileWithNarratives(
   }
 
   if (reconciliationsMade > 0) {
-    console.log(`[RECONCILE] Made ${reconciliationsMade} reconciliations from narrative data`);
+    console.log(`[RECONCILE] Made ${reconciliationsMade} reconciliation(s) from narrative data`);
+  } else {
+    console.log(`[RECONCILE] No reconciliations needed - all values already present`);
   }
 
   return reconciled;

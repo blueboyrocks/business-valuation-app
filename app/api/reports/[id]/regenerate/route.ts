@@ -550,6 +550,9 @@ export async function POST(
     }
 
     // 7c. Reconcile with narrative data (fallback for missing values)
+    // IMPORTANT: Pass hasCalculationEngine flag to prevent narrative values from
+    // overwriting deterministic calculation engine values. Data flow is one-directional:
+    // Calculation Engine -> DataStore -> Narratives (narratives never modify calc values).
     const narrativesForReconciliation = {
       executive_summary: finalReport.narratives?.executive_summary,
       asset_approach_narrative: finalReport.narratives?.asset_approach_narrative || passes.pass7?.narrative,
@@ -557,7 +560,11 @@ export async function POST(
       market_approach_narrative: finalReport.narratives?.market_approach_narrative || passes.pass9?.narrative,
     };
 
-    const reconciledReport = reconcileWithNarratives(reportWithQuality, narrativesForReconciliation);
+    const reconciledReport = reconcileWithNarratives(
+      reportWithQuality,
+      narrativesForReconciliation,
+      { hasCalculationEngine: hasCalcEngine }
+    );
     console.log(`[REGENERATE] After reconciliation - Asset: ${reconciledReport.asset_approach_value}, Income: ${reconciledReport.income_approach_value}, Market: ${reconciledReport.market_approach_value}`);
 
     // 7c. Validate the final report data
