@@ -40,7 +40,7 @@
 - US-009: DONE - Wire DataAccessor into PDF (reconciliation, risk, KPI, remaining)
 - US-010: DONE - Create value consistency validator
 - US-011: DONE - Create business rule validator
-- US-012: PENDING - Create content completeness validator
+- US-012: DONE - Create content completeness validator
 - US-013: PENDING - Create narrative value injection system
 - US-014: PENDING - Create post-generation narrative validator
 - US-015: PENDING - Create pre-PDF quality gate
@@ -322,4 +322,25 @@
   - DataAccessor stores approach weights as decimals (0.40 = 40%), so weight sum check compares against 1.0 not 100.
   - DataAccessor stores cap rate as decimal (0.25 = 25%), so cap rate range check uses 0.05-0.60 bounds.
   - The validator only uses DataAccessor methods - no direct DataStore access needed. This keeps it decoupled from the store structure.
+---
+
+## 2026-01-28 - US-012
+- What was implemented:
+  - Created lib/validation/completeness-validator.ts with content completeness validation
+  - Exported types: SectionCheck, CompletenessResult
+  - Main function: validateCompleteness(sectionContents: Map<string,string>) returns CompletenessResult with passed, sections array, errors, warnings, totalWordCount
+  - 11 required sections with minimum word counts: Executive Summary (400), Conclusion of Value (50), Company Profile (200), Industry Analysis (150), Financial Analysis (300), Asset Approach (100), Income Approach (150), Market Approach (200), Risk Assessment (150), Assumptions and Limiting Conditions (100), Sources and References (50)
+  - Case-insensitive partial matching via sectionMatches() - handles camelCase keys ("executiveSummary"), display names ("Executive Summary"), and slug formats ("executive-summary")
+  - countWords() strips HTML tags before counting
+  - Missing required sections are errors (blocking) - `passed` is false
+  - Below-minimum word counts are warnings (advisory)
+  - Total word count below 5000 is a warning
+  - Used Array.from(map.keys()) pattern for Map iteration (consistent with other validators)
+- Files changed:
+  - lib/validation/completeness-validator.ts (new file, ~210 lines)
+- **Learnings for future iterations:**
+  - Section keys in the PDF generator use camelCase (e.g., "executiveSummary", "conclusionOfValue") - the matcher normalizes by stripping spaces/hyphens/underscores and lowercasing
+  - The match uses bidirectional contains check: normalized key includes pattern OR pattern includes normalized key - this handles both partial and full section name matches
+  - countWords strips HTML tags first since section content may be HTML from the PDF generator
+  - No DataAccessor dependency needed - this validator only needs section text content
 ---
