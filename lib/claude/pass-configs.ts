@@ -515,6 +515,79 @@ export interface CalcResultsForNarrative {
 }
 
 /**
+ * Format currency for display in values block
+ */
+function formatCurrencyForBlock(value: number): string {
+  if (!value || isNaN(value)) return 'N/A';
+  return new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(value);
+}
+
+/**
+ * Format percentage for display in values block
+ */
+function formatPercentForBlock(value: number): string {
+  if (value === undefined || value === null || isNaN(value)) return 'N/A';
+  return `${(value * 100).toFixed(1)}%`;
+}
+
+/**
+ * Generate an authoritative values block from calculation results and pass outputs.
+ * This block is prepended to narrative prompts to ensure AI uses correct values.
+ */
+function generateValuesBlockFromCalcResults(
+  calcResults: CalcResultsForNarrative,
+  companyName: string,
+  industryName?: string,
+  naicsCode?: string,
+  valuationDate?: string,
+  revenue?: number
+): string {
+  const valueLow = formatCurrencyForBlock(calcResults.value_range_low);
+  const valueHigh = formatCurrencyForBlock(calcResults.value_range_high);
+  const valueRange = `${valueLow} - ${valueHigh}`;
+
+  return `
+===== AUTHORITATIVE FINANCIAL VALUES =====
+Use ONLY the values below when writing this section. Do NOT calculate, derive, round, or estimate any figures.
+
+COMPANY INFORMATION:
+  - Company Name: ${companyName || 'N/A'}
+  - Industry: ${industryName || 'N/A'}
+  - NAICS Code: ${naicsCode || 'N/A'}
+  - Valuation Date: ${valuationDate || 'N/A'}
+
+VALUATION CONCLUSION:
+  - Fair Market Value: ${formatCurrencyForBlock(calcResults.concluded_value)}
+  - Value Range: ${valueRange}
+  - SDE Multiple: ${calcResults.sde_multiple?.toFixed(2) || 'N/A'}x
+
+FINANCIAL METRICS:
+  - Annual Revenue: ${formatCurrencyForBlock(revenue || 0)}
+  - Normalized/Weighted SDE: ${formatCurrencyForBlock(calcResults.weighted_sde)}
+  - Weighted EBITDA: ${formatCurrencyForBlock(calcResults.weighted_ebitda)}
+
+VALUATION APPROACHES:
+  - Asset Approach: ${formatCurrencyForBlock(calcResults.asset_approach_value)} (Weight: ${formatPercentForBlock(calcResults.asset_weight)})
+  - Income Approach: ${formatCurrencyForBlock(calcResults.income_approach_value)} (Weight: ${formatPercentForBlock(calcResults.income_weight)})
+  - Market Approach: ${formatCurrencyForBlock(calcResults.market_approach_value)} (Weight: ${formatPercentForBlock(calcResults.market_weight)})
+
+===== STRICT RULES =====
+1. You MUST use the EXACT figures provided above when referencing any financial value.
+2. DO NOT calculate, derive, round, or estimate any values - use them exactly as shown.
+3. DO NOT invent or hallucinate any financial figures not listed above.
+4. When mentioning the fair market value, use exactly: ${formatCurrencyForBlock(calcResults.concluded_value)}
+5. When mentioning the SDE multiple, use exactly: ${calcResults.sde_multiple?.toFixed(2) || 'N/A'}x
+==========================================
+
+`;
+}
+
+/**
  * Build prompts for a narrative pass (11a-11k)
  */
 export function buildNarrativePassPrompt(
@@ -560,6 +633,26 @@ export function buildNarrativePassPrompt(
 
   // Build industry benchmarks from industry data
   const industryBenchmarks = (industryData.benchmarks || industryData.industry_benchmarks || {}) as Record<string, unknown>;
+
+  // Generate values block from calculation results when available
+  let valuesBlock = '';
+  if (calculationResults && calculationResults.concluded_value > 0) {
+    const industryClassification = pass1?.industry_classification as Record<string, unknown> | undefined;
+    const rawRevenue = normalizedEarnings.revenue || (incomeStatements[0] as Record<string, unknown>)?.revenue;
+    const revenue = typeof rawRevenue === 'object' && rawRevenue !== null
+      ? (rawRevenue as Record<string, unknown>).total_revenue as number
+      : rawRevenue as number;
+
+    valuesBlock = generateValuesBlockFromCalcResults(
+      calculationResults,
+      (companyProfile.legal_name || companyProfile.company_name || report.company_name) as string,
+      industryClassification?.naics_description as string || industryData.industry_name as string,
+      industryClassification?.naics_code as string,
+      pass1?.valuation_date as string,
+      revenue
+    );
+    console.log(`[NARRATIVE ${passId}] Values block injected with concluded value: ${formatCurrencyForBlock(calculationResults.concluded_value)}`);
+  }
 
   // Helper to get narrative content
   const getNarrativeContent = (result: unknown): string => {
@@ -613,7 +706,7 @@ export function buildNarrativePassPrompt(
       };
       return {
         systemPrompt: PASS_11A_SYSTEM_PROMPT,
-        userPrompt: buildPass11aPrompt(companyProfile, financialSummary, effectiveValuationResults, riskAssessment, otherNarratives),
+        userPrompt: valuesBlock + buildPass11aPrompt(companyProfile, financialSummary, effectiveValuationResults, riskAssessment, otherNarratives),
       };
     }
 
@@ -621,7 +714,7 @@ export function buildNarrativePassPrompt(
       // Company Overview
       return {
         systemPrompt: PASS_11B_SYSTEM_PROMPT,
-        userPrompt: buildPass11bPrompt(companyProfile, incomeStatements, latestBalance || {}),
+        userPrompt: valuesBlock + buildPass11bPrompt(companyProfile, incomeStatements, latestBalance || {}),
       };
     }
 
@@ -629,7 +722,7 @@ export function buildNarrativePassPrompt(
       // Financial Analysis
       return {
         systemPrompt: PASS_11C_SYSTEM_PROMPT,
-        userPrompt: buildPass11cPrompt(incomeStatements, latestBalance || {}, normalizedEarnings, industryBenchmarks),
+        userPrompt: valuesBlock + buildPass11cPrompt(incomeStatements, latestBalance || {}, normalizedEarnings, industryBenchmarks),
       };
     }
 
@@ -637,7 +730,7 @@ export function buildNarrativePassPrompt(
       // Industry Analysis
       return {
         systemPrompt: PASS_11D_SYSTEM_PROMPT,
-        userPrompt: buildPass11dPrompt(industryData, economicConditions, comparableTransactions),
+        userPrompt: valuesBlock + buildPass11dPrompt(industryData, economicConditions, comparableTransactions),
       };
     }
 
@@ -645,7 +738,7 @@ export function buildNarrativePassPrompt(
       // Risk Assessment
       return {
         systemPrompt: PASS_11E_SYSTEM_PROMPT,
-        userPrompt: buildPass11ePrompt(riskAssessment),
+        userPrompt: valuesBlock + buildPass11ePrompt(riskAssessment),
       };
     }
 
@@ -653,7 +746,7 @@ export function buildNarrativePassPrompt(
       // Asset Approach Narrative
       return {
         systemPrompt: PASS_11F_SYSTEM_PROMPT,
-        userPrompt: buildPass11fPrompt(assetApproach),
+        userPrompt: valuesBlock + buildPass11fPrompt(assetApproach),
       };
     }
 
@@ -661,7 +754,7 @@ export function buildNarrativePassPrompt(
       // Income Approach Narrative
       return {
         systemPrompt: PASS_11G_SYSTEM_PROMPT,
-        userPrompt: buildPass11gPrompt(incomeApproach),
+        userPrompt: valuesBlock + buildPass11gPrompt(incomeApproach),
       };
     }
 
@@ -669,7 +762,7 @@ export function buildNarrativePassPrompt(
       // Market Approach Narrative
       return {
         systemPrompt: PASS_11H_SYSTEM_PROMPT,
-        userPrompt: buildPass11hPrompt(marketApproach, comparableTransactions as Record<string, unknown>[]),
+        userPrompt: valuesBlock + buildPass11hPrompt(marketApproach, comparableTransactions as Record<string, unknown>[]),
       };
     }
 
@@ -697,7 +790,7 @@ export function buildNarrativePassPrompt(
       };
       return {
         systemPrompt: PASS_11I_SYSTEM_PROMPT,
-        userPrompt: buildPass11iPrompt(effectiveValuation11i, approachNarratives),
+        userPrompt: valuesBlock + buildPass11iPrompt(effectiveValuation11i, approachNarratives),
       };
     }
 
@@ -716,7 +809,7 @@ export function buildNarrativePassPrompt(
       };
       return {
         systemPrompt: PASS_11J_SYSTEM_PROMPT,
-        userPrompt: buildPass11jPrompt(reportMetadata),
+        userPrompt: valuesBlock + buildPass11jPrompt(reportMetadata),
       };
     }
 
@@ -744,7 +837,7 @@ export function buildNarrativePassPrompt(
       }
       return {
         systemPrompt: PASS_11K_SYSTEM_PROMPT,
-        userPrompt: buildPass11kPrompt(companyProfile, financialData, riskAssessment, effectiveValuation11k),
+        userPrompt: valuesBlock + buildPass11kPrompt(companyProfile, financialData, riskAssessment, effectiveValuation11k),
       };
     }
 
