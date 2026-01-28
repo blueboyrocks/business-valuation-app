@@ -115,11 +115,15 @@ const STANDARD_DISCLAIMERS: Record<DisclaimerType, Omit<Disclaimer, 'type'>> = {
   [DisclaimerType.STANDARD_OF_VALUE]: {
     title: 'Standard of Value',
     content:
-      'This valuation estimates the Fair Market Value of the subject company. Fair Market ' +
-      'Value is defined as the price at which property would change hands between a willing ' +
-      'buyer and a willing seller, neither being under compulsion to buy or sell, and both ' +
-      'having reasonable knowledge of relevant facts. This standard assumes a hypothetical ' +
-      'transaction and does not consider any specific buyer or seller.',
+      'This valuation estimates the Fair Market Value of the subject company as defined by ' +
+      'IRS Revenue Ruling 59-60, which establishes the standard for valuing closely held businesses. ' +
+      'Fair Market Value is defined as "the price at which property would change hands between a ' +
+      'willing buyer and a willing seller, neither being under compulsion to buy or sell, and both ' +
+      'having reasonable knowledge of relevant facts." This standard assumes a hypothetical ' +
+      'transaction and does not consider any specific buyer or seller. The valuation considers ' +
+      'all relevant factors outlined in Revenue Ruling 59-60, including the nature and history ' +
+      'of the business, economic outlook, book value, earning capacity, dividend-paying capacity, ' +
+      'goodwill, prior sales, and the market price of comparable companies.',
   },
 };
 
@@ -148,6 +152,19 @@ const LIMITING_CONDITIONS: string[] = [
   'The value conclusion assumes the company is free of any liens or encumbrances unless otherwise stated.',
   'The valuator makes no warranty as to the achievability of any projected financial results.',
 ];
+
+// ============ CERTIFICATION STATEMENT ============
+
+const CERTIFICATION_STATEMENT =
+  'The analyses, opinions, and conclusions expressed herein were developed in conformity ' +
+  'with generally accepted valuation standards and procedures. The valuator has no present ' +
+  'or prospective interest in the subject company, and no personal interest or bias with ' +
+  'respect to the parties involved. The valuator\'s compensation is not contingent upon ' +
+  'the reporting of a predetermined value or direction in value, nor is it contingent upon ' +
+  'the outcome of any transaction or event. The analyses, opinions, and conclusions were ' +
+  'developed, and this report has been prepared, in conformity with the Uniform Standards ' +
+  'of Professional Appraisal Practice (USPAP) and the standards of the American Society ' +
+  'of Appraisers (ASA).';
 
 // ============ DISCLAIMER MANAGER CLASS ============
 
@@ -352,6 +369,78 @@ export class DisclaimerManager {
       is_complete: missingTypes.length === 0,
       missing_disclaimers: missingTypes.length > 0 ? missingTypes : undefined,
     };
+  }
+
+  /**
+   * Get certification statement
+   */
+  getCertificationStatement(): string {
+    return CERTIFICATION_STATEMENT;
+  }
+
+  /**
+   * Generate professional disclaimers HTML with numbered sections,
+   * covering all required areas: Intended Use, Standard of Value,
+   * Valuation Date, Limiting Conditions, Data Sources, and Certification.
+   */
+  generateProfessionalHTML(context: DisclaimerContext): string {
+    let sectionNum = 1;
+    let html = '';
+
+    // 1. Intended Use and Users
+    const purposeDisclaimer = this.getDisclaimer(DisclaimerType.PURPOSE_AND_USE, context);
+    html += `<div class="disclaimer-section">`;
+    html += `<h3>${sectionNum}. ${purposeDisclaimer.title}</h3>`;
+    html += `<p>${purposeDisclaimer.content}</p>`;
+    html += `</div>`;
+    sectionNum++;
+
+    // 2. Standard of Value (references IRS Revenue Ruling 59-60)
+    const valueDisclaimer = this.getDisclaimer(DisclaimerType.STANDARD_OF_VALUE, context);
+    html += `<div class="disclaimer-section">`;
+    html += `<h3>${sectionNum}. ${valueDisclaimer.title}</h3>`;
+    html += `<p>${valueDisclaimer.content}</p>`;
+    html += `</div>`;
+    sectionNum++;
+
+    // 3. Valuation Date
+    const marketDisclaimer = this.getDisclaimer(DisclaimerType.MARKET_CONDITIONS, context);
+    html += `<div class="disclaimer-section">`;
+    html += `<h3>${sectionNum}. Valuation Date</h3>`;
+    html += `<p>The effective date of this valuation is <strong>${context.valuation_date}</strong>. `;
+    html += `The value conclusion is specific to this date and reflects the economic, industry, `;
+    html += `and company-specific conditions as of that date. ${marketDisclaimer.content}</p>`;
+    html += `</div>`;
+    sectionNum++;
+
+    // 4. Limiting Conditions
+    const conditions = this.getLimitingConditions();
+    html += `<div class="disclaimer-section">`;
+    html += `<h3>${sectionNum}. Limiting Conditions</h3>`;
+    html += `<p>This valuation is subject to the following limiting conditions:</p>`;
+    html += `<ol>`;
+    for (const condition of conditions) {
+      html += `<li>${condition}</li>`;
+    }
+    html += `</ol>`;
+    html += `</div>`;
+    sectionNum++;
+
+    // 5. Data Sources and Reliability
+    const dataDisclaimer = this.getDisclaimer(DisclaimerType.DATA_RELIANCE, context);
+    html += `<div class="disclaimer-section">`;
+    html += `<h3>${sectionNum}. Data Sources and Reliability</h3>`;
+    html += `<p>${dataDisclaimer.content}</p>`;
+    html += `</div>`;
+    sectionNum++;
+
+    // 6. Certification
+    html += `<div class="disclaimer-section">`;
+    html += `<h3>${sectionNum}. Certification</h3>`;
+    html += `<p>${CERTIFICATION_STATEMENT}</p>`;
+    html += `</div>`;
+
+    return html;
   }
 
   /**

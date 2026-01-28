@@ -142,5 +142,39 @@ export function generateDesignTokenCSS(): string {
     .data-table td.percentage {
       text-align: right;
     }
+
+    /* ── Professional Disclaimer Section Styles ── */
+    .disclaimer-section {
+      margin-bottom: 20px;
+    }
+
+    .disclaimer-section h3 {
+      font-family: ${TYPOGRAPHY.headingFont};
+      font-size: ${FONT_SIZES.h3};
+      color: ${COLORS.primary};
+      margin: 0 0 8px 0;
+      padding-bottom: 4px;
+      border-bottom: 1px solid ${COLORS.border};
+    }
+
+    .disclaimer-section p {
+      font-size: ${FONT_SIZES.body};
+      color: ${COLORS.text};
+      line-height: 1.6;
+      margin: 8px 0;
+      text-align: justify;
+    }
+
+    .disclaimer-section ol {
+      font-size: ${FONT_SIZES.body};
+      color: ${COLORS.text};
+      line-height: 1.6;
+      margin: 8px 0 8px 20px;
+      padding: 0;
+    }
+
+    .disclaimer-section ol li {
+      margin-bottom: 6px;
+    }
   `;
 }

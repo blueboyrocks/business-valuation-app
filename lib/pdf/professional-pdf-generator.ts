@@ -35,6 +35,7 @@ import { CalculationTableGenerator, type SDETableInput, type MarketApproachInput
 import { DEFAULT_CAP_RATE_COMPONENTS } from '../calculations/income-approach-calculator';
 import { ReportChartGenerator } from '../charts/chart-generator';
 import { buildChartData } from '../charts/chart-data-builder';
+import { createDisclaimerManager, type DisclaimerContext } from '../content/disclaimers';
 
 interface YearlyFinancialData {
   year: number;
@@ -792,6 +793,15 @@ export class ProfessionalPDFGenerator {
     const assumptionsContent = getContent(data.assumptions_limiting_conditions) || getContent(narratives.assumptions_limiting_conditions);
     const assumptionsLimitingConditions = assumptionsContent ? await marked(assumptionsContent) : '';
 
+    // Generate professional disclaimers using DisclaimerManager
+    const disclaimerManager = createDisclaimerManager();
+    const disclaimerContext: DisclaimerContext = {
+      company_name: safeString(accessor ? accessor.getCompanyName() : companyName, companyName),
+      valuation_date: safeString(accessor ? accessor.getValuationDate() : generatedDate, generatedDate),
+      report_date: generatedDate,
+    };
+    const professionalDisclaimersHTML = disclaimerManager.generateProfessionalHTML(disclaimerContext);
+
     return `
 <!DOCTYPE html>
 <html>
@@ -1218,7 +1228,8 @@ export class ProfessionalPDFGenerator {
       if (valuationRecon) { presentSections.add('valuationReconciliation'); sectionContents.set('valuationReconciliation', valuationRecon); }
       if (riskAssessment || charts.riskGauge || inlineSvgCharts?.riskGauge) { presentSections.add('riskAssessment'); if (riskAssessment) sectionContents.set('riskAssessment', riskAssessment); }
       if (strategicInsights) { presentSections.add('strategicInsights'); sectionContents.set('strategicInsights', strategicInsights); }
-      if (assumptionsLimitingConditions) { presentSections.add('assumptionsAndConditions'); sectionContents.set('assumptionsAndConditions', assumptionsLimitingConditions); }
+      // Always present — professional disclaimers are always generated
+      presentSections.add('assumptionsAndConditions'); sectionContents.set('assumptionsAndConditions', professionalDisclaimersHTML + (assumptionsLimitingConditions || ''));
       if (bibliographyHTML) { presentSections.add('sourcesAndReferences'); sectionContents.set('sourcesAndReferences', bibliographyHTML); }
 
       // Generate TOC entries with content-based page estimation
@@ -1952,19 +1963,18 @@ export class ProfessionalPDFGenerator {
   ` : ''}
 
   <!-- Assumptions & Limiting Conditions -->
-  ${assumptionsLimitingConditions ? `
   <div class="section" id="section-assumptions">
     <h1 class="section-title">Assumptions & Limiting Conditions</h1>
-    ${accessor ? `
     <p style="font-size: 10pt; color: #6B7280; margin-bottom: 16px;">
-      This valuation of <strong>${safeString(accessor.getCompanyName(), companyName)}</strong> is subject to the following assumptions and limiting conditions as of the valuation date of <strong>${safeString(accessor.getValuationDate(), generatedDate)}</strong>.
+      This valuation of <strong>${safeString(accessor ? accessor.getCompanyName() : companyName, companyName)}</strong> is subject to the following assumptions, limiting conditions, and professional disclaimers as of the valuation date of <strong>${safeString(accessor ? accessor.getValuationDate() : generatedDate, generatedDate)}</strong>.
     </p>
-    ` : ''}
-    <div class="narrative">
+    ${professionalDisclaimersHTML}
+    ${assumptionsLimitingConditions ? `
+    <div class="narrative" style="margin-top: 24px; padding-top: 16px; border-top: 1px solid #E5E7EB;">
       ${assumptionsLimitingConditions}
     </div>
+    ` : ''}
   </div>
-  ` : ''}
 
   <!-- Bibliography -->
   ${bibliographyHTML}
