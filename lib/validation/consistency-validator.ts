@@ -96,6 +96,37 @@ function extractMultiples(text: string): Array<{ raw: string; value: number }> {
 }
 
 /**
+ * Extract percentage values from text (e.g., "15.5%" or "15.5 percent").
+ * Returns the numeric percentage value (e.g., 15.5 for "15.5%").
+ */
+function extractPercentages(text: string): Array<{ raw: string; value: number }> {
+  const results: Array<{ raw: string; value: number }> = [];
+
+  // Match X.X% or X% patterns
+  const pctPattern = /([\d.]+)\s*%/g;
+  let match: RegExpExecArray | null;
+  while ((match = pctPattern.exec(text)) !== null) {
+    const raw = match[0];
+    const value = parseFloat(match[1]);
+    if (!isNaN(value) && value > 0 && value <= 100) {
+      results.push({ raw, value });
+    }
+  }
+
+  // Also match "X.X percent" pattern
+  const percentPattern = /([\d.]+)\s*percent/gi;
+  while ((match = percentPattern.exec(text)) !== null) {
+    const raw = match[0];
+    const value = parseFloat(match[1]);
+    if (!isNaN(value) && value > 0 && value <= 100) {
+      results.push({ raw, value });
+    }
+  }
+
+  return results;
+}
+
+/**
  * Check if a currency value in text is "close enough" to an authoritative value.
  * Uses tolerance as a percentage (e.g., 0.01 = 1%).
  */
@@ -125,7 +156,7 @@ interface MetricDefinition {
   name: string;
   getAuthoritative: (accessor: ValuationDataAccessor) => number;
   getFormattedAuthoritative: (accessor: ValuationDataAccessor) => string;
-  type: 'currency' | 'multiple';
+  type: 'currency' | 'multiple' | 'percentage';
   tolerance: number;
   /** Keywords that must appear near the value to be considered a match for this metric */
   keywords: string[];
@@ -181,6 +212,79 @@ const METRIC_DEFINITIONS: MetricDefinition[] = [
       'gross revenue', 'top line',
     ],
   },
+  // ============ APPROACH VALUES ============
+  {
+    name: 'Asset Approach Value',
+    getAuthoritative: (a) => a.getApproachValue('asset'),
+    getFormattedAuthoritative: (a) => a.getFormattedApproachValue('asset'),
+    type: 'currency',
+    tolerance: 0.01,
+    keywords: [
+      'asset approach', 'asset-based', 'adjusted net asset',
+      'book value', 'net asset value', 'asset method',
+    ],
+    criticalSections: ['executiveSummary', 'assetApproach', 'valuationReconciliation'],
+  },
+  {
+    name: 'Income Approach Value',
+    getAuthoritative: (a) => a.getApproachValue('income'),
+    getFormattedAuthoritative: (a) => a.getFormattedApproachValue('income'),
+    type: 'currency',
+    tolerance: 0.01,
+    keywords: [
+      'income approach', 'capitalization of earnings', 'discounted cash flow',
+      'dcf', 'income method', 'earnings-based',
+    ],
+    criticalSections: ['executiveSummary', 'incomeApproach', 'valuationReconciliation'],
+  },
+  {
+    name: 'Market Approach Value',
+    getAuthoritative: (a) => a.getApproachValue('market'),
+    getFormattedAuthoritative: (a) => a.getFormattedApproachValue('market'),
+    type: 'currency',
+    tolerance: 0.01,
+    keywords: [
+      'market approach', 'comparable', 'guideline', 'transaction',
+      'market method', 'market-based', 'comp',
+    ],
+    criticalSections: ['executiveSummary', 'marketApproach', 'valuationReconciliation'],
+  },
+  // ============ CAP RATE ============
+  {
+    name: 'Capitalization Rate',
+    getAuthoritative: (a) => a.getCapRate() * 100, // Convert to percentage for matching
+    getFormattedAuthoritative: (a) => a.getFormattedCapRate(),
+    type: 'percentage',
+    tolerance: 0.05, // 5% relative tolerance on the percentage value
+    keywords: [
+      'cap rate', 'capitalization rate', 'discount rate',
+      'required return', 'rate of return',
+    ],
+    criticalSections: ['incomeApproach', 'valuationReconciliation'],
+  },
+  // ============ VALUE RANGE ============
+  {
+    name: 'Value Range Low',
+    getAuthoritative: (a) => a.getValueRangeLow(),
+    getFormattedAuthoritative: (a) => a.getFormattedValueRange().low,
+    type: 'currency',
+    tolerance: 0.01,
+    keywords: [
+      'range', 'low end', 'minimum', 'floor', 'lower bound',
+    ],
+    criticalSections: ['executiveSummary', 'valuationReconciliation'],
+  },
+  {
+    name: 'Value Range High',
+    getAuthoritative: (a) => a.getValueRangeHigh(),
+    getFormattedAuthoritative: (a) => a.getFormattedValueRange().high,
+    type: 'currency',
+    tolerance: 0.01,
+    keywords: [
+      'range', 'high end', 'maximum', 'ceiling', 'upper bound',
+    ],
+    criticalSections: ['executiveSummary', 'valuationReconciliation'],
+  },
 ];
 
 // ============ MAIN VALIDATOR ============
@@ -225,6 +329,8 @@ export function validateValueConsistency(
       // Extract values from section text based on metric type
       const extracted = metric.type === 'currency'
         ? extractCurrencyValues(content)
+        : metric.type === 'percentage'
+        ? extractPercentages(content)
         : extractMultiples(content);
 
       if (extracted.length === 0) continue;

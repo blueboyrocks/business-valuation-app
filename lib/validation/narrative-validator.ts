@@ -95,6 +95,37 @@ function extractMultiples(text: string): Array<{ raw: string; value: number }> {
 }
 
 /**
+ * Extract percentage values from text (e.g., "15.5%" or "15.5 percent").
+ * Returns the numeric percentage value (e.g., 15.5 for "15.5%").
+ */
+function extractPercentages(text: string): Array<{ raw: string; value: number }> {
+  const results: Array<{ raw: string; value: number }> = [];
+
+  // Match X.X% or X% patterns
+  const pctPattern = /([\d.]+)\s*%/g;
+  let match: RegExpExecArray | null;
+  while ((match = pctPattern.exec(text)) !== null) {
+    const raw = match[0];
+    const value = parseFloat(match[1]);
+    if (!isNaN(value) && value > 0 && value <= 100) {
+      results.push({ raw, value });
+    }
+  }
+
+  // Also match "X.X percent" pattern
+  const percentPattern = /([\d.]+)\s*percent/gi;
+  while ((match = percentPattern.exec(text)) !== null) {
+    const raw = match[0];
+    const value = parseFloat(match[1]);
+    if (!isNaN(value) && value > 0 && value <= 100) {
+      results.push({ raw, value });
+    }
+  }
+
+  return results;
+}
+
+/**
  * Check if a found value matches an authoritative value within tolerance.
  */
 function valuesMatch(found: number, authoritative: number, tolerance: number): boolean {
@@ -123,7 +154,7 @@ interface NarrativeMetricCheck {
   metric: string;
   getAuthoritative: (accessor: ValuationDataAccessor) => number;
   getFormatted: (accessor: ValuationDataAccessor) => string;
-  type: 'currency' | 'multiple';
+  type: 'currency' | 'multiple' | 'percentage';
   tolerance: number;
   /** Keywords near the value to identify it as this metric */
   keywords: string[];
@@ -161,6 +192,100 @@ const NARRATIVE_CHECKS: NarrativeMetricCheck[] = [
     criticalIn: [
       'executive_summary', 'executiveSummary',
       'market_approach', 'marketApproach',
+    ],
+  },
+  // ============ APPROACH VALUES ============
+  {
+    metric: 'Asset Approach Value',
+    getAuthoritative: (a) => a.getApproachValue('asset'),
+    getFormatted: (a) => a.getFormattedApproachValue('asset'),
+    type: 'currency',
+    tolerance: 0.01,
+    keywords: [
+      'asset approach', 'asset-based', 'adjusted net asset',
+      'book value', 'net asset value', 'asset method',
+    ],
+    criticalIn: [
+      'executive_summary', 'executiveSummary',
+      'asset_approach', 'assetApproach',
+      'valuation_reconciliation', 'valuationReconciliation',
+    ],
+  },
+  {
+    metric: 'Income Approach Value',
+    getAuthoritative: (a) => a.getApproachValue('income'),
+    getFormatted: (a) => a.getFormattedApproachValue('income'),
+    type: 'currency',
+    tolerance: 0.01,
+    keywords: [
+      'income approach', 'capitalization of earnings', 'discounted cash flow',
+      'dcf', 'income method', 'earnings-based',
+    ],
+    criticalIn: [
+      'executive_summary', 'executiveSummary',
+      'income_approach', 'incomeApproach',
+      'valuation_reconciliation', 'valuationReconciliation',
+    ],
+  },
+  {
+    metric: 'Market Approach Value',
+    getAuthoritative: (a) => a.getApproachValue('market'),
+    getFormatted: (a) => a.getFormattedApproachValue('market'),
+    type: 'currency',
+    tolerance: 0.01,
+    keywords: [
+      'market approach', 'comparable', 'guideline', 'transaction',
+      'market method', 'market-based', 'comp',
+    ],
+    criticalIn: [
+      'executive_summary', 'executiveSummary',
+      'market_approach', 'marketApproach',
+      'valuation_reconciliation', 'valuationReconciliation',
+    ],
+  },
+  // ============ CAP RATE ============
+  {
+    metric: 'Capitalization Rate',
+    getAuthoritative: (a) => a.getCapRate() * 100, // Convert to percentage for matching
+    getFormatted: (a) => a.getFormattedCapRate(),
+    type: 'percentage',
+    tolerance: 0.05, // 5% relative tolerance on the percentage value
+    keywords: [
+      'cap rate', 'capitalization rate', 'discount rate',
+      'required return', 'rate of return',
+    ],
+    criticalIn: [
+      'income_approach', 'incomeApproach',
+      'valuation_reconciliation', 'valuationReconciliation',
+    ],
+  },
+  // ============ VALUE RANGE ============
+  {
+    metric: 'Value Range Low',
+    getAuthoritative: (a) => a.getValueRangeLow(),
+    getFormatted: (a) => a.getFormattedValueRange().low,
+    type: 'currency',
+    tolerance: 0.01,
+    keywords: [
+      'range', 'low end', 'minimum', 'floor', 'lower bound',
+    ],
+    criticalIn: [
+      'executive_summary', 'executiveSummary',
+      'valuation_reconciliation', 'valuationReconciliation',
+    ],
+  },
+  {
+    metric: 'Value Range High',
+    getAuthoritative: (a) => a.getValueRangeHigh(),
+    getFormatted: (a) => a.getFormattedValueRange().high,
+    type: 'currency',
+    tolerance: 0.01,
+    keywords: [
+      'range', 'high end', 'maximum', 'ceiling', 'upper bound',
+    ],
+    criticalIn: [
+      'executive_summary', 'executiveSummary',
+      'valuation_reconciliation', 'valuationReconciliation',
     ],
   },
 ];
@@ -208,6 +333,8 @@ export function validateNarrative(
     // Extract values from text based on metric type
     const extracted = check.type === 'currency'
       ? extractCurrencyValues(generatedText)
+      : check.type === 'percentage'
+      ? extractPercentages(generatedText)
       : extractMultiples(generatedText);
 
     if (extracted.length === 0) continue;

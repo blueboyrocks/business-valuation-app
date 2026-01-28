@@ -15,7 +15,7 @@ export interface NarrativeValueInjectionResult {
   replacements: {
     original: string;
     replacement: string;
-    type: 'concluded_value' | 'sde' | 'ebitda' | 'revenue' | 'asset_value' | 'income_value' | 'market_value';
+    type: 'concluded_value' | 'sde' | 'ebitda' | 'revenue' | 'asset_value' | 'income_value' | 'market_value' | 'cap_rate' | 'value_range';
   }[];
   hadReplacements: boolean;
 }
@@ -138,19 +138,42 @@ export function injectValuesIntoNarrative(
     // Revenue patterns
     { pattern: /(?:annual\s+revenue|total\s+revenue|gross\s+revenue)[^.]*?(\$[\d,]+(?:\.\d{2})?|\$?[\d.]+\s*million|\$[\d.]+M)/gi, type: 'revenue' },
 
-    // Asset approach patterns
-    { pattern: /(?:asset\s+approach|adjusted\s+net\s+asset)[^.]*?(\$[\d,]+(?:\.\d{2})?|\$?[\d.]+\s*million|\$[\d.]+M)/gi, type: 'asset_value' },
+    // Asset approach patterns - extended with more variations
+    { pattern: /(?:asset\s+approach|adjusted\s+net\s+asset|asset-based|asset\s+method|net\s+asset\s+value)[^.]*?(\$[\d,]+(?:\.\d{2})?|\$?[\d.]+\s*million|\$[\d.]+M)/gi, type: 'asset_value' },
+    { pattern: /(\$[\d,]+(?:\.\d{2})?|\$?[\d.]+\s*million|\$[\d.]+M)[^.]*?(?:asset\s+approach|asset\s+method|asset-based)/gi, type: 'asset_value' },
 
-    // Income approach patterns
-    { pattern: /(?:income\s+approach)[^.]*?(\$[\d,]+(?:\.\d{2})?|\$?[\d.]+\s*million|\$[\d.]+M)/gi, type: 'income_value' },
+    // Income approach patterns - extended with more variations
+    { pattern: /(?:income\s+approach|capitalization\s+of\s+earnings?|capitalized\s+earnings?|income\s+method|earnings-based)[^.]*?(\$[\d,]+(?:\.\d{2})?|\$?[\d.]+\s*million|\$[\d.]+M)/gi, type: 'income_value' },
+    { pattern: /(\$[\d,]+(?:\.\d{2})?|\$?[\d.]+\s*million|\$[\d.]+M)[^.]*?(?:income\s+approach|income\s+method)/gi, type: 'income_value' },
 
-    // Market approach patterns
-    { pattern: /(?:market\s+approach)[^.]*?(\$[\d,]+(?:\.\d{2})?|\$?[\d.]+\s*million|\$[\d.]+M)/gi, type: 'market_value' },
+    // Market approach patterns - extended with more variations
+    { pattern: /(?:market\s+approach|guideline|comparable\s+transaction|market\s+method|market-based|comp)[^.]*?(\$[\d,]+(?:\.\d{2})?|\$?[\d.]+\s*million|\$[\d.]+M)/gi, type: 'market_value' },
+    { pattern: /(\$[\d,]+(?:\.\d{2})?|\$?[\d.]+\s*million|\$[\d.]+M)[^.]*?(?:market\s+approach|market\s+method|market-based)/gi, type: 'market_value' },
   ];
 
-  // For executive summary, specifically look for concluded value mentions
+  // For executive summary, specifically look for concluded value and approach value mentions
   if (sectionType === 'executive_summary') {
-    // Find all currency values and replace ones that don't match the concluded value
+    // Define context patterns for different value types
+    const execSummaryContexts: { keywords: string[]; type: keyof typeof authValues }[] = [
+      {
+        keywords: ['fair market value', 'concluded value', 'valuation of', 'valued at', 'worth', 'business value', 'opinion of value'],
+        type: 'concluded_value',
+      },
+      {
+        keywords: ['asset approach', 'asset-based', 'adjusted net asset', 'asset method', 'net asset value'],
+        type: 'asset_value',
+      },
+      {
+        keywords: ['income approach', 'capitalization of earnings', 'capitalized earnings', 'income method', 'earnings-based'],
+        type: 'income_value',
+      },
+      {
+        keywords: ['market approach', 'guideline', 'comparable', 'market method', 'market-based', 'comp transaction'],
+        type: 'market_value',
+      },
+    ];
+
+    // Find all currency values and replace ones that don't match the expected value
     const currencyPattern = /\$[\d,]+(?:\.\d{2})?|\$?[\d.]+\s*million(?:\s+dollars)?|\$[\d.]+M/gi;
     let match: RegExpExecArray | null;
 
@@ -159,31 +182,31 @@ export function injectValuesIntoNarrative(
       const parsed = parseCurrency(original);
 
       if (parsed !== null && parsed > 100000) { // Only consider values > $100k
-        // Check if this looks like the concluded value (within range of what we'd expect)
-        // The concluded value is likely the largest value mentioned prominently
-        if (isSignificantlyDifferent(parsed, authValues.concluded_value)) {
-          // Check context - is this near "fair market value", "valuation", etc.?
-          const contextStart = Math.max(0, match.index - 100);
-          const contextEnd = Math.min(modifiedContent.length, match.index + original.length + 100);
-          const context = modifiedContent.slice(contextStart, contextEnd).toLowerCase();
+        // Check context - what type of value is this near?
+        const contextStart = Math.max(0, match.index - 100);
+        const contextEnd = Math.min(modifiedContent.length, match.index + original.length + 100);
+        const context = modifiedContent.slice(contextStart, contextEnd).toLowerCase();
 
-          if (context.includes('fair market value') ||
-              context.includes('concluded value') ||
-              context.includes('valuation of') ||
-              context.includes('valued at') ||
-              context.includes('worth') ||
-              context.includes('business value')) {
+        for (const ctx of execSummaryContexts) {
+          const hasKeyword = ctx.keywords.some(kw => context.includes(kw));
+          if (hasKeyword) {
+            const authValue = authValues[ctx.type];
+            // Skip if authoritative value is 0 (e.g., asset approach not used)
+            if (authValue === 0) continue;
 
-            const replacement = formatCurrency(authValues.concluded_value);
-            modifiedContent = modifiedContent.slice(0, match.index) + replacement + modifiedContent.slice(match.index + original.length);
-            replacements.push({
-              original,
-              replacement,
-              type: 'concluded_value',
-            });
+            if (isSignificantlyDifferent(parsed, authValue)) {
+              const replacement = formatCurrency(authValue);
+              modifiedContent = modifiedContent.slice(0, match.index) + replacement + modifiedContent.slice(match.index + original.length);
+              replacements.push({
+                original,
+                replacement,
+                type: ctx.type,
+              });
 
-            // Reset the regex after modification
-            currencyPattern.lastIndex = match.index + replacement.length;
+              // Reset the regex after modification
+              currencyPattern.lastIndex = match.index + replacement.length;
+              break; // Don't process this value for other contexts
+            }
           }
         }
       }
