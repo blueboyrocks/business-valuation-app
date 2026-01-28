@@ -375,7 +375,7 @@ export async function POST(
     const pass11Narratives = (passes.pass11 as any)?.report_narratives || (passes.pass11 as any)?.narratives || {};
 
     // Also check for individually run narrative passes (11a, 11b, etc.)
-    // These are stored separately when run via Re-Run Passes panel
+    // These are stored in pass_outputs.narratives.pass_results[passId] when run via Re-Run Passes panel
     const narrativePassKeys = ['11a', '11b', '11c', '11d', '11e', '11f', '11g', '11h', '11i', '11j', '11k'];
     const narrativeKeyMapping: Record<string, string> = {
       '11a': 'executive_summary',
@@ -391,9 +391,14 @@ export async function POST(
       '11k': 'value_enhancement_recommendations',
     };
 
+    // Get the narratives.pass_results structure where individual narrative passes are stored
+    const narrativesContainer = passOutputsData['narratives'] as Record<string, unknown> | undefined;
+    const passResults = (narrativesContainer?.pass_results || {}) as Record<string, unknown>;
+    console.log(`[REGENERATE] Found narrative pass_results keys: ${Object.keys(passResults).join(', ')}`);
+
     // Aggregate individual narrative pass outputs into pass11Narratives
     for (const passKey of narrativePassKeys) {
-      const individualPassOutput = passOutputsData[passKey] as Record<string, unknown> | undefined;
+      const individualPassOutput = passResults[passKey] as Record<string, unknown> | undefined;
       if (individualPassOutput) {
         const targetKey = narrativeKeyMapping[passKey];
         // Try multiple locations for the narrative content
