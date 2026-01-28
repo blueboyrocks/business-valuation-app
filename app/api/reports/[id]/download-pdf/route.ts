@@ -4,6 +4,7 @@ import { ProfessionalPDFGenerator } from '@/lib/pdf/professional-pdf-generator';
 import { createDataStoreFromResults } from '@/lib/valuation/data-store-factory';
 import type { CalculationEngineOutput } from '@/lib/calculations/types';
 import { runQualityGate } from '@/lib/validation/quality-gate';
+import { injectValuesIntoAllNarratives } from '@/lib/valuation/narrative-value-injector';
 
 /**
  * Build section contents Map from report_data for quality gate
@@ -149,6 +150,20 @@ export async function POST(
         console.log(`[PDF] Reconstructed DataAccessor from calculation_results`);
       } catch (e) {
         console.warn(`[PDF] Failed to reconstruct DataAccessor:`, e);
+      }
+    }
+
+    // PRD-H: Inject authoritative calculation values into narratives before PDF generation
+    if (accessor) {
+      console.log(`[PDF] Injecting authoritative values into narratives...`);
+      const injectionResult = injectValuesIntoAllNarratives(reportData as Record<string, unknown>, accessor);
+      if (injectionResult.totalReplacements > 0) {
+        console.log(`[PDF] Value injection made ${injectionResult.totalReplacements} replacement(s):`);
+        for (const detail of injectionResult.details) {
+          console.log(`[PDF]   ${detail}`);
+        }
+      } else {
+        console.log(`[PDF] Value injection: no replacements needed`);
       }
     }
 

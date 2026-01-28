@@ -169,9 +169,16 @@ export function aggregatePassOutputsToReportData(
   const valuationImplications = (pass12?.valuation_implications || {}) as Record<string, unknown>;
 
   // Extract approach values
-  const assetValue = getNumber(pass7, 'summary.adjusted_net_asset_value', 'asset_approach.adjusted_book_value');
+  let assetValue = getNumber(pass7, 'summary.adjusted_net_asset_value', 'asset_approach.adjusted_book_value');
   const incomeValue = getNumber(pass8, 'income_approach.indicated_value_point', 'income_approach.single_period_capitalization.adjusted_indicated_value');
   const marketValue = getNumber(pass9, 'market_approach.indicated_value_point', 'market_approach.method_reconciliation.weighted_indicated_value');
+
+  // PRD-H Tier 3 fallback: If asset value is 0 but total assets > 0, use 50% of total assets
+  const totalAssets = getNumber(latestBalance, 'total_assets');
+  if (assetValue <= 0 && totalAssets > 0) {
+    assetValue = Math.round(totalAssets * 0.5);
+    console.log(`[ReportAggregator] Asset approach fallback: 50% of total_assets ($${totalAssets}) = $${assetValue}`);
+  }
 
   // Get concluded value
   const pass10Concluded = getNumber(pass10, 'conclusion.concluded_value', 'value_synthesis.final_value_point');

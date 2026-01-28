@@ -49,6 +49,7 @@ import { runIndustryGate } from '@/lib/valuation/industry-gate';
 import { createMultiplesLookup } from '@/lib/valuation/industry-multiples-lookup';
 import { createConsistencyValidator } from '@/lib/valuation/consistency-validator';
 import { runQualityGate } from '@/lib/validation/quality-gate';
+import { injectValuesIntoAllNarratives } from '@/lib/valuation/narrative-value-injector';
 
 // Lazy-initialize Supabase client
 let supabase: ReturnType<typeof createClient> | null = null;
@@ -66,6 +67,67 @@ function getSupabaseClient() {
 interface PassOutputRow {
   pass_number: number;
   output_data: unknown;
+}
+
+interface YearlyFinancialData {
+  year: number;
+  revenue: number;
+  pretax_income?: number;
+  owner_compensation?: number;
+  interest_expense?: number;
+  depreciation_amortization?: number;
+  cash?: number;
+  accounts_receivable?: number;
+  inventory?: number;
+  other_current_assets?: number;
+  fixed_assets?: number;
+  total_assets?: number;
+  accounts_payable?: number;
+  other_short_term_liabilities?: number;
+  bank_loans?: number;
+  other_long_term_liabilities?: number;
+  total_liabilities?: number;
+}
+
+/**
+ * Build yearly financial data from pass outputs for KPI charts
+ */
+function buildYearlyFinancials(passes: PassOutputs): YearlyFinancialData[] {
+  const incomeStatements = passes.pass2?.income_statements || [];
+  const balanceSheets = passes.pass3?.balance_sheets || [];
+
+  if (incomeStatements.length === 0) {
+    console.log('[REGENERATE] No income statements found for yearly_financials');
+    return [];
+  }
+
+  const yearlyFinancials: YearlyFinancialData[] = incomeStatements.map((is: any) => {
+    const year = is.fiscal_year;
+    const matchingBS = balanceSheets.find((bs: any) => bs.fiscal_year === year) as any;
+
+    return {
+      year,
+      revenue: is.revenue?.total_revenue || is.revenue?.net_sales || is.revenue?.gross_receipts || 0,
+      pretax_income: is.pretax_income || is.net_income,
+      owner_compensation: is.operating_expenses?.officer_compensation,
+      interest_expense: is.other_income_expense?.interest_expense || is.operating_expenses?.interest_expense,
+      depreciation_amortization: (is.operating_expenses?.depreciation || 0) + (is.operating_expenses?.amortization || 0),
+      cash: matchingBS?.current_assets?.cash_and_equivalents || matchingBS?.current_assets?.cash,
+      accounts_receivable: matchingBS?.current_assets?.accounts_receivable_gross || matchingBS?.current_assets?.accounts_receivable,
+      inventory: matchingBS?.current_assets?.inventory,
+      other_current_assets: (matchingBS?.current_assets?.prepaid_expenses || 0) + (matchingBS?.current_assets?.other_current_assets || 0),
+      fixed_assets: matchingBS?.fixed_assets?.net_fixed_assets || matchingBS?.fixed_assets?.total_fixed_assets,
+      total_assets: matchingBS?.total_assets,
+      accounts_payable: matchingBS?.current_liabilities?.accounts_payable,
+      other_short_term_liabilities: (matchingBS?.current_liabilities?.accrued_expenses || 0) + (matchingBS?.current_liabilities?.other_current_liabilities || 0),
+      bank_loans: matchingBS?.long_term_liabilities?.notes_payable_long_term,
+      other_long_term_liabilities: matchingBS?.long_term_liabilities?.other_long_term_liabilities,
+      total_liabilities: matchingBS?.total_liabilities,
+    };
+  }).sort((a: YearlyFinancialData, b: YearlyFinancialData) => b.year - a.year); // Sort descending (most recent first)
+
+  console.log(`[REGENERATE] Built yearly_financials for ${yearlyFinancials.length} year(s): ${yearlyFinancials.map(y => y.year).join(', ')}`);
+  return yearlyFinancials;
 }
 
 export async function POST(
@@ -340,7 +402,7 @@ export async function POST(
     }
 
     // Read values from calculation engine first, fall back to AI pass outputs
-    const assetValue = hasCalcEngine
+    let assetValue = hasCalcEngine
       ? (calcResults!.asset_approach.adjusted_net_asset_value ||
          passes.pass7?.summary?.adjusted_net_asset_value ||
          passes.pass7?.asset_approach?.adjusted_book_value || 0)
@@ -354,6 +416,14 @@ export async function POST(
       ? calcResults!.market_approach.market_approach_value
       : (passes.pass9?.market_approach?.indicated_value_point ||
          passes.pass9?.market_approach?.guideline_transaction_method?.indicated_value_after_adjustments || 0);
+
+    // PRD-H Tier 3 fallback: If asset value is 0 but total assets > 0, use 50% of total assets
+    const balanceSheetData = (passes.pass3?.balance_sheets?.[0] || {}) as any;
+    const totalAssetsValue = balanceSheetData.total_assets || 0;
+    if (assetValue <= 0 && totalAssetsValue > 0) {
+      assetValue = Math.round(totalAssetsValue * 0.5);
+      console.log(`[REGENERATE] Asset approach Tier 3 fallback: 50% of total_assets ($${totalAssetsValue}) = $${assetValue}`);
+    }
 
     // Get concluded value from calculation engine, then pass10, then weighted average
     const concludedValue = hasCalcEngine
@@ -554,6 +624,9 @@ export async function POST(
       // Assumptions & Limiting Conditions (Pass 11j)
       assumptions_and_limiting_conditions: getNarrativeContent(finalReport.narratives?.assumptions_and_limiting_conditions) ||
                                            getNarrativeContent(pass11Narratives.assumptions_and_limiting_conditions) || '',
+
+      // PRD-J: Multi-year financial data for KPI charts
+      yearly_financials: buildYearlyFinancials(passes),
     };
 
     // 7b. Generate and attach standard disclaimers
@@ -616,6 +689,21 @@ export async function POST(
       { hasCalculationEngine: hasCalcEngine }
     );
     console.log(`[REGENERATE] After reconciliation - Asset: ${reconciledReport.asset_approach_value}, Income: ${reconciledReport.income_approach_value}, Market: ${reconciledReport.market_approach_value}`);
+
+    // PRD-H: Inject authoritative calculation values into narratives
+    // This fixes value inconsistencies where AI narratives mention different values than calculation engine
+    if (dataAccessor) {
+      console.log(`[REGENERATE] Injecting authoritative values into narratives...`);
+      const injectionResult = injectValuesIntoAllNarratives(reconciledReport as Record<string, unknown>, dataAccessor);
+      if (injectionResult.totalReplacements > 0) {
+        console.log(`[REGENERATE] Value injection made ${injectionResult.totalReplacements} replacement(s):`);
+        for (const detail of injectionResult.details) {
+          console.log(`[REGENERATE]   ${detail}`);
+        }
+      } else {
+        console.log(`[REGENERATE] Value injection: no replacements needed`);
+      }
+    }
 
     // 7c. Validate the final report data
     const outputValidation = validateReportOutput(reconciledReport);
