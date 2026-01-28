@@ -1385,6 +1385,53 @@ export class ProfessionalPDFGenerator {
   ${financialAnalysis ? `
   <div class="section" id="section-financial-analysis">
     <h1 class="section-title">Financial Analysis</h1>
+    ${accessor ? `
+    <div style="margin-bottom: 24px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #1E3A5F;">Key Financial Metrics</h3>
+      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Annual Revenue</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedRevenue()}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Revenue Growth Rate</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedRevenueGrowthRate()}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Seller's Discretionary Earnings (SDE)</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDE()}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">EBITDA</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedEBITDA()}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">SDE Margin</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDEMargin()}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Gross Margin</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedGrossMargin()}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Total Assets</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedTotalAssets()}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Total Liabilities</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedTotalLiabilities()}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Book Value (Net Assets)</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedBookValue()}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0;">Current Ratio</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedCurrentRatio()}</td>
+        </tr>
+      </table>
+    </div>
+    ` : ''}
     ${inlineSvgCharts?.profitabilityTrend ? `
     <h2>Profitability Trends</h2>
     <div style="margin: 20px 0; text-align: center;">${inlineSvgCharts.profitabilityTrend}</div>
@@ -1473,6 +1520,33 @@ export class ProfessionalPDFGenerator {
   ${assetAnalysis ? `
   <div class="section" id="section-asset-approach">
     <h1 class="section-title">Asset Approach Analysis</h1>
+    ${accessor ? `
+    <div style="margin-bottom: 24px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #1E3A5F;">Asset Approach Summary</h3>
+      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Asset Approach Value</td>
+          <td style="text-align: right; font-weight: bold; color: #1E3A5F;">${accessor.getFormattedApproachValue('asset')}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Approach Weight</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachWeight('asset')}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Total Assets</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedTotalAssets()}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Total Liabilities</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedTotalLiabilities()}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0;">Book Value (Net Assets)</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedBookValue()}</td>
+        </tr>
+      </table>
+    </div>
+    ` : ''}
     <div class="narrative">
       ${assetAnalysis}
     </div>
@@ -1482,6 +1556,29 @@ export class ProfessionalPDFGenerator {
   ${incomeAnalysis ? `
   <div class="section" id="section-income-approach">
     <h1 class="section-title">Income Approach Analysis</h1>
+    ${accessor ? `
+    <div style="margin-bottom: 24px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #1E3A5F;">Income Approach Summary</h3>
+      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Income Approach Value</td>
+          <td style="text-align: right; font-weight: bold; color: #1E3A5F;">${accessor.getFormattedApproachValue('income')}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Approach Weight</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachWeight('income')}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Normalized SDE</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDE('normalized')}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0;">Capitalization Rate</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedCapRate()}</td>
+        </tr>
+      </table>
+    </div>
+    ` : ''}
     <div class="narrative">
       ${incomeAnalysis}
     </div>
@@ -1491,6 +1588,29 @@ export class ProfessionalPDFGenerator {
   ${marketAnalysis ? `
   <div class="section" id="section-market-approach">
     <h1 class="section-title">Market Approach Analysis</h1>
+    ${accessor ? `
+    <div style="margin-bottom: 24px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
+      <h3 style="margin-top: 0; color: #1E3A5F;">Market Approach Summary</h3>
+      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Market Approach Value</td>
+          <td style="text-align: right; font-weight: bold; color: #1E3A5F;">${accessor.getFormattedApproachValue('market')}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Approach Weight</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachWeight('market')}</td>
+        </tr>
+        <tr style="border-bottom: 1px solid #E5E7EB;">
+          <td style="padding: 6px 0;">Normalized SDE</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDE('normalized')}</td>
+        </tr>
+        <tr>
+          <td style="padding: 6px 0;">SDE Multiple</td>
+          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDEMultiple()}</td>
+        </tr>
+      </table>
+    </div>
+    ` : ''}
     ${marketTableHTML ? `<div style="margin-bottom: 30px;">${marketTableHTML}</div>` : ''}
     <div class="narrative">
       ${marketAnalysis}
