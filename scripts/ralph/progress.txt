@@ -42,7 +42,7 @@
 - US-011: DONE - Create business rule validator
 - US-012: DONE - Create content completeness validator
 - US-013: DONE - Create narrative value injection system
-- US-014: PENDING - Create post-generation narrative validator
+- US-014: DONE - Create post-generation narrative validator
 - US-015: PENDING - Create pre-PDF quality gate
 - US-016: PENDING - Validation pipeline integration tests
 - US-017: PENDING - Professional section ordering
@@ -369,4 +369,26 @@
   - The values block uses a delimited format (===== markers) so it's visually distinct when prepended to prompts.
   - Only 4 section-specific instructions are defined; the default instruction handles all other sections. Future stories may add more section-specific guidance.
   - US-026 will wire this into the actual narrative generation passes in orchestrator-v2.ts.
+---
+
+## 2026-01-28 - US-014
+- What was implemented:
+  - Created lib/validation/narrative-validator.ts - a post-generation narrative validator
+  - Exported types: ValueMention, NarrativeValidationResult
+  - Main function: validateNarrative(section, generatedText, accessor) returns NarrativeValidationResult with valid, section, errors, warnings, valueMentions
+  - Checks for 2 critical metrics: Final Value (1% tolerance) and SDE Multiple (5% tolerance)
+  - Final Value is critical in Executive Summary and Conclusion of Value sections
+  - SDE Multiple is critical in Executive Summary and Market Approach sections
+  - Uses regex extraction for currency ($X,XXX,XXX and $X.XM) and multiples (Xx, "X times")
+  - Filters candidates to within 10x range of authoritative value to avoid false positives
+  - Critical sections produce errors (blocking); non-critical sections produce warnings (advisory)
+  - validateNarrativeOrThrow() logs warnings to console and throws Error on critical errors
+  - Section identifiers support both snake_case (executive_summary) and camelCase (executiveSummary)
+- Files changed:
+  - lib/validation/narrative-validator.ts (new file, ~230 lines)
+- **Learnings for future iterations:**
+  - The extraction helpers (extractCurrencyValues, extractMultiples, valuesMatch, getContext) are duplicated from consistency-validator.ts - if a third validator needs them, consider extracting to a shared module.
+  - Section identifiers vary between the orchestrator (snake_case: executive_summary) and PDF generator (camelCase: executiveSummary) - the criticalIn arrays include both forms.
+  - The validator is designed to work standalone per-section (not across sections like consistency-validator) - it validates one narrative at a time as it's generated.
+  - Only 2 metric checks (Final Value and SDE Multiple) are implemented as these are the most commonly hallucinated values. Additional checks can be added to NARRATIVE_CHECKS array.
 ---
