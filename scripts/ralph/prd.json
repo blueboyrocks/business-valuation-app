@@ -356,7 +356,7 @@
         "Typecheck passes"
       ],
       "priority": 20,
-      "passes": false,
+      "passes": true,
       "notes": "Add CSS to the professional PDF generator's style output. Check existing table styling first - enhance don't replace."
     },
     {
