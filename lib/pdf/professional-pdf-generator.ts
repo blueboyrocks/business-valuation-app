@@ -31,7 +31,7 @@ import { safeString } from '../utils/safe-string';
 import { generateTocEntries, PROFESSIONAL_SECTION_ORDER } from './section-ordering';
 import { generateDesignTokenCSS } from './design-tokens';
 import { CitationManager } from '../citations/citation-manager';
-import { CalculationTableGenerator, type SDETableInput, type MarketApproachInput, type SynthesisInput, type CapRateBuiltupInput } from '../display/calculation-table-generator';
+import { CalculationTableGenerator, type SDETableInput, type MarketApproachInput, type SynthesisInput, type CapRateBuiltupInput, type AssetAdjustmentInput } from '../display/calculation-table-generator';
 import { DEFAULT_CAP_RATE_COMPONENTS } from '../calculations/income-approach-calculator';
 import { ReportChartGenerator } from '../charts/chart-generator';
 import { buildChartData } from '../charts/chart-data-builder';
@@ -289,6 +289,7 @@ export class ProfessionalPDFGenerator {
       // PRD-E: Generate calculation tables
       let sdeTableHTML = '';
       let capRateTableHTML = '';
+      let assetTableHTML = '';
       let marketTableHTML = '';
       let synthesisTableHTML = '';
       if (accessor) {
@@ -328,6 +329,20 @@ export class ProfessionalPDFGenerator {
           };
           const capRateTable = tableGen.generateCapRateBuiltupTable(capRateInput);
           capRateTableHTML = tableGen.capRateBuiltupTableToHTML(capRateTable);
+
+          // Asset Adjustment Table
+          const otherAssets = Math.max(0, accessor.getTotalAssets() - accessor.getCash() - accessor.getAccountsReceivable() - accessor.getInventory() - accessor.getFixedAssets());
+          const assetAdjInput: AssetAdjustmentInput = {
+            cash: accessor.getCash(),
+            accounts_receivable: accessor.getAccountsReceivable(),
+            inventory: accessor.getInventory(),
+            fixed_assets: accessor.getFixedAssets(),
+            other_assets: otherAssets,
+            total_assets: accessor.getTotalAssets(),
+            total_liabilities: accessor.getTotalLiabilities(),
+          };
+          const assetAdjTable = tableGen.generateAssetAdjustmentTable(assetAdjInput);
+          assetTableHTML = tableGen.assetAdjustmentTableToHTML(assetAdjTable);
 
           // Market Approach Table
           const marketInput: MarketApproachInput = {
@@ -386,7 +401,7 @@ export class ProfessionalPDFGenerator {
         companyName, reportData, generatedDate, kpis,
         enterprise_value, liquidation_value, charts, kpiDetailPages,
         accessor, inlineSvgCharts, citationManager, bibliographyHTML,
-        sdeTableHTML, marketTableHTML, synthesisTableHTML, capRateTableHTML
+        sdeTableHTML, marketTableHTML, synthesisTableHTML, capRateTableHTML, assetTableHTML
       );
 
       // Safety net: replace any [object Object] in rendered HTML
@@ -703,7 +718,8 @@ export class ProfessionalPDFGenerator {
     sdeTableHTML: string = '',
     marketTableHTML: string = '',
     synthesisTableHTML: string = '',
-    capRateTableHTML: string = ''
+    capRateTableHTML: string = '',
+    assetTableHTML: string = ''
   ): Promise<string> {
     // Format currency - distinguish between 0 (actual zero) and null/undefined (not extracted)
     // PRD-A: Use accessor formatting when available
@@ -1598,6 +1614,7 @@ export class ProfessionalPDFGenerator {
       </table>
     </div>
     ` : ''}
+    ${assetTableHTML ? `<div style="margin-bottom: 24px;">${assetTableHTML}</div>` : ''}
     <div class="narrative">
       ${assetAnalysis}
     </div>

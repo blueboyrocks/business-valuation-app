@@ -57,7 +57,7 @@
 - US-020: DONE - Professional table styling CSS
 - US-021: DONE - SDE calculation detail table
 - US-022: DONE - Cap rate buildup table
-- US-023: PENDING - Asset adjustment table
+- US-023: DONE - Asset adjustment table
 - US-024: PENDING - Chart design standards
 - US-025: PENDING - Professional disclaimers section
 - US-026: PENDING - Wire value injection into narrative passes
@@ -596,4 +596,31 @@
   - The capRateBuiltupTableToHTML() is a separate method (not routed through toHTML()) because CapRateBuiltupTable has a different structure than the existing table types (SDECalculationTable, MarketApproachTable, SynthesisTable).
   - The section ordering already had a `capRateBuildupTable` placeholder in PROFESSIONAL_SECTION_ORDER (lib/pdf/section-ordering.ts) - it just needed content to be added.
   - The cap rate section is rendered between income and market approach sections, matching the canonical section order.
+---
+
+## 2026-01-28 - US-023
+- What was implemented:
+  - Added asset adjustment table types and generator to lib/display/calculation-table-generator.ts:
+    - AssetAdjustmentRow, AssetAdjustmentTable, AssetAdjustmentInput interfaces
+    - generateAssetAdjustmentTable() method that creates rows for 5 asset categories (Cash, AR, Inventory, Fixed Assets, Other Assets), plus Total Assets, Total Liabilities, and Adjusted Net Asset Value rows
+    - Default adjustments: 5% allowance for doubtful accounts on AR, 10% inventory obsolescence reserve (matching asset-approach-calculator.ts defaults)
+    - assetAdjustmentTableToHTML() method rendering professional HTML with data-table class, currency-aligned columns, total-row highlights, and a double-bordered net asset value row
+  - Integrated asset adjustment table into lib/pdf/professional-pdf-generator.ts:
+    - Added AssetAdjustmentInput import
+    - Added assetTableHTML variable alongside other table HTMLs
+    - Generated table from DataAccessor balance sheet values (getCash, getAccountsReceivable, getInventory, getFixedAssets, getTotalAssets, getTotalLiabilities)
+    - Calculated "Other Assets" as remainder (total_assets minus individual categories)
+    - Added assetTableHTML as parameter to buildHTML() method
+    - Rendered asset adjustment table within the Asset Approach section, between the summary box and narrative content
+  - All values use safeString() wrapping and formatCurrency() for safe rendering
+  - Table uses professional CSS classes: data-table, currency, total-row
+- Files changed:
+  - lib/display/calculation-table-generator.ts (added types, generateAssetAdjustmentTable, assetAdjustmentTableToHTML)
+  - lib/pdf/professional-pdf-generator.ts (imports, assetTableHTML generation, buildHTML parameter, section rendering)
+- **Learnings for future iterations:**
+  - The DataAccessor has raw getters for individual balance sheet items (getCash, getAccountsReceivable, getInventory, getFixedAssets, getIntangibleAssets) but no formatted versions - use formatCurrency() from the table generator for formatting these values.
+  - The BalanceSheetSummary in data-store.ts has accounts_payable but no accessor getter exists for it. Liabilities are only accessible at the total level through getTotalLiabilities().
+  - "Other Assets" is computed as the difference between total_assets and the sum of individually tracked categories. This includes intangible_assets and any items not broken out.
+  - The asset adjustment table follows the same pattern as capRateBuiltupTableToHTML: a dedicated HTML method separate from toHTML() since the table structure differs from SDE/Market/Synthesis tables.
+  - Default adjustments in the table generator match those in asset-approach-calculator.ts: 5% AR allowance and 10% inventory obsolescence.
 ---

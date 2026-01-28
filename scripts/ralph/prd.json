@@ -414,7 +414,7 @@
         "Typecheck passes"
       ],
       "priority": 23,
-      "passes": false,
+      "passes": true,
       "notes": "Check lib/display/ for existing asset table generators."
     },
     {

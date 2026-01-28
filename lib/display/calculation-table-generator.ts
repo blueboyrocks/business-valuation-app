@@ -149,6 +149,41 @@ export interface SynthesisInput {
   };
 }
 
+export interface AssetAdjustmentRow {
+  category: string;
+  book_value: number;
+  formatted_book_value: string;
+  adjustment: number;
+  formatted_adjustment: string;
+  fair_market_value: number;
+  formatted_fair_market_value: string;
+  is_total?: boolean;
+}
+
+export interface AssetAdjustmentTable {
+  title: string;
+  asset_rows: AssetAdjustmentRow[];
+  total_assets_row: AssetAdjustmentRow;
+  total_liabilities_row: AssetAdjustmentRow;
+  net_asset_value_row: AssetAdjustmentRow;
+}
+
+export interface AssetAdjustmentInput {
+  cash: number;
+  accounts_receivable: number;
+  inventory: number;
+  fixed_assets: number;
+  other_assets: number;
+  total_assets: number;
+  total_liabilities: number;
+  adjustments?: {
+    accounts_receivable_adjustment?: number;
+    inventory_adjustment?: number;
+    fixed_assets_adjustment?: number;
+    other_assets_adjustment?: number;
+  };
+}
+
 export interface CapRateBuiltupRow {
   component: string;
   rate: number;
@@ -449,6 +484,128 @@ export class CalculationTableGenerator {
             <td>${safeString(row.source, '')}</td>
           </tr>`;
     }
+
+    html += `
+        </tbody>
+      </table>
+    </div>`;
+
+    return html;
+  }
+
+  /**
+   * Generate asset adjustment table showing book value to fair market value adjustments
+   */
+  generateAssetAdjustmentTable(input: AssetAdjustmentInput): AssetAdjustmentTable {
+    const adj = input.adjustments || {};
+
+    // Default adjustments: 5% AR allowance, 10% inventory obsolescence
+    const arAdj = adj.accounts_receivable_adjustment ?? (input.accounts_receivable > 0 ? Math.round(input.accounts_receivable * -0.05) : 0);
+    const invAdj = adj.inventory_adjustment ?? (input.inventory > 0 ? Math.round(input.inventory * -0.10) : 0);
+    const fixedAdj = adj.fixed_assets_adjustment ?? 0;
+    const otherAdj = adj.other_assets_adjustment ?? 0;
+
+    const makeRow = (category: string, bookValue: number, adjustment: number, isTotal?: boolean): AssetAdjustmentRow => ({
+      category,
+      book_value: bookValue,
+      formatted_book_value: formatCurrency(bookValue),
+      adjustment,
+      formatted_adjustment: adjustment === 0 ? '—' : formatCurrency(adjustment),
+      fair_market_value: bookValue + adjustment,
+      formatted_fair_market_value: formatCurrency(bookValue + adjustment),
+      is_total: isTotal,
+    });
+
+    const asset_rows: AssetAdjustmentRow[] = [
+      makeRow('Cash & Equivalents', input.cash, 0),
+      makeRow('Accounts Receivable', input.accounts_receivable, arAdj),
+      makeRow('Inventory', input.inventory, invAdj),
+      makeRow('Fixed Assets (Net)', input.fixed_assets, fixedAdj),
+      makeRow('Other Assets', input.other_assets, otherAdj),
+    ];
+
+    const totalAssetAdj = arAdj + invAdj + fixedAdj + otherAdj;
+    const total_assets_row = makeRow('Total Assets', input.total_assets, totalAssetAdj, true);
+
+    // Liabilities: no adjustments assumed (book = FMV for liabilities)
+    const total_liabilities_row = makeRow('Total Liabilities', input.total_liabilities, 0, true);
+
+    const netBookValue = input.total_assets - input.total_liabilities;
+    const netFMV = (input.total_assets + totalAssetAdj) - input.total_liabilities;
+    const net_asset_value_row: AssetAdjustmentRow = {
+      category: 'Adjusted Net Asset Value',
+      book_value: netBookValue,
+      formatted_book_value: formatCurrency(netBookValue),
+      adjustment: totalAssetAdj,
+      formatted_adjustment: totalAssetAdj === 0 ? '—' : formatCurrency(totalAssetAdj),
+      fair_market_value: netFMV,
+      formatted_fair_market_value: formatCurrency(netFMV),
+      is_total: true,
+    };
+
+    return {
+      title: 'Asset Adjustment Summary — Book Value to Fair Market Value',
+      asset_rows,
+      total_assets_row,
+      total_liabilities_row,
+      net_asset_value_row,
+    };
+  }
+
+  /**
+   * Convert asset adjustment table to HTML format for PDF rendering
+   */
+  assetAdjustmentTableToHTML(table: AssetAdjustmentTable): string {
+    let html = `<div class="calculation-table asset-adjustment-table">
+      <h3>${safeString(table.title)}</h3>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Category</th>
+            <th>Book Value</th>
+            <th>Adjustment</th>
+            <th>Fair Market Value</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+    // Asset rows
+    for (const row of table.asset_rows) {
+      html += `
+          <tr>
+            <td>${safeString(row.category)}</td>
+            <td class="currency">${safeString(row.formatted_book_value)}</td>
+            <td class="currency">${safeString(row.formatted_adjustment)}</td>
+            <td class="currency">${safeString(row.formatted_fair_market_value)}</td>
+          </tr>`;
+    }
+
+    // Total assets row
+    html += `
+          <tr class="total-row">
+            <td>${safeString(table.total_assets_row.category)}</td>
+            <td class="currency">${safeString(table.total_assets_row.formatted_book_value)}</td>
+            <td class="currency">${safeString(table.total_assets_row.formatted_adjustment)}</td>
+            <td class="currency">${safeString(table.total_assets_row.formatted_fair_market_value)}</td>
+          </tr>`;
+
+    // Total liabilities row
+    html += `
+          <tr class="total-row">
+            <td>${safeString(table.total_liabilities_row.category)}</td>
+            <td class="currency">${safeString(table.total_liabilities_row.formatted_book_value)}</td>
+            <td class="currency">${safeString(table.total_liabilities_row.formatted_adjustment)}</td>
+            <td class="currency">${safeString(table.total_liabilities_row.formatted_fair_market_value)}</td>
+          </tr>`;
+
+    // Net asset value row (highlighted)
+    html += `
+          <tr class="total-row" style="border-top: 2px solid #1E3A5F;">
+            <td><strong>${safeString(table.net_asset_value_row.category)}</strong></td>
+            <td class="currency"><strong>${safeString(table.net_asset_value_row.formatted_book_value)}</strong></td>
+            <td class="currency"><strong>${safeString(table.net_asset_value_row.formatted_adjustment)}</strong></td>
+            <td class="currency"><strong>${safeString(table.net_asset_value_row.formatted_fair_market_value)}</strong></td>
+          </tr>`;
 
     html += `
         </tbody>
