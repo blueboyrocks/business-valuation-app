@@ -87,7 +87,7 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "File exists at lib/calculations/asset-approach-calculator.ts. Read it first to understand existing logic, then add fallback chain."
     },
     {

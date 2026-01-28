@@ -3,6 +3,8 @@
 ## Branch: ralph/data-integrity-validation-polish
 
 ## Codebase Patterns
+- Two asset approach implementations exist: lib/calculations/asset-approach-calculator.ts (detailed, used by calculation engine) and lib/valuation/engine.ts (simplified, legacy) - only modify the former
+- AssetApproachCalculation now includes `source` field ('pass7'|'balance_sheet'|'estimated') - all mocks must include it
 - ValuationDataStore interface is the single source of truth; all fields are `readonly`
 - Factory function `createValuationDataStore` is the ONLY way to create a store - it validates required fields and deep-freezes
 - Test files that need mock ValuationDataStore objects use `buildMockStore()` helpers that construct the full interface manually (not through the factory)
@@ -24,7 +26,7 @@
 - US-002: DONE - Enhance DataAccessor with complete getters
 - US-003: DONE - Create safe string utilities
 - US-004: DONE - Unit tests for DataStore, DataAccessor, safe-string
-- US-005: PENDING - Asset approach fallback chain
+- US-005: DONE - Asset approach fallback chain
 - US-006: PENDING - Remove RECONCILE override logic
 - US-007: PENDING - Wire DataAccessor into PDF (cover, exec summary, conclusion, company)
 - US-008: PENDING - Wire DataAccessor into PDF (financial, asset/income/market approach)
@@ -162,4 +164,33 @@
   - DataAccessor edge case handling: returns 0 for ratios/margins when denominator is 0 (revenue=0, current_liabilities=0, equity=0).
   - formatPercentage expects decimal input (0.156 -> "15.6%") while safePercentage expects percentage input (25.5 -> "25.5%") - these are different conventions.
   - The vitest runner supports glob patterns for running specific test files: `npx vitest run lib/valuation/__tests__/*.test.ts`.
+---
+
+## 2026-01-28 - US-005
+- What was implemented:
+  - Added `AssetApproachSource` type ('pass7' | 'balance_sheet' | 'estimated') to types.ts
+  - Added `source` field to `AssetApproachCalculation` interface
+  - Added `pass7_adjusted_net_asset_value` optional field to `AssetApproachInputs`
+  - Implemented 3-tier fallback chain in `calculateAssetApproach`:
+    - Tier 1 (balance_sheet): Use balance sheet calculation if it produces a positive value
+    - Tier 2 (pass7): Fall back to Pass 7 AI-extracted NAV if balance sheet calc <= 0
+    - Tier 3 (estimated): Use 50% of total assets as floor estimate if both above fail
+  - Added 10% inventory obsolescence reserve to default adjustments (alongside existing 5% AR allowance)
+  - Each tier logs which source was used via console.log
+  - Moved Pass 7 fallback logic from calculation-engine.ts into the calculator itself
+  - Updated calculation-engine.ts to pass `pass7_adjusted_net_asset_value` to the calculator
+  - Exported `AssetApproachSource` from index.ts
+  - Updated data-store.test.ts mock with new `source` field
+- Files changed:
+  - lib/calculations/types.ts (added AssetApproachSource type, source field to AssetApproachCalculation)
+  - lib/calculations/asset-approach-calculator.ts (added fallback chain, inventory adjustment, pass7 input)
+  - lib/calculations/calculation-engine.ts (removed inline Pass 7 override, passes pass7 value to calculator)
+  - lib/calculations/index.ts (exported AssetApproachSource)
+  - lib/valuation/__tests__/data-store.test.ts (added source field to mock)
+- **Learnings for future iterations:**
+  - AssetApproachCalculation is only used in 3 files within lib/calculations/ (types.ts, asset-approach-calculator.ts, index.ts) plus test mocks - adding fields is low-risk.
+  - The calculation-engine.ts previously had inline fallback logic (lines 93-102) for Pass 7 override - this has been consolidated into the calculator itself.
+  - Two pre-existing test failures exist in data-quality-scorer.test.ts and tax-form-validator.test.ts - not related to our changes.
+  - The `safeNumber` utility from calculations/utils.ts safely converts undefined/null to 0, useful for optional input params.
+  - There are TWO different asset approach implementations: lib/calculations/asset-approach-calculator.ts (detailed, used by calculation engine) and lib/valuation/engine.ts (simplified, legacy). Only the former was updated.
 ---

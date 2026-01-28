@@ -84,24 +84,14 @@ export function runCalculationEngine(inputs: CalculationEngineInputs): Calculati
   // ========================================================================
   const assetApproach = calculateAssetApproach({
     balance_sheet: inputs.balance_sheet,
+    pass7_adjusted_net_asset_value: inputs.pass7_asset_approach?.adjusted_net_asset_value,
     weight: config.asset_weight,
     weight_rationale: 'Standard weight for operating business - asset approach provides floor value',
   });
   allSteps.push(...assetApproach.calculation_steps);
   allWarnings.push(...assetApproach.warnings);
 
-  // If engine's own asset approach returns 0 but Pass 7 has a value, use Pass 7's NAV
-  if (
-    assetApproach.adjusted_net_asset_value === 0 &&
-    inputs.pass7_asset_approach?.adjusted_net_asset_value &&
-    inputs.pass7_asset_approach.adjusted_net_asset_value > 0
-  ) {
-    console.log(`[CalculationEngine] Asset Approach was $0, using Pass 7 NAV: ${inputs.pass7_asset_approach.adjusted_net_asset_value}`);
-    assetApproach.adjusted_net_asset_value = inputs.pass7_asset_approach.adjusted_net_asset_value;
-    allWarnings.push('Asset approach value overridden by Pass 7 (AI-extracted) adjusted net asset value');
-  }
-
-  console.log(`[CalculationEngine] Asset Approach: ${assetApproach.adjusted_net_asset_value}`);
+  console.log(`[CalculationEngine] Asset Approach (source: ${assetApproach.source}): ${assetApproach.adjusted_net_asset_value}`);
 
   // ========================================================================
   // 3. Calculate Income Approach

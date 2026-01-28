@@ -113,6 +113,7 @@ const mockCalculationResults: CalculationEngineOutput = {
     liability_adjustments: [],
     total_liability_adjustments: 0,
     adjusted_net_asset_value: 1_300_000,
+    source: 'balance_sheet',
     weight: 0.20,
     calculation_steps: [],
     warnings: [],

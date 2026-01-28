@@ -6,6 +6,7 @@ import {
   BalanceSheetData,
   AssetApproachCalculation,
   AssetAdjustment,
+  AssetApproachSource,
   CalculationStep,
 } from './types';
 import {
@@ -28,6 +29,7 @@ export interface AssetApproachInputs {
   balance_sheet: BalanceSheetData;
   asset_adjustments?: AssetAdjustmentInput[];
   liability_adjustments?: AssetAdjustmentInput[];
+  pass7_adjusted_net_asset_value?: number;
   weight?: number;
   weight_rationale?: string;
 }
@@ -123,6 +125,30 @@ export function calculateAssetApproach(inputs: AssetApproachInputs): AssetApproa
         )
       );
     }
+
+    // 10% inventory obsolescence reserve
+    const inventoryBalance = safeNumber(bs.assets.current_assets.inventory);
+    if (inventoryBalance > 0) {
+      const inventoryAdjustment = roundToDollar(inventoryBalance * -0.10);
+      assetAdjustments.push({
+        item_name: 'Inventory',
+        book_value: inventoryBalance,
+        fair_market_value: inventoryBalance + inventoryAdjustment,
+        adjustment: inventoryAdjustment,
+        rationale: 'Estimated 10% inventory obsolescence reserve',
+      });
+      totalAssetAdjustments += inventoryAdjustment;
+      steps.push(
+        createStep(
+          'Asset',
+          'Adjust Inventory for obsolescence',
+          'Adjustment = -10% of inventory balance',
+          { inventory_balance: inventoryBalance },
+          inventoryAdjustment,
+          'Estimated inventory obsolescence reserve'
+        )
+      );
+    }
   }
 
   // Process liability adjustments
@@ -186,6 +212,58 @@ export function calculateAssetApproach(inputs: AssetApproachInputs): AssetApproa
     );
   }
 
+  // 3-tier fallback chain to ensure positive value when assets exist
+  let finalValue = adjustedNetAssetValue;
+  let source: AssetApproachSource = 'balance_sheet';
+
+  const pass7Value = safeNumber(inputs.pass7_adjusted_net_asset_value);
+
+  if (finalValue > 0) {
+    // Tier 1 (primary): Balance sheet calculation produced a positive value
+    source = 'balance_sheet';
+    console.log(`[AssetApproach] Using balance_sheet source: ${formatCurrency(finalValue)}`);
+  } else if (pass7Value > 0) {
+    // Tier 2: Fall back to Pass 7 (AI-extracted) output
+    finalValue = roundToDollar(pass7Value);
+    source = 'pass7';
+    warnings.push(
+      `Balance sheet calculation yielded ${formatCurrency(adjustedNetAssetValue)}. ` +
+        `Using Pass 7 adjusted net asset value: ${formatCurrency(finalValue)}`
+    );
+    steps.push(
+      createStep(
+        'Asset',
+        'Fallback to Pass 7 adjusted net asset value',
+        'Balance sheet NAV <= 0, using Pass 7 output',
+        { balance_sheet_nav: adjustedNetAssetValue, pass7_nav: finalValue },
+        finalValue,
+        'Pass 7 AI-extracted value used as fallback'
+      )
+    );
+    console.log(`[AssetApproach] Using pass7 source: ${formatCurrency(finalValue)}`);
+  } else if (totalAssets > 0) {
+    // Tier 3: 50% of total assets as floor estimate
+    finalValue = roundToDollar(totalAssets * 0.5);
+    source = 'estimated';
+    warnings.push(
+      `Balance sheet calculation and Pass 7 yielded no positive value. ` +
+        `Using 50% of total assets (${formatCurrency(totalAssets)}) as floor estimate: ${formatCurrency(finalValue)}`
+    );
+    steps.push(
+      createStep(
+        'Asset',
+        'Estimate floor value from total assets',
+        'Floor = 50% × Total Assets',
+        { total_assets: totalAssets },
+        finalValue,
+        'Conservative floor estimate when other methods produce zero or negative'
+      )
+    );
+    console.log(`[AssetApproach] Using estimated source (50% of total assets): ${formatCurrency(finalValue)}`);
+  } else {
+    console.log(`[AssetApproach] No positive source available, value: ${formatCurrency(finalValue)}`);
+  }
+
   // Default weight for asset approach (typically 20% for operating companies)
   const weight = inputs.weight ?? 0.2;
 
@@ -195,7 +273,8 @@ export function calculateAssetApproach(inputs: AssetApproachInputs): AssetApproa
     total_asset_adjustments: roundToDollar(totalAssetAdjustments),
     liability_adjustments: liabilityAdjustments,
     total_liability_adjustments: roundToDollar(totalLiabilityAdjustments),
-    adjusted_net_asset_value: adjustedNetAssetValue,
+    adjusted_net_asset_value: finalValue,
+    source,
     weight,
     weight_rationale: inputs.weight_rationale,
     calculation_steps: steps,

@@ -198,6 +198,8 @@ export interface AssetAdjustment {
   rationale: string;
 }
 
+export type AssetApproachSource = 'pass7' | 'balance_sheet' | 'estimated';
+
 export interface AssetApproachCalculation {
   book_value_of_equity: number;
   asset_adjustments: AssetAdjustment[];
@@ -205,6 +207,7 @@ export interface AssetApproachCalculation {
   liability_adjustments: AssetAdjustment[];
   total_liability_adjustments: number;
   adjusted_net_asset_value: number;
+  source: AssetApproachSource;
   weight: number;
   weight_rationale?: string;
   calculation_steps: CalculationStep[];

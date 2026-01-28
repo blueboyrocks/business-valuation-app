@@ -134,6 +134,7 @@ export type {
   // Asset approach types
   AssetAdjustment,
   AssetApproachCalculation,
+  AssetApproachSource,
   // Income approach types
   CapRateComponents,
   IncomeApproachCalculation,
