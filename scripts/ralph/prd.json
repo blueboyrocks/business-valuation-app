@@ -446,7 +446,7 @@
         "Typecheck passes"
       ],
       "priority": 25,
-      "passes": false,
+      "passes": true,
       "notes": "Check lib/content/disclaimers.ts for existing disclaimer content. Enhance and ensure it's properly rendered in the PDF with professional formatting."
     },
     {

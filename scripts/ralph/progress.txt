@@ -59,7 +59,7 @@
 - US-022: DONE - Cap rate buildup table
 - US-023: DONE - Asset adjustment table
 - US-024: DONE - Chart design standards
-- US-025: PENDING - Professional disclaimers section
+- US-025: DONE - Professional disclaimers section
 - US-026: PENDING - Wire value injection into narrative passes
 - US-027: PENDING - Wire quality gate into API endpoints
 - US-028: PENDING - End-to-end integration test
@@ -654,4 +654,33 @@
   - CHART_SERIES_PALETTE is the ordered 6-color array: navy[0], green[1], gold[2], purple[3], red[4], cyan[5]. Use consistent indices across related charts for visual coherence.
   - The KPI page generator (lib/pdf/kpi-page-generator.ts) has its own hardcoded CSS colors (#1E3A5F, #C9A962) - these are HTML page styling, not chart SVG colors. They could be updated in a future story to use design tokens.
   - svg-primitives.ts imports from theme.ts, so the color changes propagate automatically to grid lines, axes, and default text styles.
+---
+
+## 2026-01-28 - US-025
+- What was implemented:
+  - Enhanced DisclaimerManager in lib/content/disclaimers.ts:
+    - Updated Standard of Value disclaimer to explicitly reference IRS Revenue Ruling 59-60 and its factors (nature/history of business, economic outlook, book value, earning capacity, dividend-paying capacity, goodwill, prior sales, comparable companies)
+    - Added CERTIFICATION_STATEMENT constant with USPAP and ASA compliance language
+    - Added getCertificationStatement() method
+    - Added generateProfessionalHTML(context) method that renders 6 numbered sections: (1) Purpose and Intended Use, (2) Standard of Value, (3) Valuation Date, (4) Limiting Conditions (8 numbered items), (5) Data Sources and Reliability, (6) Certification
+  - Enhanced design-tokens.ts with .disclaimer-section CSS:
+    - h3 headers with navy color and bottom border
+    - Justified paragraph text with proper line-height
+    - Ordered list styling for limiting conditions
+  - Updated professional-pdf-generator.ts:
+    - Imported createDisclaimerManager and DisclaimerContext
+    - Generates professionalDisclaimersHTML using DisclaimerManager with DataAccessor-sourced company name and valuation date
+    - Assumptions section now always renders (not conditional on AI narrative) since professional disclaimers are always generated
+    - AI-generated narrative content renders below the professional disclaimers as supplementary content with a separator border
+    - TOC always includes Assumptions & Conditions section
+    - Uses safeString() for all dynamic text injection
+- Files changed:
+  - lib/content/disclaimers.ts (added certification statement, IRS Rev Ruling 59-60 reference, generateProfessionalHTML method)
+  - lib/pdf/design-tokens.ts (added .disclaimer-section CSS styles)
+  - lib/pdf/professional-pdf-generator.ts (imported disclaimers, generated professional HTML, updated section rendering)
+- **Learnings for future iterations:**
+  - The DisclaimerManager was a dormant utility - it existed with full test coverage but was not integrated into the PDF pipeline. The AI-generated content from Pass 11j was the sole source. Now both coexist: professional disclaimers from DisclaimerManager are always present, and AI narrative is supplementary.
+  - DisclaimerContext requires company_name, valuation_date, and report_date. Only company_name and valuation_date are dynamically sourced from DataAccessor; report_date uses generatedDate.
+  - The Assumptions section is now unconditionally rendered (no longer wrapped in `${assumptionsLimitingConditions ? ... : ''}`) since the professional disclaimers HTML is always generated.
+  - The existing 21 disclaimers tests still pass because the new methods are additive and don't modify existing behavior.
 ---
