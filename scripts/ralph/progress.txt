@@ -39,7 +39,7 @@
 - US-008: DONE - Wire DataAccessor into PDF (financial, asset/income/market approach)
 - US-009: DONE - Wire DataAccessor into PDF (reconciliation, risk, KPI, remaining)
 - US-010: DONE - Create value consistency validator
-- US-011: PENDING - Create business rule validator
+- US-011: DONE - Create business rule validator
 - US-012: PENDING - Create content completeness validator
 - US-013: PENDING - Create narrative value injection system
 - US-014: PENDING - Create post-generation narrative validator
@@ -301,4 +301,25 @@
   - lib/validation/ already had quality-checker.ts and report-output-validator.ts - the new file sits alongside them.
   - Currency regex must handle both full format ($1,234,567) and shorthand ($1.2M) to catch values in narrative text.
   - Multiple extraction needs upper bound filter (< 100) to avoid matching things like "100x" that might be percentage references.
+---
+
+## 2026-01-28 - US-011
+- What was implemented:
+  - Created lib/validation/business-rule-validator.ts with 6 business rule checks
+  - Exported types: BusinessRuleResult (rule, passed, severity, message, details), BusinessRuleValidation (passed, results, errors, warnings)
+  - Main function: validateBusinessRules(accessor) returns BusinessRuleValidation
+  - Rule 1 (SDE Multiple): Industry-specific ranges for Engineering Services, Professional Services, Manufacturing, Retail, Restaurant, Healthcare, Technology, Construction, Transportation, plus default. Warning if outside range, error if > 1.5x max. Uses case-insensitive substring matching on industry name.
+  - Rule 2 (Asset Approach Positive): Error if total_assets > 0 but asset approach value <= 0
+  - Rule 3 (Approach Weights): Error if weights don't sum to 100% within 1% tolerance (compares decimal sum to 1.0)
+  - Rule 4 (Value Range Spread): Warning if spread < 10% or > 50% of final value
+  - Rule 5 (Final Value Positive): Error if final value <= 0
+  - Rule 6 (Cap Rate): Error if outside 5%-60%, warning if outside 10%-50%
+  - Distinguishes errors (blocking) from warnings (advisory) - `passed` is false only when errors exist
+- Files changed:
+  - lib/validation/business-rule-validator.ts (new file, ~250 lines)
+- **Learnings for future iterations:**
+  - Industry multiple ranges are defined in multiple places: lib/valuation/industry-multiples-lookup.ts (by NAICS code, detailed with ceiling), lib/qa/auto-correction-engine.ts (by NAICS code), and now lib/validation/business-rule-validator.ts (by industry name string). The business rule validator uses industry name matching because DataAccessor exposes getIndustryName() not NAICS codes for simple validation.
+  - DataAccessor stores approach weights as decimals (0.40 = 40%), so weight sum check compares against 1.0 not 100.
+  - DataAccessor stores cap rate as decimal (0.25 = 25%), so cap rate range check uses 0.05-0.60 bounds.
+  - The validator only uses DataAccessor methods - no direct DataStore access needed. This keeps it decoupled from the store structure.
 ---

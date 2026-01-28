@@ -192,7 +192,7 @@
         "Typecheck passes"
       ],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": "NEW file. Check lib/validation/ and lib/qa/ for any existing business rule validation to avoid duplication."
     },
     {
