@@ -43,7 +43,7 @@
 - US-012: DONE - Create content completeness validator
 - US-013: DONE - Create narrative value injection system
 - US-014: DONE - Create post-generation narrative validator
-- US-015: PENDING - Create pre-PDF quality gate
+- US-015: DONE - Create pre-PDF quality gate
 - US-016: PENDING - Validation pipeline integration tests
 - US-017: PENDING - Professional section ordering
 - US-018: PENDING - Dynamic table of contents
@@ -391,4 +391,27 @@
   - Section identifiers vary between the orchestrator (snake_case: executive_summary) and PDF generator (camelCase: executiveSummary) - the criticalIn arrays include both forms.
   - The validator is designed to work standalone per-section (not across sections like consistency-validator) - it validates one narrative at a time as it's generated.
   - Only 2 metric checks (Final Value and SDE Multiple) are implemented as these are the most commonly hallucinated values. Additional checks can be added to NARRATIVE_CHECKS array.
+---
+
+## 2026-01-28 - US-015
+- What was implemented:
+  - Created lib/validation/quality-gate.ts - a comprehensive pre-PDF quality gate that aggregates all validators
+  - Exported types: QualityCategory, QualityGateResult
+  - Main function: runQualityGate(accessor, sectionContents, rawDataString) returns QualityGateResult with passed, score (0-100), categories (dataIntegrity, businessRules, completeness, formatting), blockingErrors, warnings, canProceed
+  - Data integrity checks (35% weight): detects [object Object], undefined, NaN in raw data and section contents; runs value consistency validator
+  - Business rules checks (25% weight): runs business-rule-validator (SDE multiple, asset approach, weights sum, value range, final value, cap rate)
+  - Completeness checks (25% weight): runs completeness-validator (required sections, word counts)
+  - Formatting checks (15% weight): detects N/A in critical fields (concluded value, revenue, SDE, etc.) in both section content and raw data
+  - canProceed is false if ANY blocking errors exist (from any category)
+  - passed requires canProceed AND score >= 70
+  - runQualityGateOrThrow() throws Error with detailed message listing all blocking errors; logs warnings to console when proceeding
+  - Console.log outputs all category scores and errors for debugging
+- Files changed:
+  - lib/validation/quality-gate.ts (new file, ~280 lines)
+- **Learnings for future iterations:**
+  - The existing lib/qa/quality-gate.ts is a DIFFERENT system - it uses input-based scoring with boolean checks (DataConsistencyInput, ValuationAccuracyInput, etc.) for the broader QA orchestrator. The new lib/validation/quality-gate.ts aggregates the three PRD-I validators (consistency, business rules, completeness) and adds data integrity + formatting checks.
+  - The quality gate accepts a rawDataString parameter (typically JSON.stringify of report data) for pattern-based scanning of [object Object], undefined, NaN across the entire data payload.
+  - Score calculation uses Math.max(0, 100 - deductions) per category, then weighted average across categories. Deductions are calibrated: [object Object] = 25pts per occurrence, consistency error = 10pts, missing section = 15pts, business rule error = 20pts.
+  - countOccurrences is a simple string indexOf loop - it's case-sensitive for [object Object] and undefined which is the correct behavior (these exact strings should never appear).
+  - N/A detection uses a proximity check: finds the field name in text, then checks the next 100 characters for "n/a", "not available", or "not applicable".
 ---
