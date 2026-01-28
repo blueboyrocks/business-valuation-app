@@ -66,12 +66,16 @@ function buildMockStore(overrides?: {
     asset_weight: 0.20,
     dlom_percentage: 0.15,
     dlom_applied: true,
+    dlom_amount: 0,
+    dloc_rate: 0,
+    dloc_amount: 0,
   };
 
   const baseCompany: ValuationDataStore['company'] = {
     name: 'K-Factor Engineering, LLC',
     industry: 'Engineering Services',
     naics_code: '541330',
+    sic_code: '',
     entity_type: 'S-Corporation',
     fiscal_year_end: '2024-12-31',
     location: '',
@@ -100,12 +104,26 @@ function buildMockStore(overrides?: {
     total_calc_steps: 10,
   };
 
+  const baseRisk: ValuationDataStore['risk'] = {
+    overall_score: 50,
+    overall_rating: 'Moderate',
+    factors: [],
+  };
+
+  const baseDataQuality: ValuationDataStore['data_quality'] = {
+    completeness_score: 85,
+    years_of_data: 3,
+    missing_fields: [],
+  };
+
   return {
     financial: { ...baseFinancial, ...overrides?.financial },
     valuation: { ...baseValuation, ...overrides?.valuation },
     company: { ...baseCompany, ...overrides?.company },
     balance_sheet: { ...baseBalanceSheet, ...overrides?.balance_sheet },
     metadata: { ...baseMetadata, ...overrides?.metadata },
+    risk: baseRisk,
+    data_quality: baseDataQuality,
   };
 }
 

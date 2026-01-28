@@ -2,13 +2,30 @@
  * ValuationDataStore - Single Source of Truth for Valuation Data
  *
  * PRD-A: Data Consistency Engine
+ * PRD-H: Enhanced with full field coverage, DataIntegrityError, and validation.
+ *
  * Accepts pre-computed values from the calculation engine + metadata from pass outputs.
  * The entire store is frozen after creation to prevent mutation.
  *
  * NO independent calculations — all computed values come from the calculation engine.
  */
 
-import type { CalculationEngineOutput } from '../calculations/types';
+import type { CalculationEngineOutput, RiskFactor } from '../calculations/types';
+
+// ============ ERROR CLASS ============
+
+/**
+ * Thrown when required data is missing or invalid during DataStore creation.
+ */
+export class DataIntegrityError extends Error {
+  public readonly missingFields: string[];
+
+  constructor(message: string, missingFields: string[] = []) {
+    super(message);
+    this.name = 'DataIntegrityError';
+    this.missingFields = missingFields;
+  }
+}
 
 // ============ INTERFACES ============
 
@@ -45,12 +62,16 @@ export interface ValuationData {
   readonly asset_weight: number;
   readonly dlom_percentage: number;
   readonly dlom_applied: boolean;
+  readonly dlom_amount: number;
+  readonly dloc_rate: number;
+  readonly dloc_amount: number;
 }
 
 export interface CompanyData {
   readonly name: string;
   readonly industry: string;
   readonly naics_code: string;
+  readonly sic_code: string;
   readonly entity_type: string;
   readonly fiscal_year_end: string;
   readonly location: string;
@@ -79,12 +100,26 @@ export interface MetadataInfo {
   readonly total_calc_steps: number;
 }
 
+export interface RiskInfo {
+  readonly overall_score: number;
+  readonly overall_rating: 'Low' | 'Moderate' | 'Elevated' | 'High';
+  readonly factors: ReadonlyArray<RiskFactor>;
+}
+
+export interface DataQualityInfo {
+  readonly completeness_score: number;
+  readonly years_of_data: number;
+  readonly missing_fields: ReadonlyArray<string>;
+}
+
 export interface ValuationDataStore {
   readonly financial: FinancialData;
   readonly valuation: ValuationData;
   readonly company: CompanyData;
   readonly balance_sheet: BalanceSheetSummary;
   readonly metadata: MetadataInfo;
+  readonly risk: RiskInfo;
+  readonly data_quality: DataQualityInfo;
 }
 
 // ============ FACTORY INPUT ============
@@ -99,6 +134,7 @@ export interface DataStoreFromEngineInput {
   location?: string;
   yearsInBusiness?: number;
   valuationDate?: string;
+  sicCode?: string;
   // Balance sheet data from pass outputs
   balanceSheet?: {
     total_assets?: number;
@@ -122,11 +158,20 @@ export interface DataStoreFromEngineInput {
   interest_expense?: number;
   depreciation?: number;
   amortization?: number;
+  // Risk data from pass outputs
+  riskFactors?: RiskFactor[];
+  overallRiskScore?: number;
+  // Data quality info
+  dataQuality?: {
+    completeness_score?: number;
+    years_of_data?: number;
+    missing_fields?: string[];
+  };
 }
 
 // ============ DEEP FREEZE ============
 
-function deepFreeze<T extends object>(obj: T): Readonly<T> {
+export function deepFreeze<T extends object>(obj: T): Readonly<T> {
   if (obj === null || typeof obj !== 'object') {
     return obj;
   }
@@ -140,16 +185,52 @@ function deepFreeze<T extends object>(obj: T): Readonly<T> {
   return Object.freeze(obj);
 }
 
+// ============ HELPERS ============
+
+function getRiskRating(score: number): 'Low' | 'Moderate' | 'Elevated' | 'High' {
+  if (score <= 25) return 'Low';
+  if (score <= 50) return 'Moderate';
+  if (score <= 75) return 'Elevated';
+  return 'High';
+}
+
 // ============ FACTORY FUNCTION ============
 
 /**
  * Create a frozen ValuationDataStore from calculation engine output + pass metadata.
  * This is the ONLY way to create a data store — no independent calculations.
+ *
+ * Validates that required fields (final_value, revenue.current, earnings.sde_normalized)
+ * are present and throws DataIntegrityError if missing.
  */
 export function createValuationDataStore(input: DataStoreFromEngineInput): ValuationDataStore {
   const calc = input.calculationResults;
 
-  // Map earnings data from calculation engine
+  // ---- Validate required fields ----
+  const missingFields: string[] = [];
+
+  if (calc.synthesis.final_concluded_value == null || calc.synthesis.final_concluded_value === 0) {
+    missingFields.push('final_value');
+  }
+
+  const hasRevenue = (input.revenue != null && input.revenue > 0);
+  if (!hasRevenue) {
+    missingFields.push('revenue.current');
+  }
+
+  const hasNormalizedSDE = (calc.earnings.weighted_sde != null && calc.earnings.weighted_sde > 0);
+  if (!hasNormalizedSDE) {
+    missingFields.push('earnings.sde_normalized');
+  }
+
+  if (missingFields.length > 0) {
+    throw new DataIntegrityError(
+      `Required fields missing from DataStore input: ${missingFields.join(', ')}`,
+      missingFields
+    );
+  }
+
+  // ---- Map earnings data from calculation engine ----
   const sdeByYear = calc.earnings.sde_by_year.map(y => ({
     period: y.period,
     sde: y.sde,
@@ -159,8 +240,6 @@ export function createValuationDataStore(input: DataStoreFromEngineInput): Valua
     ebitda: y.adjusted_ebitda,
   }));
 
-  // Get revenue by year from the SDE year data (net_income + adjustments give us SDE, but we need revenue from pass)
-  // We'll use the earnings data periods to correlate
   const revenueByYear = sdeByYear.map(y => ({
     period: y.period,
     revenue: 0, // Will be filled from pass outputs if available
@@ -184,17 +263,21 @@ export function createValuationDataStore(input: DataStoreFromEngineInput): Valua
     revenue_by_year: revenueByYear,
   };
 
-  // Get approach weights from synthesis
+  // ---- Get approach weights from synthesis ----
   const assetSummary = calc.synthesis.approach_summary.find(a => a.approach === 'Asset');
   const incomeSummary = calc.synthesis.approach_summary.find(a => a.approach === 'Income');
   const marketSummary = calc.synthesis.approach_summary.find(a => a.approach === 'Market');
+
+  const dlomPct = calc.synthesis.discounts_and_premiums.dlom.percentage;
+  const dlocPct = calc.synthesis.discounts_and_premiums.dloc.percentage;
+  const prelimValue = calc.synthesis.preliminary_value;
 
   const valuation: ValuationData = {
     income_approach_value: calc.income_approach.income_approach_value,
     market_approach_value: calc.market_approach.market_approach_value,
     asset_approach_value: calc.asset_approach.adjusted_net_asset_value,
     final_value: calc.synthesis.final_concluded_value,
-    preliminary_value: calc.synthesis.preliminary_value,
+    preliminary_value: prelimValue,
     value_range_low: calc.synthesis.value_range.low,
     value_range_high: calc.synthesis.value_range.high,
     sde_multiple: calc.market_approach.adjusted_multiple,
@@ -202,10 +285,14 @@ export function createValuationDataStore(input: DataStoreFromEngineInput): Valua
     income_weight: incomeSummary?.weight ?? 0.40,
     market_weight: marketSummary?.weight ?? 0.40,
     asset_weight: assetSummary?.weight ?? 0.20,
-    dlom_percentage: calc.synthesis.discounts_and_premiums.dlom.percentage,
+    dlom_percentage: dlomPct,
     dlom_applied: calc.synthesis.discounts_and_premiums.dlom.applicable,
+    dlom_amount: dlomPct * prelimValue,
+    dloc_rate: dlocPct,
+    dloc_amount: dlocPct * prelimValue,
   };
 
+  // ---- Balance sheet ----
   const bs = input.balanceSheet || {};
   const balance_sheet: BalanceSheetSummary = {
     total_assets: bs.total_assets || 0,
@@ -221,16 +308,19 @@ export function createValuationDataStore(input: DataStoreFromEngineInput): Valua
     current_liabilities: bs.current_liabilities || 0,
   };
 
+  // ---- Company ----
   const company: CompanyData = {
     name: input.companyName,
     industry: input.industry,
     naics_code: input.naicsCode,
+    sic_code: input.sicCode || '',
     entity_type: input.entityType || '',
     fiscal_year_end: input.fiscalYearEnd || '',
     location: input.location || '',
     years_in_business: input.yearsInBusiness || 0,
   };
 
+  // ---- Metadata ----
   const metadata: MetadataInfo = {
     report_date: new Date().toISOString().split('T')[0],
     valuation_date: input.valuationDate || new Date().toISOString().split('T')[0],
@@ -239,12 +329,44 @@ export function createValuationDataStore(input: DataStoreFromEngineInput): Valua
     total_calc_steps: calc.total_steps,
   };
 
+  // ---- Risk ----
+  const overallScore = input.overallRiskScore ?? 50;
+  const risk: RiskInfo = {
+    overall_score: overallScore,
+    overall_rating: getRiskRating(overallScore),
+    factors: input.riskFactors ?? [],
+  };
+
+  // ---- Data Quality ----
+  const dq = input.dataQuality || {};
+  const computedMissingFields: string[] = dq.missing_fields ?? [];
+  // Auto-detect missing fields if not provided
+  if (computedMissingFields.length === 0) {
+    if (!input.revenue) computedMissingFields.push('revenue');
+    if (!input.net_income) computedMissingFields.push('net_income');
+    if (!bs.total_assets) computedMissingFields.push('total_assets');
+  }
+
+  const yearsOfData = dq.years_of_data ?? sdeByYear.length;
+  const totalPossible = 15; // number of key data fields we track
+  const filledCount = totalPossible - computedMissingFields.length;
+  const completenessScore = dq.completeness_score ?? Math.round((filledCount / totalPossible) * 100);
+
+  const data_quality: DataQualityInfo = {
+    completeness_score: completenessScore,
+    years_of_data: yearsOfData,
+    missing_fields: computedMissingFields,
+  };
+
+  // ---- Assemble and freeze ----
   const store: ValuationDataStore = {
     financial,
     valuation,
     company,
     balance_sheet,
     metadata,
+    risk,
+    data_quality,
   };
 
   return deepFreeze(store) as ValuationDataStore;

@@ -56,11 +56,15 @@ function buildMockStore(overrides?: Partial<ValuationDataStore>): ValuationDataS
       asset_weight: 0.20,
       dlom_percentage: 0.15,
       dlom_applied: true,
+      dlom_amount: 0,
+      dloc_rate: 0,
+      dloc_amount: 0,
     },
     company: {
       name: 'K-Factor Engineering, LLC',
       industry: 'Engineering Services',
       naics_code: '541330',
+      sic_code: '',
       entity_type: 'S-Corporation',
       fiscal_year_end: '2024-12-31',
       location: '',
@@ -86,6 +90,16 @@ function buildMockStore(overrides?: Partial<ValuationDataStore>): ValuationDataS
       engine_version: '1.0.0',
       total_calc_steps: 10,
     },
+    risk: {
+      overall_score: 50,
+      overall_rating: 'Moderate',
+      factors: [],
+    },
+    data_quality: {
+      completeness_score: 85,
+      years_of_data: 3,
+      missing_fields: [],
+    },
   };
 
   if (!overrides) return base;
@@ -96,6 +110,8 @@ function buildMockStore(overrides?: Partial<ValuationDataStore>): ValuationDataS
     company: overrides.company ?? base.company,
     balance_sheet: overrides.balance_sheet ?? base.balance_sheet,
     metadata: overrides.metadata ?? base.metadata,
+    risk: overrides.risk ?? base.risk,
+    data_quality: overrides.data_quality ?? base.data_quality,
   };
 }
 
@@ -187,6 +203,9 @@ describe('ValuationDataAccessor', () => {
           asset_weight: 0.20,
           dlom_percentage: 0.15,
           dlom_applied: true,
+          dlom_amount: 375_000,
+          dloc_rate: 0,
+          dloc_amount: 0,
         },
       });
       const accessorWithValuation = createDataAccessor(storeWithValuation);
@@ -216,6 +235,9 @@ describe('ValuationDataAccessor', () => {
           asset_weight: 0.20,
           dlom_percentage: 0.15,
           dlom_applied: true,
+          dlom_amount: 375_000,
+          dloc_rate: 0,
+          dloc_amount: 0,
         },
       });
       const accessorWithValuation = createDataAccessor(storeWithValuation);

@@ -9,6 +9,7 @@ import {
   ValuationDataStore,
   createValuationDataStore,
   DataStoreFromEngineInput,
+  DataIntegrityError,
 } from '../data-store';
 
 // ============ MOCK DATA ============
@@ -496,6 +497,7 @@ describe('createValuationDataStore with optional fields omitted', () => {
       companyName: 'Minimal Corp',
       industry: 'Consulting',
       naicsCode: '541611',
+      revenue: 6_265_024,
     };
 
     const store = createValuationDataStore(minimalInput);
@@ -503,6 +505,7 @@ describe('createValuationDataStore with optional fields omitted', () => {
     expect(store.company.name).toBe('Minimal Corp');
     expect(store.company.industry).toBe('Consulting');
     expect(store.company.naics_code).toBe('541611');
+    expect(store.company.sic_code).toBe('');
     expect(store.company.entity_type).toBe('');
     expect(store.company.fiscal_year_end).toBe('');
     expect(store.company.location).toBe('');
@@ -515,6 +518,7 @@ describe('createValuationDataStore with optional fields omitted', () => {
       companyName: 'No BS Corp',
       industry: 'Consulting',
       naicsCode: '541611',
+      revenue: 6_265_024,
     };
 
     const store = createValuationDataStore(inputWithoutBalanceSheet);
@@ -526,17 +530,17 @@ describe('createValuationDataStore with optional fields omitted', () => {
     expect(store.balance_sheet.accounts_receivable).toBe(0);
   });
 
-  it('should default financial pass-through fields to zero when omitted', () => {
-    const inputWithoutFinancials: DataStoreFromEngineInput = {
+  it('should default non-required financial pass-through fields to zero when omitted', () => {
+    const inputWithoutOptionalFinancials: DataStoreFromEngineInput = {
       calculationResults: mockCalculationResults,
       companyName: 'No Financials Corp',
       industry: 'Consulting',
       naicsCode: '541611',
+      revenue: 6_265_024, // required
     };
 
-    const store = createValuationDataStore(inputWithoutFinancials);
+    const store = createValuationDataStore(inputWithoutOptionalFinancials);
 
-    expect(store.financial.revenue).toBe(0);
     expect(store.financial.cogs).toBe(0);
     expect(store.financial.gross_profit).toBe(0);
     expect(store.financial.net_income).toBe(0);
@@ -552,6 +556,7 @@ describe('createValuationDataStore with optional fields omitted', () => {
       companyName: 'Engine Only Corp',
       industry: 'Consulting',
       naicsCode: '541611',
+      revenue: 6_265_024,
     };
 
     const store = createValuationDataStore(minimalInput);
@@ -571,6 +576,7 @@ describe('createValuationDataStore with optional fields omitted', () => {
       companyName: 'No Date Corp',
       industry: 'Consulting',
       naicsCode: '541611',
+      revenue: 6_265_024,
     };
 
     const store = createValuationDataStore(inputWithoutDate);
@@ -585,6 +591,7 @@ describe('createValuationDataStore with optional fields omitted', () => {
       companyName: 'Frozen Corp',
       industry: 'Consulting',
       naicsCode: '541611',
+      revenue: 6_265_024,
     };
 
     const store = createValuationDataStore(minimalInput);
@@ -595,6 +602,144 @@ describe('createValuationDataStore with optional fields omitted', () => {
     expect(Object.isFrozen(store.company)).toBe(true);
     expect(Object.isFrozen(store.balance_sheet)).toBe(true);
     expect(Object.isFrozen(store.metadata)).toBe(true);
+    expect(Object.isFrozen(store.risk)).toBe(true);
+    expect(Object.isFrozen(store.data_quality)).toBe(true);
+  });
+});
+
+describe('new PRD-H fields', () => {
+  let store: ValuationDataStore;
+
+  beforeEach(() => {
+    store = createValuationDataStore(kFactorInput);
+  });
+
+  it('should populate dlom_amount from percentage * preliminary_value', () => {
+    const expected = 0.15 * 3_033_478;
+    expect(store.valuation.dlom_amount).toBeCloseTo(expected, 0);
+  });
+
+  it('should populate dloc_rate from synthesis', () => {
+    expect(store.valuation.dloc_rate).toBe(0);
+  });
+
+  it('should populate dloc_amount', () => {
+    expect(store.valuation.dloc_amount).toBe(0);
+  });
+
+  it('should populate sic_code (defaults to empty)', () => {
+    expect(store.company.sic_code).toBe('');
+  });
+
+  it('should populate risk section with defaults', () => {
+    expect(store.risk).toBeDefined();
+    expect(store.risk.overall_score).toBe(50); // default
+    expect(store.risk.overall_rating).toBe('Moderate');
+    expect(store.risk.factors).toEqual([]);
+  });
+
+  it('should populate data_quality section', () => {
+    expect(store.data_quality).toBeDefined();
+    expect(store.data_quality.completeness_score).toBeGreaterThan(0);
+    expect(store.data_quality.years_of_data).toBe(3);
+    expect(Array.isArray(store.data_quality.missing_fields)).toBe(true);
+  });
+
+  it('should freeze risk section', () => {
+    expect(Object.isFrozen(store.risk)).toBe(true);
+  });
+
+  it('should freeze data_quality section', () => {
+    expect(Object.isFrozen(store.data_quality)).toBe(true);
+  });
+
+  it('should populate risk rating based on score', () => {
+    const lowRisk = createValuationDataStore({ ...kFactorInput, overallRiskScore: 20 });
+    expect(lowRisk.risk.overall_rating).toBe('Low');
+
+    const moderate = createValuationDataStore({ ...kFactorInput, overallRiskScore: 40 });
+    expect(moderate.risk.overall_rating).toBe('Moderate');
+
+    const elevated = createValuationDataStore({ ...kFactorInput, overallRiskScore: 60 });
+    expect(elevated.risk.overall_rating).toBe('Elevated');
+
+    const high = createValuationDataStore({ ...kFactorInput, overallRiskScore: 80 });
+    expect(high.risk.overall_rating).toBe('High');
+  });
+});
+
+describe('DataIntegrityError validation', () => {
+  it('should throw DataIntegrityError when revenue is missing', () => {
+    const inputWithoutRevenue: DataStoreFromEngineInput = {
+      calculationResults: mockCalculationResults,
+      companyName: 'No Revenue Corp',
+      industry: 'Consulting',
+      naicsCode: '541611',
+      // revenue is omitted (0 or undefined)
+    };
+
+    expect(() => createValuationDataStore(inputWithoutRevenue)).toThrow(DataIntegrityError);
+  });
+
+  it('should include missing field names in the error', () => {
+    const inputWithoutRevenue: DataStoreFromEngineInput = {
+      calculationResults: mockCalculationResults,
+      companyName: 'No Revenue Corp',
+      industry: 'Consulting',
+      naicsCode: '541611',
+    };
+
+    try {
+      createValuationDataStore(inputWithoutRevenue);
+      expect.fail('Should have thrown');
+    } catch (err) {
+      expect(err).toBeInstanceOf(DataIntegrityError);
+      expect((err as DataIntegrityError).missingFields).toContain('revenue.current');
+    }
+  });
+
+  it('should throw when final_value is zero', () => {
+    const zeroFinalValue = {
+      ...mockCalculationResults,
+      synthesis: {
+        ...mockCalculationResults.synthesis,
+        final_concluded_value: 0,
+      },
+    };
+
+    const input: DataStoreFromEngineInput = {
+      calculationResults: zeroFinalValue,
+      companyName: 'Zero Final Corp',
+      industry: 'Consulting',
+      naicsCode: '541611',
+      revenue: 6_265_024,
+    };
+
+    expect(() => createValuationDataStore(input)).toThrow(DataIntegrityError);
+  });
+
+  it('should throw when weighted_sde is zero', () => {
+    const zeroSDE = {
+      ...mockCalculationResults,
+      earnings: {
+        ...mockCalculationResults.earnings,
+        weighted_sde: 0,
+      },
+    };
+
+    const input: DataStoreFromEngineInput = {
+      calculationResults: zeroSDE,
+      companyName: 'Zero SDE Corp',
+      industry: 'Consulting',
+      naicsCode: '541611',
+      revenue: 6_265_024,
+    };
+
+    expect(() => createValuationDataStore(input)).toThrow(DataIntegrityError);
+  });
+
+  it('should not throw when all required fields are present', () => {
+    expect(() => createValuationDataStore(kFactorInput)).not.toThrow();
   });
 });
 
