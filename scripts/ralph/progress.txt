@@ -25,6 +25,8 @@
 - Wrap accessor string outputs in safeString() when embedding in HTML text nodes to prevent [object Object] or undefined
 - TypeScript target doesn't support Map for-of iteration directly; use `Array.from(map.keys())` pattern instead of `for (const [k,v] of map)`
 - lib/validation/ directory contains cross-section validators (consistency, business rules, completeness); lib/valuation/ contains internal DataStore validators
+- Consistency validator checks ALL dollar amounts in a section when ANY keyword for a metric appears; mock section text in critical sections (executiveSummary, conclusionOfValue) should avoid including non-final-value dollar amounts to prevent false positive mismatches
+- Validation pipeline tests use buildMockStore() with a generic "Apex Consulting Group" Professional Services firm - not K-Force specific
 
 ## Status: IN PROGRESS
 
@@ -44,7 +46,7 @@
 - US-013: DONE - Create narrative value injection system
 - US-014: DONE - Create post-generation narrative validator
 - US-015: DONE - Create pre-PDF quality gate
-- US-016: PENDING - Validation pipeline integration tests
+- US-016: DONE - Validation pipeline integration tests
 - US-017: PENDING - Professional section ordering
 - US-018: PENDING - Dynamic table of contents
 - US-019: PENDING - Design system tokens
@@ -414,4 +416,36 @@
   - Score calculation uses Math.max(0, 100 - deductions) per category, then weighted average across categories. Deductions are calibrated: [object Object] = 25pts per occurrence, consistency error = 10pts, missing section = 15pts, business rule error = 20pts.
   - countOccurrences is a simple string indexOf loop - it's case-sensitive for [object Object] and undefined which is the correct behavior (these exact strings should never appear).
   - N/A detection uses a proximity check: finds the field name in text, then checks the next 100 characters for "n/a", "not available", or "not applicable".
+---
+
+## 2026-01-28 - US-016
+- What was implemented:
+  - Created lib/validation/__tests__/validation-pipeline.test.ts with 31 integration tests covering the complete validation pipeline
+  - Test: valid report data passes quality gate with score >= 70 (canProceed=true, no blocking errors)
+  - Test: runQualityGateOrThrow does not throw for valid data
+  - Test: inconsistent final value in executive summary detected by consistency validator (2 tests)
+  - Test: [object Object] in raw data blocks generation (3 tests: raw data, section content, runQualityGateOrThrow)
+  - Test: missing Executive Summary section blocks generation (3 tests: completeness, quality gate, runQualityGateOrThrow)
+  - Test: asset approach $0 with positive assets fails business rules (2 tests: validator + quality gate)
+  - Test: SDE multiple outside industry range generates warning or error (2 tests: below range, far above max)
+  - Test: approach weights not summing to 100% fails (4 tests: over 100%, under 100%, within tolerance passes, quality gate)
+  - Test: quality gate result structure (3 tests: all categories present, weights sum to 1.0, score range 0-100)
+  - Test: final value positive (2 tests: zero and negative)
+  - Test: cap rate validation (3 tests: below 5%, above 60%, warning range 5%-10%)
+  - Test: multiple blocking errors accumulate from different categories
+  - Test: undefined and NaN detection in raw data and section content (2 tests)
+  - Test: N/A in critical fields near concluded value
+  - Test: completeness word count warnings for short sections
+  - All tests use generic mock data (Apex Consulting Group, Professional Services - not K-Force specific)
+  - All 31 tests pass, typecheck passes (only pre-existing error)
+- Files changed:
+  - lib/validation/__tests__/validation-pipeline.test.ts (new file, 31 tests)
+  - scripts/ralph/prd.json (US-016 passes: true)
+  - scripts/ralph/progress.txt (updated status, added progress entry)
+- **Learnings for future iterations:**
+  - The consistency validator checks ALL dollar amounts in a section against the metric's authoritative value when ANY keyword for that metric appears in the section. This means mock section text must be carefully constructed: critical sections (executiveSummary, conclusionOfValue) should NOT contain non-final-value dollar amounts, because they'll be picked up as mismatched candidates.
+  - Mock store values should be chosen so that revenue, SDE, and other amounts are clearly separated from the final value to avoid the consistency validator's 0.1x-10x candidate range picking up cross-metric false positives.
+  - The `buildMockStore()` pattern with section-level overrides (`buildMockStore({ valuation: { ...buildMockStore().valuation, field: newValue } })`) works well for creating targeted test variants.
+  - The `generateWords(minWords, sentences)` helper is useful for creating section content that meets minimum word count requirements while embedding specific test phrases.
+  - Pre-existing test failures (4 tests in 3 files: calculation-engine, data-quality-scorer, tax-form-validator) continue to be unrelated to our work.
 ---
