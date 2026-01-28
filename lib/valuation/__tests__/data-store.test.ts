@@ -487,6 +487,21 @@ describe('ValuationDataStore', () => {
         (store as unknown as Record<string, unknown>).newProperty = 'test';
       }).toThrow();
     });
+
+    it('should deeply freeze nested arrays (sde_by_year entries)', () => {
+      expect(Object.isFrozen(store.financial.sde_by_year)).toBe(true);
+      if (store.financial.sde_by_year.length > 0) {
+        expect(Object.isFrozen(store.financial.sde_by_year[0])).toBe(true);
+      }
+    });
+
+    it('should deeply freeze risk section', () => {
+      expect(Object.isFrozen(store.risk)).toBe(true);
+    });
+
+    it('should deeply freeze data_quality section', () => {
+      expect(Object.isFrozen(store.data_quality)).toBe(true);
+    });
   });
 });
 

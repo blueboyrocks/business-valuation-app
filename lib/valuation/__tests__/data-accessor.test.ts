@@ -314,5 +314,333 @@ describe('ValuationDataAccessor', () => {
       expect(raw.financial.revenue).toBe(6_265_024);
       expect(raw.company.name).toBe('K-Factor Engineering, LLC');
     });
+
+    it('getRawStore should return the same store', () => {
+      const raw = accessor.getRawStore();
+      expect(raw).toBe(store);
+    });
+  });
+
+  describe('formatCurrency returns $X,XXX format', () => {
+    it('should format whole numbers with commas and dollar sign', () => {
+      expect(accessor.formatCurrency(1_000_000)).toBe('$1,000,000');
+    });
+
+    it('should round to whole dollars by default', () => {
+      expect(accessor.formatCurrency(1234.56)).toBe('$1,235');
+    });
+
+    it('should return $0 for zero', () => {
+      expect(accessor.formatCurrency(0)).toBe('$0');
+    });
+
+    it('should handle negative values', () => {
+      const result = accessor.formatCurrency(-500_000);
+      expect(result).toContain('500,000');
+    });
+  });
+
+  describe('formatPercentage returns X.X% format', () => {
+    it('should format decimal as percentage', () => {
+      expect(accessor.formatPercentage(0.156)).toBe('15.6%');
+    });
+
+    it('should format zero', () => {
+      expect(accessor.formatPercentage(0)).toBe('0.0%');
+    });
+
+    it('should respect custom decimal places', () => {
+      expect(accessor.formatPercentage(0.1567, 2)).toBe('15.67%');
+    });
+
+    it('should format 100%', () => {
+      expect(accessor.formatPercentage(1.0)).toBe('100.0%');
+    });
+  });
+
+  describe('getSDEMargin calculates correctly', () => {
+    it('should calculate SDE / Revenue', () => {
+      // SDE = 1,130,912, Revenue = 6,265,024
+      const expected = 1_130_912 / 6_265_024;
+      expect(accessor.getSDEMargin()).toBeCloseTo(expected, 6);
+    });
+
+    it('should return formatted SDE margin as percentage', () => {
+      const formatted = accessor.getFormattedSDEMargin();
+      expect(formatted).toMatch(/^\d+\.\d+%$/);
+    });
+
+    it('should return 0 when revenue is zero', () => {
+      const zeroRevStore = buildMockStore({
+        financial: {
+          ...store.financial,
+          revenue: 0,
+        },
+      });
+      const zeroRevAccessor = createDataAccessor(zeroRevStore);
+      expect(zeroRevAccessor.getSDEMargin()).toBe(0);
+    });
+  });
+
+  describe('getRiskRating returns correct label for score ranges', () => {
+    it('should return Low for score <= 25', () => {
+      const lowStore = buildMockStore({
+        risk: { overall_score: 20, overall_rating: 'Low', factors: [] },
+      });
+      const lowAccessor = createDataAccessor(lowStore);
+      expect(lowAccessor.getRiskRating()).toBe('Low');
+    });
+
+    it('should return Moderate for score 26-50', () => {
+      const modStore = buildMockStore({
+        risk: { overall_score: 40, overall_rating: 'Moderate', factors: [] },
+      });
+      const modAccessor = createDataAccessor(modStore);
+      expect(modAccessor.getRiskRating()).toBe('Moderate');
+    });
+
+    it('should return Elevated for score 51-75', () => {
+      const elevStore = buildMockStore({
+        risk: { overall_score: 65, overall_rating: 'Elevated', factors: [] },
+      });
+      const elevAccessor = createDataAccessor(elevStore);
+      expect(elevAccessor.getRiskRating()).toBe('Elevated');
+    });
+
+    it('should return High for score > 75', () => {
+      const highStore = buildMockStore({
+        risk: { overall_score: 85, overall_rating: 'High', factors: [] },
+      });
+      const highAccessor = createDataAccessor(highStore);
+      expect(highAccessor.getRiskRating()).toBe('High');
+    });
+
+    it('should return risk score as number', () => {
+      expect(accessor.getRiskScore()).toBe(50);
+    });
+  });
+
+  describe('edge cases', () => {
+    it('should return 0 margin when revenue is zero', () => {
+      const zeroRevStore = buildMockStore({
+        financial: {
+          ...store.financial,
+          revenue: 0,
+        },
+      });
+      const zeroRevAccessor = createDataAccessor(zeroRevStore);
+      expect(zeroRevAccessor.getSDEMargin()).toBe(0);
+      expect(zeroRevAccessor.getEBITDAMargin()).toBe(0);
+      expect(zeroRevAccessor.getProfitMargin()).toBe(0);
+      expect(zeroRevAccessor.getGrossMargin()).toBe(0);
+    });
+
+    it('should return 0 current ratio when current liabilities are zero', () => {
+      const zeroCLStore = buildMockStore({
+        balance_sheet: {
+          ...store.balance_sheet,
+          current_liabilities: 0,
+        },
+      });
+      const zeroCLAccessor = createDataAccessor(zeroCLStore);
+      expect(zeroCLAccessor.getCurrentRatio()).toBe(0);
+    });
+
+    it('should return 0 debt-to-equity when equity is zero', () => {
+      const zeroEqStore = buildMockStore({
+        balance_sheet: {
+          ...store.balance_sheet,
+          total_equity: 0,
+        },
+      });
+      const zeroEqAccessor = createDataAccessor(zeroEqStore);
+      expect(zeroEqAccessor.getDebtToEquityRatio()).toBe(0);
+    });
+
+    it('should return book value as assets minus liabilities', () => {
+      // total_assets = 1,951,000, total_liabilities = 618,000
+      expect(accessor.getBookValue()).toBe(1_951_000 - 618_000);
+    });
+
+    it('should return working capital as current assets minus current liabilities', () => {
+      // current_assets = 1,443,000, current_liabilities = 453,000
+      expect(accessor.getWorkingCapital()).toBe(1_443_000 - 453_000);
+    });
+  });
+
+  describe('approach access', () => {
+    it('should return approach values by type', () => {
+      const storeWithVals = buildMockStore({
+        valuation: {
+          ...store.valuation,
+          asset_approach_value: 1_000_000,
+          income_approach_value: 2_000_000,
+          market_approach_value: 3_000_000,
+        },
+      });
+      const a = createDataAccessor(storeWithVals);
+      expect(a.getApproachValue('asset')).toBe(1_000_000);
+      expect(a.getApproachValue('income')).toBe(2_000_000);
+      expect(a.getApproachValue('market')).toBe(3_000_000);
+    });
+
+    it('should return approach weights by type', () => {
+      expect(accessor.getApproachWeight('income')).toBe(0.30);
+      expect(accessor.getApproachWeight('market')).toBe(0.50);
+      expect(accessor.getApproachWeight('asset')).toBe(0.20);
+    });
+
+    it('should format approach values as currency', () => {
+      const storeWithVals = buildMockStore({
+        valuation: {
+          ...store.valuation,
+          income_approach_value: 2_500_000,
+        },
+      });
+      const a = createDataAccessor(storeWithVals);
+      expect(a.getFormattedApproachValue('income')).toBe('$2,500,000');
+    });
+
+    it('should format approach weights as percentages', () => {
+      const formatted = accessor.getFormattedApproachWeight('market');
+      expect(formatted).toBe('50%');
+    });
+  });
+
+  describe('SDE type access', () => {
+    it('should return current SDE by default', () => {
+      expect(accessor.getSDE()).toBe(1_130_912);
+    });
+
+    it('should return weighted SDE for normalized type', () => {
+      expect(accessor.getSDE('normalized')).toBe(1_040_718);
+    });
+
+    it('should return weighted SDE for weighted type', () => {
+      expect(accessor.getSDE('weighted')).toBe(1_040_718);
+    });
+
+    it('should format SDE by type', () => {
+      expect(accessor.getFormattedSDE('normalized')).toContain('1,040,718');
+    });
+  });
+
+  describe('value range and discounts', () => {
+    it('should return structured value range', () => {
+      const storeWithRange = buildMockStore({
+        valuation: {
+          ...store.valuation,
+          value_range_low: 2_000_000,
+          value_range_high: 3_000_000,
+        },
+      });
+      const a = createDataAccessor(storeWithRange);
+      const range = a.getValueRange();
+      expect(range.low).toBe(2_000_000);
+      expect(range.high).toBe(3_000_000);
+      expect(range.display).toContain('2,000,000');
+      expect(range.display).toContain('3,000,000');
+    });
+
+    it('should return formatted value range', () => {
+      const storeWithRange = buildMockStore({
+        valuation: {
+          ...store.valuation,
+          value_range_low: 2_000_000,
+          value_range_high: 3_000_000,
+        },
+      });
+      const a = createDataAccessor(storeWithRange);
+      const range = a.getFormattedValueRange();
+      expect(range.low).toBe('$2,000,000');
+      expect(range.high).toBe('$3,000,000');
+      expect(range.display).toContain('$2,000,000');
+    });
+
+    it('should return DLOM rate and amount', () => {
+      const storeWithDlom = buildMockStore({
+        valuation: {
+          ...store.valuation,
+          dlom_percentage: 0.15,
+          dlom_amount: 450_000,
+        },
+      });
+      const a = createDataAccessor(storeWithDlom);
+      expect(a.getDLOMRate()).toBe(0.15);
+      expect(a.getDLOMAmount()).toBe(450_000);
+      expect(a.getFormattedDLOMRate()).toBe('15.0%');
+      expect(a.getFormattedDLOMAmount()).toBe('$450,000');
+    });
+
+    it('should return DLOC rate', () => {
+      expect(accessor.getDLOCRate()).toBe(0);
+      expect(accessor.getFormattedDLOCRate()).toBe('0.0%');
+    });
+  });
+
+  describe('data quality and metadata access', () => {
+    it('should return completeness score', () => {
+      expect(accessor.getCompletenessScore()).toBe(85);
+    });
+
+    it('should return years of data', () => {
+      expect(accessor.getYearsOfData()).toBe(3);
+    });
+
+    it('should return missing fields', () => {
+      expect(accessor.getMissingFields()).toEqual([]);
+    });
+
+    it('should return valuation date', () => {
+      expect(accessor.getValuationDate()).toBe('2025-01-15');
+    });
+
+    it('should return report date', () => {
+      expect(accessor.getReportDate()).toBe('2025-01-20');
+    });
+  });
+
+  describe('revenue growth rate', () => {
+    it('should calculate growth from most recent two years', () => {
+      // 2024: 6,265,024; 2023: 6,106,416
+      const expected = (6_265_024 - 6_106_416) / 6_106_416;
+      expect(accessor.getRevenueGrowthRate()).toBeCloseTo(expected, 6);
+    });
+
+    it('should return 0 when fewer than 2 years', () => {
+      const singleYearStore = buildMockStore({
+        financial: {
+          ...store.financial,
+          revenue_by_year: [{ period: '2024', revenue: 6_265_024 }],
+        },
+      });
+      const a = createDataAccessor(singleYearStore);
+      expect(a.getRevenueGrowthRate()).toBe(0);
+    });
+
+    it('should return 0 when prior year revenue is 0', () => {
+      const zeroPriorStore = buildMockStore({
+        financial: {
+          ...store.financial,
+          revenue_by_year: [
+            { period: '2024', revenue: 6_265_024 },
+            { period: '2023', revenue: 0 },
+          ],
+        },
+      });
+      const a = createDataAccessor(zeroPriorStore);
+      expect(a.getRevenueGrowthRate()).toBe(0);
+    });
+  });
+
+  describe('fiscal year label', () => {
+    it('should return FY YYYY for current year', () => {
+      expect(accessor.getFiscalYearLabel()).toBe('FY 2024');
+    });
+
+    it('should return prior year when yearsBack > 0', () => {
+      expect(accessor.getFiscalYearLabel(1)).toBe('FY 2023');
+      expect(accessor.getFiscalYearLabel(2)).toBe('FY 2022');
+    });
   });
 });

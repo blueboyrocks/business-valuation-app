@@ -13,14 +13,17 @@
 - DataAccessor has both old and new naming conventions: old (getIndustry, getNAICSCode, getSDEFormatted) are @deprecated, new (getIndustryName, getNaicsCode, getFormattedSDE) are canonical
 - Use getApproachValue('asset'|'income'|'market') and getApproachWeight() for generic approach access
 - formatCurrency uses Intl.NumberFormat - output format is `$X,XXX` (no cents by default)
+- DataAccessor.formatPercentage expects decimal input (0.156 -> "15.6%"); safePercentage expects already-percentage input (25.5 -> "25.5%")
+- DataAccessor edge cases: returns 0 for margins/ratios when denominator is 0 (revenue, current_liabilities, equity)
+- Test edge cases use `buildMockStore({ financial: { ...store.financial, revenue: 0 } })` pattern for section-level overrides
 
 ## Status: IN PROGRESS
 
 ## Story Progress:
 - US-001: DONE - Enhance ValuationDataStore interface
 - US-002: DONE - Enhance DataAccessor with complete getters
-- US-003: PENDING - Create safe string utilities
-- US-004: PENDING - Unit tests for DataStore, DataAccessor, safe-string
+- US-003: DONE - Create safe string utilities
+- US-004: DONE - Unit tests for DataStore, DataAccessor, safe-string
 - US-005: PENDING - Asset approach fallback chain
 - US-006: PENDING - Remove RECONCILE override logic
 - US-007: PENDING - Wire DataAccessor into PDF (cover, exec summary, conclusion, company)
@@ -105,4 +108,58 @@
   - The accessor is used in: chart-data-builder.ts, professional-pdf-generator.ts, regenerate/route.ts, and all test files.
   - getRevenue() now accepts optional period parameter but returns current revenue when called without args (backward compatible).
   - getSDE() now accepts optional type parameter ('current'|'normalized'|'weighted') but defaults to 'current' (backward compatible).
+---
+
+## 2026-01-28 - US-003
+- What was implemented:
+  - Created new file lib/utils/safe-string.ts with 6 exported utility functions
+  - safeString(value, fallback) - handles null, undefined, string, number, boolean, Date, Array, Object; for objects tries common property names (label, name, value, text, title, display, year, id)
+  - safeYear(value, fallback) - extracts 4-digit year from numbers (1900-2100), strings ("FY 2024", "2024-12-31"), dates, objects
+  - safePeriodLabel(value, prefix) - formats as "FY 2024" etc.
+  - safeCurrency(value, fallback) - formats as USD using Intl.NumberFormat with 0 decimals
+  - safePercentage(value, decimals, fallback) - formats as "25.5%"
+  - safeMultiple(value, suffix, fallback) - formats as "2.50x"
+  - All functions handle NaN, Infinity, invalid Date gracefully
+- Files changed:
+  - lib/utils/safe-string.ts (new file, 197 lines)
+- **Learnings for future iterations:**
+  - lib/utils/ directory did not exist - had to create it. lib/utils.ts (Tailwind CN utility) exists separately.
+  - safeCurrency strips $ and , from string inputs before parsing, allowing re-formatting of already-formatted strings.
+  - safePercentage strips % from string inputs before parsing.
+  - safeMultiple strips trailing 'x' from string inputs before parsing.
+---
+
+## 2026-01-28 - US-004
+- What was implemented:
+  - Extended data-store.test.ts with 3 additional deep-freeze tests (nested arrays, risk, data_quality sections) - now 82 tests total
+  - Extended data-accessor.test.ts with comprehensive new test suites - now 68 tests total:
+    - formatCurrency: $X,XXX format, rounding, zero, negatives
+    - formatPercentage: X.X% format, custom decimals, zero, 100%
+    - getSDEMargin: correct SDE/Revenue calculation, formatted output, zero revenue edge case
+    - getRiskRating: Low/Moderate/Elevated/High for all score ranges
+    - Edge cases: zero revenue margins, zero current liabilities, zero equity, book value, working capital
+    - Approach access: getApproachValue/Weight by type, formatted versions
+    - SDE type access: current/normalized/weighted, formatted
+    - Value range: structured and formatted ranges, DLOM/DLOC
+    - Data quality & metadata: completeness, years of data, missing fields, dates
+    - Revenue growth rate: calculation, single year fallback, zero prior year
+    - Fiscal year label: current and prior years
+  - Created new lib/utils/__tests__/safe-string.test.ts with 74 tests:
+    - safeString: null, undefined, string, number, NaN, Infinity, boolean, Date, invalid Date, array, empty array, objects with common props, [object Object] prevention, fallback, numeric object props, null/undefined object props
+    - safeYear: numbers in range, out of range, plain/FY/date strings, Date objects, objects with year-like props, null/undefined/NaN/invalid edge cases
+    - safePeriodLabel: default FY prefix, custom prefix, string/null/invalid
+    - safeCurrency: numbers, zero, negative, strings, pre-formatted, null/undefined/NaN/Infinity/objects
+    - safePercentage: numbers, custom decimals, zero, strings with %, null/undefined/NaN/objects
+    - safeMultiple: numbers, custom suffix, strings with x, zero, null/undefined/NaN/objects/non-numeric strings
+    - Cross-cutting: all functions tested against dangerous inputs to verify NEVER returning [object Object], undefined, null, or NaN
+  - All 224 tests pass, typecheck passes (only pre-existing error in transform-to-final-report.ts)
+- Files changed:
+  - lib/valuation/__tests__/data-store.test.ts (extended with deep freeze tests)
+  - lib/valuation/__tests__/data-accessor.test.ts (extended with 50+ new tests)
+  - lib/utils/__tests__/safe-string.test.ts (new file, 74 tests)
+- **Learnings for future iterations:**
+  - Test files use `buildMockStore()` with section-level overrides (e.g., `buildMockStore({ financial: { ...store.financial, revenue: 0 } })`) for testing edge cases.
+  - DataAccessor edge case handling: returns 0 for ratios/margins when denominator is 0 (revenue=0, current_liabilities=0, equity=0).
+  - formatPercentage expects decimal input (0.156 -> "15.6%") while safePercentage expects percentage input (25.5 -> "25.5%") - these are different conventions.
+  - The vitest runner supports glob patterns for running specific test files: `npx vitest run lib/valuation/__tests__/*.test.ts`.
 ---
