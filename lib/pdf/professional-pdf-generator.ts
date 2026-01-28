@@ -28,6 +28,7 @@ import { generateAllKPIDetailPages } from './kpi-page-generator';
 import { getAllKPIsOrdered } from '../content/kpi-explanations';
 import { type ValuationDataAccessor, createDataAccessor } from '../valuation/data-accessor';
 import { safeString } from '../utils/safe-string';
+import { generateTocEntries, PROFESSIONAL_SECTION_ORDER } from './section-ordering';
 import { CitationManager } from '../citations/citation-manager';
 import { CalculationTableGenerator, type SDETableInput, type MarketApproachInput, type SynthesisInput } from '../display/calculation-table-generator';
 import { ReportChartGenerator } from '../charts/chart-generator';
@@ -1108,105 +1109,51 @@ export class ProfessionalPDFGenerator {
   <div class="toc">
     <h1>Contents</h1>
     ${(() => {
-      // Calculate dynamic page numbers based on included sections
-      // Page 1: Cover, Page 2: TOC
-      let pageNum = 3;
+      // Build set of present sections based on available content
+      const presentSections = new Set<string>();
+
+      // Always-present sections
+      presentSections.add('executiveSummary');
+      presentSections.add('conclusionOfValue');
+      presentSections.add('financialSummary');
+      presentSections.add('keyPerformanceIndicators');
+
+      // Conditional sections
+      if (companyProfile) presentSections.add('companyProfile');
+      if (industryAnalysis) presentSections.add('industryAnalysis');
+      if (financialAnalysis) presentSections.add('financialAnalysis');
+      if (charts.financialTrend) presentSections.add('financialTrends');
+      if (assetAnalysis) presentSections.add('assetApproach');
+      if (incomeAnalysis) presentSections.add('incomeApproach');
+      if (marketAnalysis) presentSections.add('marketApproach');
+      if (valuationRecon) presentSections.add('valuationReconciliation');
+      if (riskAssessment || charts.riskGauge || inlineSvgCharts?.riskGauge) presentSections.add('riskAssessment');
+      if (strategicInsights) presentSections.add('strategicInsights');
+      if (assumptionsLimitingConditions) presentSections.add('assumptionsAndConditions');
+      if (bibliographyHTML) presentSections.add('sourcesAndReferences');
+
+      // Generate TOC entries using centralized ordering
+      const tocEntries = generateTocEntries(presentSections);
       const tocItems: string[] = [];
 
-      // 1. Executive Summary (now first after TOC)
-      tocItems.push(`<div class="toc-item"><span>Executive Summary</span><span>${pageNum}</span></div>`);
-      pageNum += 3;
-
-      // 2. Conclusion of Value (renamed from "Your Valuation")
-      tocItems.push(`<div class="toc-item"><span>Conclusion of Value</span><span>${pageNum}</span></div>`);
-      pageNum += 2;
-
-      // 3. Company Profile
-      if (companyProfile) {
-        tocItems.push(`<div class="toc-item"><span>Company Profile</span><span>${pageNum}</span></div>`);
-        pageNum += 2;
+      for (const entry of tocEntries) {
+        tocItems.push(`<div class="toc-item"><span>${entry.displayName}</span><span>${entry.pageNumber}</span></div>`);
       }
 
-      // 4. Industry Analysis
-      if (industryAnalysis) {
-        tocItems.push(`<div class="toc-item"><span>Industry Analysis</span><span>${pageNum}</span></div>`);
-        pageNum += 2;
-      }
-
-      // 5. Financial Analysis + Financial Summary
-      if (financialAnalysis) {
-        tocItems.push(`<div class="toc-item"><span>Financial Analysis</span><span>${pageNum}</span></div>`);
-        pageNum += 2;
-      }
-      tocItems.push(`<div class="toc-item"><span>Financial Summary</span><span>${pageNum}</span></div>`);
-      pageNum += 2;
-
-      // Financial Trends (if available)
-      if (charts.financialTrend) {
-        tocItems.push(`<div class="toc-item"><span>Financial Performance Trends</span><span>${pageNum}</span></div>`);
-        pageNum += 1;
-      }
-
-      // 6. Valuation Approaches (Asset, Income, Market)
-      if (assetAnalysis) {
-        tocItems.push(`<div class="toc-item"><span>Asset Approach</span><span>${pageNum}</span></div>`);
-        pageNum += 2;
-      }
-      if (incomeAnalysis) {
-        tocItems.push(`<div class="toc-item"><span>Income Approach</span><span>${pageNum}</span></div>`);
-        pageNum += 2;
-      }
-      if (marketAnalysis) {
-        tocItems.push(`<div class="toc-item"><span>Market Approach</span><span>${pageNum}</span></div>`);
-        pageNum += 2;
-      }
-
-      // 7. Valuation Reconciliation
-      if (valuationRecon) {
-        tocItems.push(`<div class="toc-item"><span>Valuation Reconciliation</span><span>${pageNum}</span></div>`);
-        pageNum += 2;
-      }
-
-      // 8. Risk Assessment
-      if (riskAssessment || charts.riskGauge) {
-        tocItems.push(`<div class="toc-item"><span>Risk Assessment</span><span>${pageNum}</span></div>`);
-        pageNum += 2;
-      }
-
-      // 9. KPI Analysis
-      tocItems.push(`<div class="toc-item"><span>Key Performance Indicators</span><span>${pageNum}</span></div>`);
-      pageNum += 2;
-
-      // KPI Detail Pages
+      // KPI Detail Pages (sub-items appended after KPI section)
       if (kpiDetailPages && kpiDetailPages.length > 0) {
-        tocItems.push(`<div class="toc-item"><span>Detailed KPI Analysis</span><span>${pageNum}</span></div>`);
-        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Profitability Metrics</span><span>${pageNum}</span></div>`);
-        pageNum += 5;
-        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Liquidity Metrics</span><span>${pageNum}</span></div>`);
-        pageNum += 2;
-        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Efficiency Metrics</span><span>${pageNum}</span></div>`);
-        pageNum += 3;
-        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Leverage Metrics</span><span>${pageNum}</span></div>`);
-        pageNum += 1;
-        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Growth Metrics</span><span>${pageNum}</span></div>`);
-        pageNum += 2;
-      }
-
-      // 10. Strategic Insights
-      if (strategicInsights) {
-        tocItems.push(`<div class="toc-item"><span>Strategic Insights</span><span>${pageNum}</span></div>`);
-        pageNum += 2;
-      }
-
-      // 11. Assumptions & Limiting Conditions
-      if (assumptionsLimitingConditions) {
-        tocItems.push(`<div class="toc-item"><span>Assumptions & Limiting Conditions</span><span>${pageNum}</span></div>`);
-        pageNum += 2;
-      }
-
-      // 12. Bibliography
-      if (bibliographyHTML) {
-        tocItems.push(`<div class="toc-item"><span>Sources and References</span><span>${pageNum}</span></div>`);
+        const kpiEntry = tocEntries.find(e => e.key === 'keyPerformanceIndicators');
+        let detailPageNum = kpiEntry ? kpiEntry.pageNumber + 2 : 20;
+        tocItems.push(`<div class="toc-item"><span>Detailed KPI Analysis</span><span>${detailPageNum}</span></div>`);
+        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Profitability Metrics</span><span>${detailPageNum}</span></div>`);
+        detailPageNum += 5;
+        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Liquidity Metrics</span><span>${detailPageNum}</span></div>`);
+        detailPageNum += 2;
+        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Efficiency Metrics</span><span>${detailPageNum}</span></div>`);
+        detailPageNum += 3;
+        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Leverage Metrics</span><span>${detailPageNum}</span></div>`);
+        detailPageNum += 1;
+        tocItems.push(`<div class="toc-item" style="padding-left: 20px;"><span style="color: #666;">- Growth Metrics</span><span>${detailPageNum}</span></div>`);
       }
 
       return tocItems.join('\n    ');
