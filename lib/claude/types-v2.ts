@@ -1769,7 +1769,7 @@ export interface ReportNarratives {
 
   normalization_discussion: Narrative;
 
-  risk_analysis: Narrative;
+  risk_assessment: Narrative;
 
   valuation_approaches: {
     asset_approach_narrative: Narrative;
