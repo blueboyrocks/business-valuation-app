@@ -505,6 +505,10 @@ export async function POST(
                                 getNarrativeContent(passes.pass9?.narrative) || '',
       valuation_reconciliation: getNarrativeContent(finalReport.narratives?.valuation_synthesis_narrative) ||
                                 getNarrativeContent(passes.pass10?.narrative) || '',
+
+      // Assumptions & Limiting Conditions (Pass 11j)
+      assumptions_and_limiting_conditions: getNarrativeContent(finalReport.narratives?.assumptions_and_limiting_conditions) ||
+                                           getNarrativeContent(pass11Narratives.assumptions_and_limiting_conditions) || '',
     };
 
     // 7b. Generate and attach standard disclaimers
@@ -602,6 +606,7 @@ export async function POST(
         'market_approach_analysis',
         'valuation_reconciliation',
         'strategic_insights',
+        'assumptions_and_limiting_conditions',
       ];
       for (const key of narrativeKeys) {
         const value = (reconciledReport as Record<string, unknown>)[key];

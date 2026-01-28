@@ -23,6 +23,7 @@ function buildSectionContents(reportData: Record<string, unknown>): Map<string, 
     'market_approach_analysis',
     'valuation_reconciliation',
     'strategic_insights',
+    'assumptions_and_limiting_conditions',
   ];
 
   for (const key of narrativeKeys) {
