@@ -997,7 +997,7 @@ function transformNarratives(
     },
     risk_assessment: {
       word_count_target: NARRATIVE_WORD_TARGETS.risk_assessment,
-      content: narratives.risk_analysis?.content || '',
+      content: narratives.risk_assessment?.content || '',
     },
     asset_approach_narrative: {
       word_count_target: NARRATIVE_WORD_TARGETS.asset_approach_narrative,
