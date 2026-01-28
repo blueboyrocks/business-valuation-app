@@ -56,7 +56,7 @@
 - US-019: DONE - Design system tokens
 - US-020: DONE - Professional table styling CSS
 - US-021: DONE - SDE calculation detail table
-- US-022: PENDING - Cap rate buildup table
+- US-022: DONE - Cap rate buildup table
 - US-023: PENDING - Asset adjustment table
 - US-024: PENDING - Chart design standards
 - US-025: PENDING - Professional disclaimers section
@@ -570,4 +570,30 @@
   - DataStore has 4 add-back fields: officer_compensation, interest_expense, depreciation, amortization. Additional add-backs (one_time_expenses) are only in reportData, not in the DataStore/DataAccessor.
   - The `safeString` import was added to calculation-table-generator.ts - this is the first time a display module imports from utils/safe-string.
   - Splitting D&A into separate lines gives readers better transparency into the SDE calculation components.
+---
+
+## 2026-01-28 - US-022
+- What was implemented:
+  - Added cap rate buildup table types and generator to lib/display/calculation-table-generator.ts:
+    - CapRateBuiltupRow, CapRateBuiltupTable, CapRateBuiltupInput interfaces
+    - generateCapRateBuiltupTable() method that builds rows for all rate components (risk-free rate, equity risk premium, size premium, industry risk premium, company-specific risk premium), discount rate subtotal, growth rate deduction, and final capitalization rate
+    - capRateBuiltupTableToHTML() method that renders professional HTML with data-table class, percentage-aligned rate cells, subtotal/total-row styling, and source column
+    - formatRate() helper for consistent percentage formatting (e.g., "4.5%")
+    - Default sources for each component (e.g., "US Treasury 20-Year Bond", "Duff & Phelps")
+  - Integrated cap rate table into lib/pdf/professional-pdf-generator.ts:
+    - Imported CapRateBuiltupInput and DEFAULT_CAP_RATE_COMPONENTS from income-approach-calculator
+    - Cap rate table HTML generated alongside SDE, market, and synthesis tables using accessor.getCapRate() for the final rate and DEFAULT_CAP_RATE_COMPONENTS for individual component rates
+    - Added capRateTableHTML parameter to buildHTML() method signature
+    - Rendered cap rate buildup section between Income Approach and Market Approach sections with explanatory text
+    - Added capRateBuildupTable to TOC presentSections and sectionContents for dynamic TOC inclusion
+  - All values use safeString() wrapping and DataAccessor for the final cap rate value
+  - Table uses professional CSS classes: data-table, percentage, subtotal-row, total-row
+- Files changed:
+  - lib/display/calculation-table-generator.ts (added types, formatRate helper, generateCapRateBuiltupTable, capRateBuiltupTableToHTML)
+  - lib/pdf/professional-pdf-generator.ts (imports, capRateTableHTML generation, buildHTML parameter, section rendering, TOC integration)
+- **Learnings for future iterations:**
+  - The DataStore only stores the final cap_rate value, not individual components. The DEFAULT_CAP_RATE_COMPONENTS from income-approach-calculator.ts provides the standard component rates used in the build-up method.
+  - The capRateBuiltupTableToHTML() is a separate method (not routed through toHTML()) because CapRateBuiltupTable has a different structure than the existing table types (SDECalculationTable, MarketApproachTable, SynthesisTable).
+  - The section ordering already had a `capRateBuildupTable` placeholder in PROFESSIONAL_SECTION_ORDER (lib/pdf/section-ordering.ts) - it just needed content to be added.
+  - The cap rate section is rendered between income and market approach sections, matching the canonical section order.
 ---

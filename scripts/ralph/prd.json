@@ -395,7 +395,7 @@
         "Typecheck passes"
       ],
       "priority": 22,
-      "passes": false,
+      "passes": true,
       "notes": "Check lib/display/calculation-table-generator.ts for any existing cap rate table logic. The individual rate components may need to come from pass outputs or be estimated from the final cap rate."
     },
     {

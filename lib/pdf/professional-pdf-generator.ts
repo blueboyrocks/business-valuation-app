@@ -31,7 +31,8 @@ import { safeString } from '../utils/safe-string';
 import { generateTocEntries, PROFESSIONAL_SECTION_ORDER } from './section-ordering';
 import { generateDesignTokenCSS } from './design-tokens';
 import { CitationManager } from '../citations/citation-manager';
-import { CalculationTableGenerator, type SDETableInput, type MarketApproachInput, type SynthesisInput } from '../display/calculation-table-generator';
+import { CalculationTableGenerator, type SDETableInput, type MarketApproachInput, type SynthesisInput, type CapRateBuiltupInput } from '../display/calculation-table-generator';
+import { DEFAULT_CAP_RATE_COMPONENTS } from '../calculations/income-approach-calculator';
 import { ReportChartGenerator } from '../charts/chart-generator';
 import { buildChartData } from '../charts/chart-data-builder';
 
@@ -287,6 +288,7 @@ export class ProfessionalPDFGenerator {
 
       // PRD-E: Generate calculation tables
       let sdeTableHTML = '';
+      let capRateTableHTML = '';
       let marketTableHTML = '';
       let synthesisTableHTML = '';
       if (accessor) {
@@ -312,6 +314,20 @@ export class ProfessionalPDFGenerator {
           };
           const sdeTable = tableGen.generateSDETable(sdeInput);
           sdeTableHTML = tableGen.toHTML(sdeTable);
+
+          // Cap Rate Buildup Table
+          const finalCapRate = accessor.getCapRate();
+          const capRateInput: CapRateBuiltupInput = {
+            risk_free_rate: DEFAULT_CAP_RATE_COMPONENTS.risk_free_rate,
+            equity_risk_premium: DEFAULT_CAP_RATE_COMPONENTS.equity_risk_premium,
+            size_premium: DEFAULT_CAP_RATE_COMPONENTS.size_premium,
+            industry_risk_premium: DEFAULT_CAP_RATE_COMPONENTS.industry_risk_premium,
+            company_specific_risk_premium: DEFAULT_CAP_RATE_COMPONENTS.company_specific_risk_premium,
+            long_term_growth_rate: DEFAULT_CAP_RATE_COMPONENTS.long_term_growth_rate,
+            capitalization_rate: finalCapRate,
+          };
+          const capRateTable = tableGen.generateCapRateBuiltupTable(capRateInput);
+          capRateTableHTML = tableGen.capRateBuiltupTableToHTML(capRateTable);
 
           // Market Approach Table
           const marketInput: MarketApproachInput = {
@@ -370,7 +386,7 @@ export class ProfessionalPDFGenerator {
         companyName, reportData, generatedDate, kpis,
         enterprise_value, liquidation_value, charts, kpiDetailPages,
         accessor, inlineSvgCharts, citationManager, bibliographyHTML,
-        sdeTableHTML, marketTableHTML, synthesisTableHTML
+        sdeTableHTML, marketTableHTML, synthesisTableHTML, capRateTableHTML
       );
 
       // Safety net: replace any [object Object] in rendered HTML
@@ -686,7 +702,8 @@ export class ProfessionalPDFGenerator {
     bibliographyHTML: string = '',
     sdeTableHTML: string = '',
     marketTableHTML: string = '',
-    synthesisTableHTML: string = ''
+    synthesisTableHTML: string = '',
+    capRateTableHTML: string = ''
   ): Promise<string> {
     // Format currency - distinguish between 0 (actual zero) and null/undefined (not extracted)
     // PRD-A: Use accessor formatting when available
@@ -1180,6 +1197,7 @@ export class ProfessionalPDFGenerator {
       if (charts.financialTrend) { presentSections.add('financialTrends'); }
       if (assetAnalysis) { presentSections.add('assetApproach'); sectionContents.set('assetApproach', assetAnalysis); }
       if (incomeAnalysis) { presentSections.add('incomeApproach'); sectionContents.set('incomeApproach', incomeAnalysis); }
+      if (capRateTableHTML) { presentSections.add('capRateBuildupTable'); sectionContents.set('capRateBuildupTable', capRateTableHTML); }
       if (marketAnalysis) { presentSections.add('marketApproach'); sectionContents.set('marketApproach', marketAnalysis); }
       if (valuationRecon) { presentSections.add('valuationReconciliation'); sectionContents.set('valuationReconciliation', valuationRecon); }
       if (riskAssessment || charts.riskGauge || inlineSvgCharts?.riskGauge) { presentSections.add('riskAssessment'); if (riskAssessment) sectionContents.set('riskAssessment', riskAssessment); }
@@ -1617,6 +1635,21 @@ export class ProfessionalPDFGenerator {
     <div class="narrative">
       ${incomeAnalysis}
     </div>
+  </div>
+  ` : ''}
+
+  ${capRateTableHTML ? `
+  <div class="section" id="section-cap-rate-buildup">
+    <h1 class="section-title">Capitalization Rate Build-Up</h1>
+    <p style="margin-bottom: 16px; color: #4B5563; line-height: 1.6;">
+      The capitalization rate is developed using the build-up method, which aggregates various risk components to reflect
+      the total required rate of return for an investment in this business, adjusted for long-term sustainable growth.
+    </p>
+    ${capRateTableHTML}
+    <p style="margin-top: 16px; color: #6B7280; font-size: 10pt; font-style: italic;">
+      The capitalization rate converts a single-period benefit stream into an indication of value using the formula:
+      Value = Benefit Stream &divide; Capitalization Rate.
+    </p>
   </div>
   ` : ''}
 

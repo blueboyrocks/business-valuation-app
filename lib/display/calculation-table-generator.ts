@@ -149,6 +149,41 @@ export interface SynthesisInput {
   };
 }
 
+export interface CapRateBuiltupRow {
+  component: string;
+  rate: number;
+  formatted_rate: string;
+  source: string;
+  is_subtotal?: boolean;
+  is_total?: boolean;
+  is_deduction?: boolean;
+}
+
+export interface CapRateBuiltupTable {
+  title: string;
+  rows: CapRateBuiltupRow[];
+  final_cap_rate: number;
+  formatted_final_cap_rate: string;
+}
+
+export interface CapRateBuiltupInput {
+  risk_free_rate: number;
+  equity_risk_premium: number;
+  size_premium: number;
+  industry_risk_premium: number;
+  company_specific_risk_premium: number;
+  long_term_growth_rate: number;
+  capitalization_rate: number;
+  sources?: {
+    risk_free_rate?: string;
+    equity_risk_premium?: string;
+    size_premium?: string;
+    industry_risk_premium?: string;
+    company_specific_risk_premium?: string;
+    long_term_growth_rate?: string;
+  };
+}
+
 // ============ FORMATTING HELPERS ============
 
 function formatCurrency(value: number): string {
@@ -166,6 +201,10 @@ function formatWeight(value: number): string {
 
 function formatMultiple(value: number): string {
   return `${value.toFixed(2)}x`;
+}
+
+function formatRate(value: number): string {
+  return `${(value * 100).toFixed(1)}%`;
 }
 
 // ============ TABLE GENERATOR CLASS ============
@@ -295,6 +334,128 @@ export class CalculationTableGenerator {
         formatted_high: formatCurrency(input.value_range.high),
       },
     };
+  }
+
+  /**
+   * Generate cap rate buildup table
+   */
+  generateCapRateBuiltupTable(input: CapRateBuiltupInput): CapRateBuiltupTable {
+    const defaultSources = {
+      risk_free_rate: 'US Treasury 20-Year Bond',
+      equity_risk_premium: 'Duff & Phelps',
+      size_premium: 'Duff & Phelps Size Study',
+      industry_risk_premium: 'Industry Analysis',
+      company_specific_risk_premium: 'Company Risk Assessment',
+      long_term_growth_rate: 'Long-Term GDP Estimate',
+    };
+    const sources = { ...defaultSources, ...input.sources };
+
+    const totalDiscountRate =
+      input.risk_free_rate +
+      input.equity_risk_premium +
+      input.size_premium +
+      input.industry_risk_premium +
+      input.company_specific_risk_premium;
+
+    const rows: CapRateBuiltupRow[] = [
+      {
+        component: 'Risk-Free Rate',
+        rate: input.risk_free_rate,
+        formatted_rate: formatRate(input.risk_free_rate),
+        source: sources.risk_free_rate,
+      },
+      {
+        component: 'Equity Risk Premium',
+        rate: input.equity_risk_premium,
+        formatted_rate: formatRate(input.equity_risk_premium),
+        source: sources.equity_risk_premium,
+      },
+      {
+        component: 'Size Premium',
+        rate: input.size_premium,
+        formatted_rate: formatRate(input.size_premium),
+        source: sources.size_premium,
+      },
+      {
+        component: 'Industry Risk Premium',
+        rate: input.industry_risk_premium,
+        formatted_rate: formatRate(input.industry_risk_premium),
+        source: sources.industry_risk_premium,
+      },
+      {
+        component: 'Company-Specific Risk Premium',
+        rate: input.company_specific_risk_premium,
+        formatted_rate: formatRate(input.company_specific_risk_premium),
+        source: sources.company_specific_risk_premium,
+      },
+      {
+        component: 'Total Discount Rate',
+        rate: totalDiscountRate,
+        formatted_rate: formatRate(totalDiscountRate),
+        source: '',
+        is_subtotal: true,
+      },
+      {
+        component: 'Less: Long-Term Growth Rate',
+        rate: input.long_term_growth_rate,
+        formatted_rate: `(${formatRate(input.long_term_growth_rate)})`,
+        source: sources.long_term_growth_rate,
+        is_deduction: true,
+      },
+      {
+        component: 'Capitalization Rate',
+        rate: input.capitalization_rate,
+        formatted_rate: formatRate(input.capitalization_rate),
+        source: '',
+        is_total: true,
+      },
+    ];
+
+    return {
+      title: 'Capitalization Rate Build-Up',
+      rows,
+      final_cap_rate: input.capitalization_rate,
+      formatted_final_cap_rate: formatRate(input.capitalization_rate),
+    };
+  }
+
+  /**
+   * Convert cap rate buildup table to HTML format for PDF rendering
+   */
+  capRateBuiltupTableToHTML(table: CapRateBuiltupTable): string {
+    let html = `<div class="calculation-table cap-rate-table">
+      <h3>${safeString(table.title)}</h3>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>Component</th>
+            <th>Rate</th>
+            <th>Source</th>
+          </tr>
+        </thead>
+        <tbody>`;
+
+    for (const row of table.rows) {
+      const rowClass = row.is_total
+        ? 'total-row'
+        : row.is_subtotal
+          ? 'subtotal-row'
+          : '';
+
+      html += `
+          <tr class="${rowClass}">
+            <td>${safeString(row.component)}</td>
+            <td class="percentage">${safeString(row.formatted_rate)}</td>
+            <td>${safeString(row.source, '')}</td>
+          </tr>`;
+    }
+
+    html += `
+        </tbody>
+      </table>
+    </div>`;
+
+    return html;
   }
 
   /**
