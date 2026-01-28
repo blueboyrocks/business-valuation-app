@@ -48,6 +48,7 @@ import type { ValuationDataAccessor } from '@/lib/valuation/data-accessor';
 import { runIndustryGate } from '@/lib/valuation/industry-gate';
 import { createMultiplesLookup } from '@/lib/valuation/industry-multiples-lookup';
 import { createConsistencyValidator } from '@/lib/valuation/consistency-validator';
+import { runQualityGate } from '@/lib/validation/quality-gate';
 
 // Lazy-initialize Supabase client
 let supabase: ReturnType<typeof createClient> | null = null;
@@ -583,6 +584,80 @@ export async function POST(
     reconciledReport.quality_score = qualityResult.score;
     reconciledReport.quality_grade = qualityResult.grade;
     reconciledReport.is_premium_ready = qualityResult.isPremiumReady;
+
+    // US-027: Run comprehensive quality gate before finalizing
+    if (dataAccessor) {
+      console.log(`[REGENERATE] Running comprehensive quality gate...`);
+
+      // Build section contents from reconciledReport
+      const sectionContents = new Map<string, string>();
+      const narrativeKeys = [
+        'executive_summary',
+        'company_profile',
+        'financial_analysis',
+        'industry_analysis',
+        'risk_assessment',
+        'asset_approach_analysis',
+        'income_approach_analysis',
+        'market_approach_analysis',
+        'valuation_reconciliation',
+        'strategic_insights',
+      ];
+      for (const key of narrativeKeys) {
+        const value = (reconciledReport as Record<string, unknown>)[key];
+        if (typeof value === 'string' && value.length > 0) {
+          sectionContents.set(key, value);
+        }
+      }
+
+      const rawDataString = JSON.stringify(reconciledReport);
+      const qualityGateResult = runQualityGate(dataAccessor, sectionContents, rawDataString);
+
+      console.log(`[REGENERATE] Quality gate score: ${qualityGateResult.score}/100`);
+      console.log(`[REGENERATE] Quality gate canProceed: ${qualityGateResult.canProceed}`);
+
+      // Store quality gate result in report
+      (reconciledReport as Record<string, unknown>).quality_gate = {
+        score: qualityGateResult.score,
+        passed: qualityGateResult.passed,
+        canProceed: qualityGateResult.canProceed,
+        categories: {
+          dataIntegrity: qualityGateResult.categories.dataIntegrity.score,
+          businessRules: qualityGateResult.categories.businessRules.score,
+          completeness: qualityGateResult.categories.completeness.score,
+          formatting: qualityGateResult.categories.formatting.score,
+        },
+        blockingErrors: qualityGateResult.blockingErrors,
+        warnings: qualityGateResult.warnings,
+      };
+
+      if (!qualityGateResult.canProceed) {
+        console.error(`[REGENERATE] Quality gate BLOCKED finalization`);
+        console.error(`[REGENERATE] Blocking errors: ${qualityGateResult.blockingErrors.join(', ')}`);
+        return NextResponse.json({
+          success: false,
+          error: 'Quality gate blocked report finalization',
+          gate: 'quality',
+          score: qualityGateResult.score,
+          blockingErrors: qualityGateResult.blockingErrors,
+          warnings: qualityGateResult.warnings,
+          categories: {
+            dataIntegrity: qualityGateResult.categories.dataIntegrity.score,
+            businessRules: qualityGateResult.categories.businessRules.score,
+            completeness: qualityGateResult.categories.completeness.score,
+            formatting: qualityGateResult.categories.formatting.score,
+          },
+          hint: 'Fix the blocking errors and try regeneration again.',
+        }, { status: 422 });
+      }
+
+      // Log warnings but proceed
+      if (qualityGateResult.warnings.length > 0) {
+        console.warn(`[REGENERATE] Quality gate passed with ${qualityGateResult.warnings.length} warning(s)`);
+      }
+    } else {
+      console.warn(`[REGENERATE] No DataAccessor available - skipping quality gate`);
+    }
 
     // 8. Update the report in database
     console.log(`[REGENERATE] Saving report to database...`);
