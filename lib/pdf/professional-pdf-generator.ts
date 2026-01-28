@@ -29,6 +29,7 @@ import { getAllKPIsOrdered } from '../content/kpi-explanations';
 import { type ValuationDataAccessor, createDataAccessor } from '../valuation/data-accessor';
 import { safeString } from '../utils/safe-string';
 import { generateTocEntries, PROFESSIONAL_SECTION_ORDER } from './section-ordering';
+import { generateDesignTokenCSS } from './design-tokens';
 import { CitationManager } from '../citations/citation-manager';
 import { CalculationTableGenerator, type SDETableInput, type MarketApproachInput, type SynthesisInput } from '../display/calculation-table-generator';
 import { ReportChartGenerator } from '../charts/chart-generator';
@@ -262,18 +263,18 @@ export class ProfessionalPDFGenerator {
           <div class="section" style="page-break-before: always;">
             <h1 class="section-title">Sources and References</h1>
             <p style="margin-bottom: 20px;">This report references the following authoritative sources. Inline citations are marked with brackets (e.g., [BBS-${currentYear}]) throughout the report.</p>
-            <table style="width: 100%; border-collapse: collapse; font-size: 10pt;">
-              <thead><tr style="background: #1E3A5F; color: white;">
-                <th style="padding: 10px; text-align: left;">Citation</th>
-                <th style="padding: 10px; text-align: left;">Source</th>
-                <th style="padding: 10px; text-align: left;">Context</th>
+            <table class="data-table">
+              <thead><tr>
+                <th>Citation</th>
+                <th>Source</th>
+                <th>Context</th>
               </tr></thead>
               <tbody>
                 ${allCitations.map((c, i) => `
-                  <tr style="background: ${i % 2 === 0 ? '#F9F9F9' : 'white'};">
-                    <td style="padding: 8px; font-weight: bold;">${safeString(c.inline, '')}</td>
-                    <td style="padding: 8px;">${safeString(citationManager.getSource(c.source_code)?.name || c.source_code, '')} (${safeString(c.year, '')})</td>
-                    <td style="padding: 8px; color: #666;">${safeString(c.context, '')}</td>
+                  <tr>
+                    <td style="font-weight: bold;">${safeString(c.inline, '')}</td>
+                    <td>${safeString(citationManager.getSource(c.source_code)?.name || c.source_code, '')} (${safeString(c.year, '')})</td>
+                    <td style="color: #666;">${safeString(c.context, '')}</td>
                   </tr>
                 `).join('')}
               </tbody>
@@ -996,7 +997,10 @@ export class ProfessionalPDFGenerator {
       line-height: 1.5;
     }
 
-    table {
+    ${generateDesignTokenCSS()}
+
+    /* Legacy table selectors for backward compatibility */
+    table:not(.data-table) {
       width: 100%;
       border-collapse: separate;
       border-spacing: 0;
@@ -1007,12 +1011,12 @@ export class ProfessionalPDFGenerator {
       box-shadow: 0 1px 3px rgba(0,0,0,0.08);
     }
 
-    thead {
+    table:not(.data-table) thead {
       background: linear-gradient(135deg, #1E3A5F 0%, #2E5A8F 100%);
       color: white;
     }
 
-    th {
+    table:not(.data-table) th {
       padding: 12px;
       text-align: left;
       font-weight: 600;
@@ -1021,12 +1025,12 @@ export class ProfessionalPDFGenerator {
       font-size: 9pt;
     }
 
-    td {
+    table:not(.data-table) td {
       padding: 10px 12px;
       border-bottom: 1px solid #E5E7EB;
     }
 
-    tbody tr:nth-child(even) {
+    table:not(.data-table) tbody tr:nth-child(even) {
       background: #F9FAFB;
     }
 
@@ -1229,35 +1233,37 @@ export class ProfessionalPDFGenerator {
     ${accessor ? `
     <div style="margin-top: 30px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
       <h3 style="margin-top: 0; color: #1E3A5F;">Key Financial Highlights</h3>
-      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Annual Revenue</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedRevenue()}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Seller's Discretionary Earnings (SDE)</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDE()}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Concluded Fair Market Value</td>
-          <td style="text-align: right; font-weight: bold; color: #1E3A5F;">${accessor.getFormattedFinalValue()}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Value Range</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedValueRange().display}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Asset Approach (${accessor.getFormattedApproachWeight('asset')})</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachValue('asset')}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Income Approach (${accessor.getFormattedApproachWeight('income')})</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachValue('income')}</td>
+      <table class="data-table">
+        <tbody>
+        <tr>
+          <td>Annual Revenue</td>
+          <td class="currency">${accessor.getFormattedRevenue()}</td>
         </tr>
         <tr>
-          <td style="padding: 6px 0;">Market Approach (${accessor.getFormattedApproachWeight('market')})</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachValue('market')}</td>
+          <td>Seller's Discretionary Earnings (SDE)</td>
+          <td class="currency">${accessor.getFormattedSDE()}</td>
         </tr>
+        <tr class="total-row">
+          <td>Concluded Fair Market Value</td>
+          <td class="currency" style="color: #1E3A5F;">${accessor.getFormattedFinalValue()}</td>
+        </tr>
+        <tr>
+          <td>Value Range</td>
+          <td class="currency">${accessor.getFormattedValueRange().display}</td>
+        </tr>
+        <tr>
+          <td>Asset Approach (${accessor.getFormattedApproachWeight('asset')})</td>
+          <td class="currency">${accessor.getFormattedApproachValue('asset')}</td>
+        </tr>
+        <tr>
+          <td>Income Approach (${accessor.getFormattedApproachWeight('income')})</td>
+          <td class="currency">${accessor.getFormattedApproachValue('income')}</td>
+        </tr>
+        <tr>
+          <td>Market Approach (${accessor.getFormattedApproachWeight('market')})</td>
+          <td class="currency">${accessor.getFormattedApproachValue('market')}</td>
+        </tr>
+        </tbody>
       </table>
     </div>
     ` : ''}
@@ -1284,7 +1290,7 @@ export class ProfessionalPDFGenerator {
           <h2>Valuation Approaches</h2>
           ${inlineSvgCharts?.valuationComparison ? `<div style="margin: 20px 0; text-align: center;">${inlineSvgCharts.valuationComparison}</div>` : ''}
           ${charts.valuation ? `<div class="chart-container"><img src="${charts.valuation}" alt="Valuation Approaches Chart" style="max-width: 100%; height: auto;"/></div>` : ''}
-          <table class="financial-table">
+          <table class="data-table financial-table">
             <thead>
               <tr>
                 <th>Approach</th>
@@ -1295,18 +1301,18 @@ export class ProfessionalPDFGenerator {
             <tbody>
               <tr>
                 <td>Asset Approach</td>
-                <td>${accessor ? accessor.getFormattedApproachValue('asset') : fmt(av)}</td>
-                <td>${accessor ? accessor.getFormattedApproachWeight('asset') : '20%'}</td>
+                <td class="currency">${accessor ? accessor.getFormattedApproachValue('asset') : fmt(av)}</td>
+                <td class="percentage">${accessor ? accessor.getFormattedApproachWeight('asset') : '20%'}</td>
               </tr>
               <tr>
                 <td>Income Approach${citeInline('NYU')}</td>
-                <td>${accessor ? accessor.getFormattedApproachValue('income') : fmt(iv)}</td>
-                <td>${accessor ? accessor.getFormattedApproachWeight('income') : '40%'}</td>
+                <td class="currency">${accessor ? accessor.getFormattedApproachValue('income') : fmt(iv)}</td>
+                <td class="percentage">${accessor ? accessor.getFormattedApproachWeight('income') : '40%'}</td>
               </tr>
               <tr>
                 <td>Market Approach${citeInline('BBS')}</td>
-                <td>${accessor ? accessor.getFormattedApproachValue('market') : fmt(mv)}</td>
-                <td>${accessor ? accessor.getFormattedApproachWeight('market') : '40%'}</td>
+                <td class="currency">${accessor ? accessor.getFormattedApproachValue('market') : fmt(mv)}</td>
+                <td class="percentage">${accessor ? accessor.getFormattedApproachWeight('market') : '40%'}</td>
               </tr>
             </tbody>
           </table>
@@ -1333,11 +1339,13 @@ export class ProfessionalPDFGenerator {
     ${accessor ? `
     <div style="margin-top: 20px; padding: 15px; background: #F5F5F5; border-radius: 8px;">
       <h3 style="margin-top: 0; color: #1E3A5F;">Key Financial Metrics</h3>
-      <table style="width: 100%; font-size: 10pt;">
-        <tr><td>Normalized SDE</td><td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDE('weighted')}</td></tr>
-        <tr><td>SDE Multiple Applied</td><td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDEMultiple()} ${citeInline('BBS')}</td></tr>
-        <tr><td>Capitalization Rate</td><td style="text-align: right; font-weight: bold;">${accessor.getFormattedCapRate()} ${citeInline('NYU')}</td></tr>
-        <tr><td>Value Range</td><td style="text-align: right; font-weight: bold;">${accessor.getFormattedValueRange().display}</td></tr>
+      <table class="data-table">
+        <tbody>
+        <tr><td>Normalized SDE</td><td class="currency">${accessor.getFormattedSDE('weighted')}</td></tr>
+        <tr><td>SDE Multiple Applied</td><td class="currency">${accessor.getFormattedSDEMultiple()} ${citeInline('BBS')}</td></tr>
+        <tr><td>Capitalization Rate</td><td class="percentage">${accessor.getFormattedCapRate()} ${citeInline('NYU')}</td></tr>
+        <tr><td>Value Range</td><td class="currency">${accessor.getFormattedValueRange().display}</td></tr>
+        </tbody>
       </table>
     </div>
     ` : ''}
@@ -1356,19 +1364,21 @@ export class ProfessionalPDFGenerator {
     <h1 class="section-title">Company Profile</h1>
     ${accessor ? `
     <div style="margin-bottom: 20px; padding: 15px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
-      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0; font-weight: bold; width: 160px;">Company Name</td>
-          <td style="padding: 6px 0;">${safeString(accessor.getCompanyName())}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0; font-weight: bold;">Industry</td>
-          <td style="padding: 6px 0;">${safeString(accessor.getIndustryName())}</td>
+      <table class="data-table">
+        <tbody>
+        <tr>
+          <td style="font-weight: bold; width: 160px;">Company Name</td>
+          <td>${safeString(accessor.getCompanyName())}</td>
         </tr>
         <tr>
-          <td style="padding: 6px 0; font-weight: bold;">NAICS Code</td>
-          <td style="padding: 6px 0;">${safeString(accessor.getNaicsCode())}</td>
+          <td style="font-weight: bold;">Industry</td>
+          <td>${safeString(accessor.getIndustryName())}</td>
         </tr>
+        <tr>
+          <td style="font-weight: bold;">NAICS Code</td>
+          <td>${safeString(accessor.getNaicsCode())}</td>
+        </tr>
+        </tbody>
       </table>
     </div>
     ` : ''}
@@ -1395,47 +1405,49 @@ export class ProfessionalPDFGenerator {
     ${accessor ? `
     <div style="margin-bottom: 24px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
       <h3 style="margin-top: 0; color: #1E3A5F;">Key Financial Metrics</h3>
-      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Annual Revenue</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedRevenue()}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Revenue Growth Rate</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedRevenueGrowthRate()}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Seller's Discretionary Earnings (SDE)</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDE()}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">EBITDA</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedEBITDA()}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">SDE Margin</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDEMargin()}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Gross Margin</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedGrossMargin()}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Total Assets</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedTotalAssets()}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Total Liabilities</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedTotalLiabilities()}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Book Value (Net Assets)</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedBookValue()}</td>
+      <table class="data-table">
+        <tbody>
+        <tr>
+          <td>Annual Revenue</td>
+          <td class="currency">${accessor.getFormattedRevenue()}</td>
         </tr>
         <tr>
-          <td style="padding: 6px 0;">Current Ratio</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedCurrentRatio()}</td>
+          <td>Revenue Growth Rate</td>
+          <td class="percentage">${accessor.getFormattedRevenueGrowthRate()}</td>
         </tr>
+        <tr>
+          <td>Seller's Discretionary Earnings (SDE)</td>
+          <td class="currency">${accessor.getFormattedSDE()}</td>
+        </tr>
+        <tr>
+          <td>EBITDA</td>
+          <td class="currency">${accessor.getFormattedEBITDA()}</td>
+        </tr>
+        <tr>
+          <td>SDE Margin</td>
+          <td class="percentage">${accessor.getFormattedSDEMargin()}</td>
+        </tr>
+        <tr>
+          <td>Gross Margin</td>
+          <td class="percentage">${accessor.getFormattedGrossMargin()}</td>
+        </tr>
+        <tr>
+          <td>Total Assets</td>
+          <td class="currency">${accessor.getFormattedTotalAssets()}</td>
+        </tr>
+        <tr>
+          <td>Total Liabilities</td>
+          <td class="currency">${accessor.getFormattedTotalLiabilities()}</td>
+        </tr>
+        <tr>
+          <td>Book Value (Net Assets)</td>
+          <td class="currency">${accessor.getFormattedBookValue()}</td>
+        </tr>
+        <tr>
+          <td>Current Ratio</td>
+          <td class="currency">${accessor.getFormattedCurrentRatio()}</td>
+        </tr>
+        </tbody>
       </table>
     </div>
     ` : ''}
@@ -1463,14 +1475,16 @@ export class ProfessionalPDFGenerator {
     <div class="financial-table">
       <div class="financial-section">
         <h3>Income</h3>
-        <table>
-          <tr><td>Revenue</td><td style="text-align: right; font-weight: bold;">${fmt(rev)}</td></tr>
-          <tr><td>Pretax Income</td><td style="text-align: right;">${fmt(accessor?.getNetIncome() ?? reportData.pretax_income)}</td></tr>
-          <tr><td>Officer Compensation</td><td style="text-align: right;">${fmt(accessor?.getOfficerCompensation() ?? reportData.owner_compensation)}</td></tr>
-          <tr><td>Interest Expense</td><td style="text-align: right;">${fmt(accessor?.getInterestExpense() ?? reportData.interest_expense)}</td></tr>
-          <tr><td>Non-Cash Expenses</td><td style="text-align: right;">${fmt(accessor?.getDepreciation() ?? reportData.non_cash_expenses ?? reportData.depreciation_amortization)}</td></tr>
-          ${accessor && sde ? `<tr style="background: #E8F5E9;"><td><strong>Seller's Discretionary Earnings (SDE)</strong></td><td style="text-align: right; font-weight: bold;">${fmt(sde)}</td></tr>` : ''}
-          ${accessor && ebitda ? `<tr style="background: #E3F2FD;"><td><strong>EBITDA</strong></td><td style="text-align: right; font-weight: bold;">${fmt(ebitda)}</td></tr>` : ''}
+        <table class="data-table">
+          <tbody>
+          <tr><td>Revenue</td><td class="currency" style="font-weight: bold;">${fmt(rev)}</td></tr>
+          <tr><td>Pretax Income</td><td class="currency">${fmt(accessor?.getNetIncome() ?? reportData.pretax_income)}</td></tr>
+          <tr><td>Officer Compensation</td><td class="currency">${fmt(accessor?.getOfficerCompensation() ?? reportData.owner_compensation)}</td></tr>
+          <tr><td>Interest Expense</td><td class="currency">${fmt(accessor?.getInterestExpense() ?? reportData.interest_expense)}</td></tr>
+          <tr><td>Non-Cash Expenses</td><td class="currency">${fmt(accessor?.getDepreciation() ?? reportData.non_cash_expenses ?? reportData.depreciation_amortization)}</td></tr>
+          ${accessor && sde ? `<tr class="total-row"><td><strong>Seller's Discretionary Earnings (SDE)</strong></td><td class="currency">${fmt(sde)}</td></tr>` : ''}
+          ${accessor && ebitda ? `<tr style="background: #E3F2FD; font-weight: 600;"><td><strong>EBITDA</strong></td><td class="currency">${fmt(ebitda)}</td></tr>` : ''}
+          </tbody>
         </table>
       </div>
 
@@ -1485,25 +1499,29 @@ export class ProfessionalPDFGenerator {
 
       <div class="financial-section">
         <h3>Assets</h3>
-        <table>
-          <tr><td>Cash</td><td style="text-align: right; font-weight: bold;">${fmt(accessor?.getCash() ?? reportData.cash)}</td></tr>
-          <tr><td>Accounts Receivable</td><td style="text-align: right;">${fmt(accessor?.getAccountsReceivable() ?? reportData.accounts_receivable)}</td></tr>
-          <tr><td>Inventory</td><td style="text-align: right;">${fmt(accessor?.getInventory() ?? reportData.inventory)}</td></tr>
-          <tr><td>Other Current Assets</td><td style="text-align: right;">${fmt(reportData.other_current_assets)}</td></tr>
-          <tr><td>Fixed Assets</td><td style="text-align: right;">${fmt(accessor?.getFixedAssets() ?? reportData.fixed_assets)}</td></tr>
-          <tr><td>Intangible Assets</td><td style="text-align: right;">${fmt(accessor?.getIntangibleAssets() ?? reportData.intangible_assets)}</td></tr>
-          <tr><td><strong>Total Assets</strong></td><td style="text-align: right; font-weight: bold;">${fmt(accessor?.getTotalAssets() ?? reportData.total_assets)}</td></tr>
+        <table class="data-table">
+          <tbody>
+          <tr><td>Cash</td><td class="currency" style="font-weight: bold;">${fmt(accessor?.getCash() ?? reportData.cash)}</td></tr>
+          <tr><td>Accounts Receivable</td><td class="currency">${fmt(accessor?.getAccountsReceivable() ?? reportData.accounts_receivable)}</td></tr>
+          <tr><td>Inventory</td><td class="currency">${fmt(accessor?.getInventory() ?? reportData.inventory)}</td></tr>
+          <tr><td>Other Current Assets</td><td class="currency">${fmt(reportData.other_current_assets)}</td></tr>
+          <tr><td>Fixed Assets</td><td class="currency">${fmt(accessor?.getFixedAssets() ?? reportData.fixed_assets)}</td></tr>
+          <tr><td>Intangible Assets</td><td class="currency">${fmt(accessor?.getIntangibleAssets() ?? reportData.intangible_assets)}</td></tr>
+          <tr class="total-row"><td><strong>Total Assets</strong></td><td class="currency">${fmt(accessor?.getTotalAssets() ?? reportData.total_assets)}</td></tr>
+          </tbody>
         </table>
       </div>
 
       <div class="financial-section">
         <h3>Liabilities</h3>
-        <table>
-          <tr><td>Accounts Payable</td><td style="text-align: right;">${fmt(reportData.accounts_payable)}</td></tr>
-          <tr><td>Other Short-Term Liabilities</td><td style="text-align: right;">${fmt(reportData.other_short_term_liabilities)}</td></tr>
-          <tr><td>Bank Loans</td><td style="text-align: right;">${fmt(reportData.bank_loans)}</td></tr>
-          <tr><td>Other Long-Term Liabilities</td><td style="text-align: right;">${fmt(reportData.other_long_term_liabilities)}</td></tr>
-          <tr><td><strong>Total Liabilities</strong></td><td style="text-align: right; font-weight: bold;">${fmt(accessor?.getTotalLiabilities() ?? reportData.total_liabilities)}</td></tr>
+        <table class="data-table">
+          <tbody>
+          <tr><td>Accounts Payable</td><td class="currency">${fmt(reportData.accounts_payable)}</td></tr>
+          <tr><td>Other Short-Term Liabilities</td><td class="currency">${fmt(reportData.other_short_term_liabilities)}</td></tr>
+          <tr><td>Bank Loans</td><td class="currency">${fmt(reportData.bank_loans)}</td></tr>
+          <tr><td>Other Long-Term Liabilities</td><td class="currency">${fmt(reportData.other_long_term_liabilities)}</td></tr>
+          <tr class="total-row"><td><strong>Total Liabilities</strong></td><td class="currency">${fmt(accessor?.getTotalLiabilities() ?? reportData.total_liabilities)}</td></tr>
+          </tbody>
         </table>
       </div>
     </div>
@@ -1530,27 +1548,29 @@ export class ProfessionalPDFGenerator {
     ${accessor ? `
     <div style="margin-bottom: 24px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
       <h3 style="margin-top: 0; color: #1E3A5F;">Asset Approach Summary</h3>
-      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Asset Approach Value</td>
-          <td style="text-align: right; font-weight: bold; color: #1E3A5F;">${accessor.getFormattedApproachValue('asset')}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Approach Weight</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachWeight('asset')}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Total Assets</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedTotalAssets()}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Total Liabilities</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedTotalLiabilities()}</td>
+      <table class="data-table">
+        <tbody>
+        <tr>
+          <td>Asset Approach Value</td>
+          <td class="currency" style="color: #1E3A5F;">${accessor.getFormattedApproachValue('asset')}</td>
         </tr>
         <tr>
-          <td style="padding: 6px 0;">Book Value (Net Assets)</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedBookValue()}</td>
+          <td>Approach Weight</td>
+          <td class="percentage">${accessor.getFormattedApproachWeight('asset')}</td>
         </tr>
+        <tr>
+          <td>Total Assets</td>
+          <td class="currency">${accessor.getFormattedTotalAssets()}</td>
+        </tr>
+        <tr>
+          <td>Total Liabilities</td>
+          <td class="currency">${accessor.getFormattedTotalLiabilities()}</td>
+        </tr>
+        <tr>
+          <td>Book Value (Net Assets)</td>
+          <td class="currency">${accessor.getFormattedBookValue()}</td>
+        </tr>
+        </tbody>
       </table>
     </div>
     ` : ''}
@@ -1566,23 +1586,25 @@ export class ProfessionalPDFGenerator {
     ${accessor ? `
     <div style="margin-bottom: 24px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
       <h3 style="margin-top: 0; color: #1E3A5F;">Income Approach Summary</h3>
-      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Income Approach Value</td>
-          <td style="text-align: right; font-weight: bold; color: #1E3A5F;">${accessor.getFormattedApproachValue('income')}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Approach Weight</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachWeight('income')}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Normalized SDE</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDE('normalized')}</td>
+      <table class="data-table">
+        <tbody>
+        <tr>
+          <td>Income Approach Value</td>
+          <td class="currency" style="color: #1E3A5F;">${accessor.getFormattedApproachValue('income')}</td>
         </tr>
         <tr>
-          <td style="padding: 6px 0;">Capitalization Rate</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedCapRate()}</td>
+          <td>Approach Weight</td>
+          <td class="percentage">${accessor.getFormattedApproachWeight('income')}</td>
         </tr>
+        <tr>
+          <td>Normalized SDE</td>
+          <td class="currency">${accessor.getFormattedSDE('normalized')}</td>
+        </tr>
+        <tr>
+          <td>Capitalization Rate</td>
+          <td class="percentage">${accessor.getFormattedCapRate()}</td>
+        </tr>
+        </tbody>
       </table>
     </div>
     ` : ''}
@@ -1598,23 +1620,25 @@ export class ProfessionalPDFGenerator {
     ${accessor ? `
     <div style="margin-bottom: 24px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
       <h3 style="margin-top: 0; color: #1E3A5F;">Market Approach Summary</h3>
-      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Market Approach Value</td>
-          <td style="text-align: right; font-weight: bold; color: #1E3A5F;">${accessor.getFormattedApproachValue('market')}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Approach Weight</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachWeight('market')}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Normalized SDE</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDE('normalized')}</td>
+      <table class="data-table">
+        <tbody>
+        <tr>
+          <td>Market Approach Value</td>
+          <td class="currency" style="color: #1E3A5F;">${accessor.getFormattedApproachValue('market')}</td>
         </tr>
         <tr>
-          <td style="padding: 6px 0;">SDE Multiple</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDEMultiple()}</td>
+          <td>Approach Weight</td>
+          <td class="percentage">${accessor.getFormattedApproachWeight('market')}</td>
         </tr>
+        <tr>
+          <td>Normalized SDE</td>
+          <td class="currency">${accessor.getFormattedSDE('normalized')}</td>
+        </tr>
+        <tr>
+          <td>SDE Multiple</td>
+          <td class="currency">${accessor.getFormattedSDEMultiple()}</td>
+        </tr>
+        </tbody>
       </table>
     </div>
     ` : ''}
@@ -1632,32 +1656,34 @@ export class ProfessionalPDFGenerator {
     ${accessor ? `
     <div style="margin-bottom: 24px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
       <h3 style="margin-top: 0; color: #1E3A5F;">Reconciliation Summary</h3>
-      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Asset Approach Value</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachValue('asset')}</td>
-          <td style="text-align: right; color: #6B7280; padding-left: 12px;">${accessor.getFormattedApproachWeight('asset')}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Income Approach Value</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachValue('income')}</td>
-          <td style="text-align: right; color: #6B7280; padding-left: 12px;">${accessor.getFormattedApproachWeight('income')}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Market Approach Value</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedApproachValue('market')}</td>
-          <td style="text-align: right; color: #6B7280; padding-left: 12px;">${accessor.getFormattedApproachWeight('market')}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">DLOM Adjustment</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedDLOMAmount()}</td>
-          <td style="text-align: right; color: #6B7280; padding-left: 12px;">${accessor.getFormattedDLOMRate()}</td>
+      <table class="data-table">
+        <tbody>
+        <tr>
+          <td>Asset Approach Value</td>
+          <td class="currency">${accessor.getFormattedApproachValue('asset')}</td>
+          <td class="percentage" style="color: #6B7280; padding-left: 12px;">${accessor.getFormattedApproachWeight('asset')}</td>
         </tr>
         <tr>
-          <td style="padding: 6px 0; font-weight: 600;">Concluded Fair Market Value</td>
-          <td style="text-align: right; font-weight: bold; color: #1E3A5F; font-size: 11pt;">${accessor.getFormattedFinalValue()}</td>
-          <td style="text-align: right; color: #6B7280; padding-left: 12px;">${accessor.getFormattedValueRange().display}</td>
+          <td>Income Approach Value</td>
+          <td class="currency">${accessor.getFormattedApproachValue('income')}</td>
+          <td class="percentage" style="color: #6B7280; padding-left: 12px;">${accessor.getFormattedApproachWeight('income')}</td>
         </tr>
+        <tr>
+          <td>Market Approach Value</td>
+          <td class="currency">${accessor.getFormattedApproachValue('market')}</td>
+          <td class="percentage" style="color: #6B7280; padding-left: 12px;">${accessor.getFormattedApproachWeight('market')}</td>
+        </tr>
+        <tr>
+          <td>DLOM Adjustment</td>
+          <td class="currency">${accessor.getFormattedDLOMAmount()}</td>
+          <td class="percentage" style="color: #6B7280; padding-left: 12px;">${accessor.getFormattedDLOMRate()}</td>
+        </tr>
+        <tr class="total-row">
+          <td style="font-weight: 600;">Concluded Fair Market Value</td>
+          <td class="currency" style="color: #1E3A5F; font-size: 11pt;">${accessor.getFormattedFinalValue()}</td>
+          <td class="currency" style="color: #6B7280; padding-left: 12px;">${accessor.getFormattedValueRange().display}</td>
+        </tr>
+        </tbody>
       </table>
     </div>
     ` : ''}
@@ -1675,15 +1701,17 @@ export class ProfessionalPDFGenerator {
     ${accessor ? `
     <div style="margin-bottom: 24px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
       <h3 style="margin-top: 0; color: #1E3A5F;">Risk Profile Overview</h3>
-      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Overall Risk Score</td>
-          <td style="text-align: right; font-weight: bold; color: #1E3A5F;">${accessor.getRiskScore()}/10</td>
+      <table class="data-table">
+        <tbody>
+        <tr>
+          <td>Overall Risk Score</td>
+          <td class="currency" style="color: #1E3A5F;">${accessor.getRiskScore()}/10</td>
         </tr>
         <tr>
-          <td style="padding: 6px 0;">Risk Rating</td>
-          <td style="text-align: right; font-weight: bold;">${safeString(accessor.getRiskRating(), 'N/A')}</td>
+          <td>Risk Rating</td>
+          <td class="currency">${safeString(accessor.getRiskRating(), 'N/A')}</td>
         </tr>
+        </tbody>
       </table>
     </div>
     ` : ''}
@@ -1713,20 +1741,20 @@ export class ProfessionalPDFGenerator {
 
     ${reportData.risk_factors && reportData.risk_factors.length > 0 ? `
     <h2>Risk Factor Breakdown</h2>
-    <table style="width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 10pt;">
+    <table class="data-table">
       <thead>
-        <tr style="background: #1E3A5F; color: white;">
-          <th style="padding: 12px; text-align: left;">Risk Category</th>
-          <th style="padding: 12px; text-align: center;">Rating</th>
-          <th style="padding: 12px; text-align: center;">Score</th>
-          <th style="padding: 12px; text-align: left;">Description</th>
+        <tr>
+          <th>Risk Category</th>
+          <th style="text-align: center;">Rating</th>
+          <th style="text-align: center;">Score</th>
+          <th>Description</th>
         </tr>
       </thead>
       <tbody>
         ${reportData.risk_factors.map((rf: any, idx: number) => `
-          <tr style="background: ${idx % 2 === 0 ? '#F9F9F9' : 'white'};">
-            <td style="padding: 10px 12px; font-weight: 500;">${safeString(rf.category, 'N/A')}</td>
-            <td style="padding: 10px 12px; text-align: center;">
+          <tr>
+            <td style="font-weight: 500;">${safeString(rf.category, 'N/A')}</td>
+            <td style="text-align: center;">
               <span style="
                 display: inline-block;
                 padding: 4px 12px;
@@ -1737,8 +1765,8 @@ export class ProfessionalPDFGenerator {
                 color: ${rf.rating === 'Low' ? '#2E7D32' : rf.rating === 'High' || rf.rating === 'Critical' ? '#C62828' : '#F57F17'};
               ">${safeString(rf.rating, 'N/A')}</span>
             </td>
-            <td style="padding: 10px 12px; text-align: center; font-weight: bold;">${safeString(rf.score, 'N/A')}/10</td>
-            <td style="padding: 10px 12px; color: #666;">${safeString(rf.description, '')}</td>
+            <td style="text-align: center; font-weight: bold;">${safeString(rf.score, 'N/A')}/10</td>
+            <td style="color: #666;">${safeString(rf.description, '')}</td>
           </tr>
         `).join('')}
       </tbody>
@@ -1763,23 +1791,25 @@ export class ProfessionalPDFGenerator {
     ${accessor ? `
     <div style="margin-bottom: 24px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
       <h3 style="margin-top: 0; color: #1E3A5F;">Source Financial Metrics</h3>
-      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Annual Revenue</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedRevenue()}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">SDE Margin</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDEMargin()}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">EBITDA Margin</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedEBITDAMargin()}</td>
+      <table class="data-table">
+        <tbody>
+        <tr>
+          <td>Annual Revenue</td>
+          <td class="currency">${accessor.getFormattedRevenue()}</td>
         </tr>
         <tr>
-          <td style="padding: 6px 0;">Current Ratio</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedCurrentRatio()}</td>
+          <td>SDE Margin</td>
+          <td class="percentage">${accessor.getFormattedSDEMargin()}</td>
         </tr>
+        <tr>
+          <td>EBITDA Margin</td>
+          <td class="percentage">${accessor.getFormattedEBITDAMargin()}</td>
+        </tr>
+        <tr>
+          <td>Current Ratio</td>
+          <td class="currency">${accessor.getFormattedCurrentRatio()}</td>
+        </tr>
+        </tbody>
       </table>
     </div>
     ` : ''}
@@ -1837,23 +1867,25 @@ export class ProfessionalPDFGenerator {
     ${accessor ? `
     <div style="margin-bottom: 24px; padding: 20px; background: #F9FAFB; border: 1px solid #E5E7EB; border-radius: 8px;">
       <h3 style="margin-top: 0; color: #1E3A5F;">Company Snapshot</h3>
-      <table style="width: 100%; font-size: 10pt; border-collapse: collapse;">
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Company</td>
-          <td style="text-align: right; font-weight: bold;">${safeString(accessor.getCompanyName(), companyName)}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">Annual Revenue</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedRevenue()}</td>
-        </tr>
-        <tr style="border-bottom: 1px solid #E5E7EB;">
-          <td style="padding: 6px 0;">SDE</td>
-          <td style="text-align: right; font-weight: bold;">${accessor.getFormattedSDE()}</td>
+      <table class="data-table">
+        <tbody>
+        <tr>
+          <td>Company</td>
+          <td class="currency">${safeString(accessor.getCompanyName(), companyName)}</td>
         </tr>
         <tr>
-          <td style="padding: 6px 0;">Concluded Value</td>
-          <td style="text-align: right; font-weight: bold; color: #1E3A5F;">${accessor.getFormattedFinalValue()}</td>
+          <td>Annual Revenue</td>
+          <td class="currency">${accessor.getFormattedRevenue()}</td>
         </tr>
+        <tr>
+          <td>SDE</td>
+          <td class="currency">${accessor.getFormattedSDE()}</td>
+        </tr>
+        <tr class="total-row">
+          <td>Concluded Value</td>
+          <td class="currency" style="color: #1E3A5F;">${accessor.getFormattedFinalValue()}</td>
+        </tr>
+        </tbody>
       </table>
     </div>
     ` : ''}
