@@ -1412,7 +1412,7 @@ export function transformToPDFReportData(
     income_approach_analysis: narratives.valuation_approaches?.income_approach_narrative?.content || pass8?.narrative?.content,
     market_approach_analysis: narratives.valuation_approaches?.market_approach_narrative?.content || pass9?.narrative?.content,
     valuation_reconciliation: narratives.valuation_approaches?.synthesis_narrative?.content,
-    risk_assessment: narratives.risk_analysis?.content,
+    risk_assessment: narratives.risk_assessment?.content,
     strategic_insights: buildValueEnhancementContent(pass6),
     assumptions_limiting_conditions: narratives.conclusion_and_limiting_conditions?.content,
 
