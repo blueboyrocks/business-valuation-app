@@ -404,8 +404,8 @@
         "Typecheck passes"
       ],
       "priority": 21,
-      "passes": false,
-      "notes": "Main entry point for extraction. Progress events help UI show status."
+      "passes": true,
+      "notes": "Complete: pipeline.ts with extractDocumentPipeline, progress events, retry logic, scanned PDF detection, partial failure handling."
     },
     {
       "id": "US-022",

@@ -341,3 +341,28 @@ C:\Users\bened\OneDrive\Documents\biz-val-test-docs
   - Balance sheet optional for Schedule C (sole proprietors)
 ---
 
+## Wed, Jan 29, 2026 - US-021 (Unified Extraction Pipeline Orchestrator)
+- Created lib/extraction/pipeline.ts (580 lines)
+- Main functions:
+  - extractDocumentPipeline(): Main pipeline function (entry point)
+  - extractMultipleDocuments(): Batch processing
+  - runStage1(): Modal/pdfplumber extraction with retry
+  - runStage2(): Classification and schema mapping
+  - runStage3(): AI validation and enrichment
+  - createBasicFinalOutput(): Fallback output without AI
+- Pipeline features:
+  - Progress events via callback (stage1/stage2/stage3/complete/error)
+  - Partial failure handling (continue with successful stages)
+  - Retry logic: exponential backoff (1s, 3s, 9s), 3 max retries
+  - Scanned PDF detection with Claude Vision fallback flag
+  - Configurable: skipAiValidation, forceOpus, maxRetries, modalEndpointUrl
+- Stage orchestration:
+  - Stage 1 → Stage 2 → Stage 3 (sequential)
+  - If Stage 3 fails, creates basic output from Stage 2
+  - Returns partial results even on failure
+- **Learnings:**
+  - Use emitProgress wrapper to catch callback errors
+  - Return needsClaudeVision flag so caller can decide fallback strategy
+  - Keep createBasicFinalOutput for when AI validation is skipped or fails
+---
+
