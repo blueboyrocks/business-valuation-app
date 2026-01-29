@@ -88,8 +88,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": "First real fix. K-Force expected: ~$1,132,935 (not $0). The asset-approach-calculator.ts already has a fallback chain (from US-005 in previous PRD) but something downstream may be zeroing it."
+      "passes": true,
+      "notes": "Fixed: mapBalanceSheet() in pass-data-mapper.ts was looking for balance sheet data at wrong nested paths. Pass 3 output has flat structure (total_assets) not nested (assets.total_assets). Updated to check both paths."
     },
     {
       "id": "US-006",

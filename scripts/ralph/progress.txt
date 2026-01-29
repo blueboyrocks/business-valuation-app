@@ -6,6 +6,8 @@ Started: Wed, Jan 28, 2026  9:00:32 PM
 - ValuationDataAccessor is the authoritative source for all financial values in PDF generation
 - Use accessor methods (getFinalValue(), getRevenue(), etc.) instead of raw reportData access
 - Structured logs use format: console.log('[PREFIX] key=value section=name')
+- Pass 3 output (BalanceSheetYear) uses flat structure: bs.total_assets, not bs.assets.total_assets
+- When mapping between types, use multi-path lookup helper for forward/backward compatibility
 
 ---
 
@@ -137,4 +139,29 @@ Started: Wed, Jan 28, 2026  9:00:32 PM
   - The function ONLY fills missing data (null, undefined, 0) - never overwrites existing values
   - hasCalcEngine is determined by: !!calcResults?.synthesis?.final_concluded_value
   - If calc engine didn't run, values can be filled from narrative extraction as fallback
+---
+
+## 2026-01-28 11:50 PM - US-005: Fix Asset Approach Showing $0
+- What was implemented:
+  - Root cause: mapBalanceSheet() in lib/calculations/pass-data-mapper.ts was looking for balance sheet data at wrong nested paths
+  - Pass 3 output uses BalanceSheetYear type which has total_assets at root level (bs.total_assets), not under assets (bs.assets.total_assets)
+  - Similarly, current_assets fields use different naming (cash_and_equivalents vs cash, machinery_equipment vs machinery_and_equipment)
+  - Created getVal() helper function that tries multiple possible paths for each field, checking both flat (Pass 3) and nested (legacy) structures
+  - Order of path checking: flat structure first (current format), then nested (legacy fallback)
+  - Added diagnostic logging with [ASSET_APPROACH] prefix in both mapBalanceSheet() and calculateAssetApproach()
+  - Logs now show: totalAssets, liabilities, calculated NAV, and final value at each step
+
+- Files changed:
+  - lib/calculations/pass-data-mapper.ts (modified, refactored mapBalanceSheet() with multi-path lookup)
+  - lib/calculations/asset-approach-calculator.ts (added 2 logging statements)
+
+- **Learnings for future iterations:**
+  - Pass 3 output structure (BalanceSheetYear type) is defined in lib/claude/types-v2.ts lines 398-485
+  - Key structural differences from BalanceSheetData in types.ts:
+    - total_assets is at root, not under assets.total_assets
+    - current_assets uses cash_and_equivalents not cash
+    - fixed_assets uses machinery_equipment not machinery_and_equipment
+    - long_term_liabilities uses notes_payable_long_term, mortgage_payable, due_to_shareholders
+  - When mapping between types, always check both source and destination type definitions
+  - The getVal() helper pattern (try multiple paths) is useful for handling evolving data structures
 ---
