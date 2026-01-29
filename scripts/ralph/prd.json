@@ -1,129 +1,466 @@
 {
   "project": "ValuationPro",
-  "branchName": "ralph/chart-visualization-fixes",
-  "description": "Fix multiple chart rendering issues in PDF reports: empty charts with N/A labels, missing Y-axis labels, reversed year order, benchmark lines covered by data, and valuation range chart cutoff.",
+  "branchName": "ralph/pdf-extraction-v2",
+  "description": "PRD-H: Robust PDF Extraction Pipeline - Replace Claude vision extraction with deterministic pdfplumber (via Modal.com) + AI validation. Three-stage pipeline: Stage 1 (Modal/pdfplumber), Stage 2 (Haiku classification), Stage 3 (Sonnet validation).",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Create Chart Data Validator",
-      "description": "As a system, I need to validate chart data before rendering so that broken charts are never displayed.",
+      "title": "Create TypeScript types for extraction pipeline",
+      "description": "As a developer, I want TypeScript interfaces for all extraction stages so that I have type safety throughout the pipeline.",
       "acceptanceCriteria": [
-        "Create lib/charts/chart-validator.ts",
-        "validateChartData(config: ChartConfig): ChartValidationResult function",
-        "Check: data array not empty",
-        "Check: all values are numbers (not NaN, undefined, null)",
-        "Check: labels array same length as data array",
-        "Check: labels are strings (not objects)",
-        "Check: not all labels are 'N/A'",
-        "Return { valid, errors[], warnings[], sanitizedConfig? }",
-        "Unit tests in lib/charts/__tests__/chart-validator.test.ts",
+        "Create lib/extraction/types.ts with all type exports",
+        "Stage1Output interface: tables[], text_by_region, metadata, raw_text",
+        "Stage2Output interface: classification, structured_data, schedule_k, schedule_m1, guaranteed_payments, red_flags, unmapped_data",
+        "FinalExtractionOutput interface: documents[], company_info, financial_data by year, validation, suggested_sde_addbacks",
+        "FinancialDocumentType union: FORM_1120, FORM_1120S, FORM_1065, SCHEDULE_C, INCOME_STATEMENT, BALANCE_SHEET, etc.",
+        "ValidationResult interface with id, severity, field, message",
+        "RedFlagIndicators interface",
+        "No 'any' types used",
         "Typecheck passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Implemented in lib/charts/chart-validator.ts with 35 tests"
+      "notes": "Complete: lib/extraction/types.ts with 685 lines of comprehensive type definitions"
     },
     {
       "id": "US-002",
-      "title": "Implement Chronological Year Sorting",
-      "description": "As a system, I need to sort chart data chronologically so that trends read correctly left-to-right (oldest to newest).",
+      "title": "Create document_extractions database table",
+      "description": "As a developer, I want a database table to store extraction results so that I can debug and compare extractions.",
       "acceptanceCriteria": [
-        "Add sortChronologically(labels, values) function to chart-validator.ts or new utility",
-        "Extract year from label strings (handles '2024', 'FY2024', '2024-Q1' formats)",
-        "Sort both labels and values arrays in parallel by year ascending",
-        "Oldest year on left, newest on right",
-        "Unit tests verify sorting with various label formats",
+        "Create Supabase migration file in supabase/migrations/",
+        "Table: document_extractions with columns: id (UUID PK), report_id (FK), document_id (FK)",
+        "Columns: document_type (TEXT), tax_year (TEXT), entity_name (TEXT)",
+        "Columns: stage1_output (JSONB), stage2_output (JSONB), stage3_output (JSONB)",
+        "Columns: confidence_score (INTEGER), validation_status (TEXT)",
+        "Columns: processing_time_ms (INTEGER), created_at (TIMESTAMPTZ), updated_at (TIMESTAMPTZ)",
+        "Add index on report_id, document_id",
+        "RLS policies for authenticated users",
         "Typecheck passes"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "Implemented extractYear() and sortChronologically() in chart-validator.ts"
+      "notes": "Added columns to existing table via ALTER TABLE migration. RLS policies already existed."
     },
     {
       "id": "US-003",
-      "title": "Create Placeholder Chart Component",
-      "description": "As a system, I need a placeholder for charts with insufficient data so that the report looks intentional rather than broken.",
+      "title": "Create Modal.com Python extraction service",
+      "description": "As a developer, I want a Modal.com serverless function that extracts tables and text from PDFs using pdfplumber.",
       "acceptanceCriteria": [
-        "Add generatePlaceholderChart(title, reason) function",
-        "Returns HTML/SVG that displays 'Insufficient Data for Visualization'",
-        "Shows what data was missing (e.g., 'Requires 2+ years of financial data')",
-        "Matches styling of other charts (same dimensions, colors from design tokens)",
-        "Integrate with chart generator to use placeholder when validation fails",
-        "Typecheck passes"
+        "Create lib/extraction/modal/extract_pdf.py with Modal function",
+        "Function accepts PDF bytes via web endpoint",
+        "Uses pdfplumber to extract all tables with page numbers",
+        "Uses pdfplumber to extract text by region (header, body_left, body_right, footer, full_text)",
+        "Detects if PDF is scanned (no extractable text) and sets is_scanned flag",
+        "If scanned, attempts OCR using pytesseract",
+        "Returns JSON matching Stage1Output schema",
+        "Handles encrypted PDFs gracefully (returns error JSON)",
+        "Processing time < 10 seconds for 20-page PDF",
+        "Create requirements.txt with pdfplumber, pypdf, pytesseract, pdf2image, Pillow",
+        "Modal stub file with modal.App and @modal.web_endpoint decorator",
+        "Deploy to Modal with: modal deploy lib/extraction/modal/extract_pdf.py"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "Implemented generatePlaceholderChart() using design tokens, integrated into all chart generators"
+      "notes": "Complete: extract_pdf.py with scanned document detection, OCR fallback, and health endpoint"
     },
     {
       "id": "US-004",
-      "title": "Add Y-Axis Label Generation",
-      "description": "As a system, I need to generate Y-axis labels for all charts so that values can be understood.",
+      "title": "Create TypeScript client for Modal extraction",
+      "description": "As a developer, I want a TypeScript function that calls the Modal extraction service so that I can use it from Next.js.",
       "acceptanceCriteria": [
-        "Add generateYAxisLabels(min, max, unit, tickCount) function",
-        "Calculate appropriate tick marks (5-7 ticks by default)",
-        "Format labels with units (%, $, x as appropriate)",
-        "Handle large numbers with abbreviations ($1.5M, $500K)",
-        "No overlapping labels (adequate spacing)",
-        "Update chart generation to include Y-axis labels",
-        "Unit tests verify scale calculation and formatting",
+        "Create lib/extraction/modal-client.ts with extractPdfViaModal function",
+        "Function accepts PDF buffer or URL",
+        "Function calls Modal web endpoint via fetch",
+        "Function parses JSON response and validates against Stage1Output type",
+        "Function handles timeout (60 second max)",
+        "Function handles Modal errors gracefully with typed error responses",
+        "Function returns { success: true, data: Stage1Output } | { success: false, error: string, isScanned?: boolean }",
+        "If isScanned is true and OCR failed, caller can fall back to Claude Vision",
         "Typecheck passes"
       ],
       "priority": 4,
       "passes": true,
-      "notes": "Implemented generateYAxisTicks(), formatYAxisLabel(), generateYAxisLabels() in chart-validator.ts"
+      "notes": "Complete: modal-client.ts with retry logic and health checks"
     },
     {
       "id": "US-005",
-      "title": "Fix Benchmark Line Rendering Order",
-      "description": "As a system, I need benchmark lines visible behind data bars so that comparisons can be made.",
+      "title": "Create document type classifier using Haiku",
+      "description": "As a system, I want to automatically identify the type of financial document so that I can apply the correct extraction schema.",
       "acceptanceCriteria": [
-        "Update SVG chart generation to render in correct order: grid -> benchmark -> data -> labels",
-        "Benchmark line rendered AFTER grid lines",
-        "Benchmark line rendered BEFORE data bars/lines",
-        "Benchmark label positioned to not overlap data",
-        "Use dashed line style for visual distinction",
+        "Create lib/extraction/classifier.ts with classifyDocument function",
+        "Function takes Stage1Output and returns DocumentClassification",
+        "First attempts keyword detection for fast path (Form 1120-S, Form 1065, etc.)",
+        "Falls back to Claude Haiku for ambiguous cases",
+        "Recognizes: FORM_1120, FORM_1120S, FORM_1065, SCHEDULE_C, SCHEDULE_K1, INCOME_STATEMENT, BALANCE_SHEET, DEPRECIATION_SCHEDULE",
+        "Returns UNKNOWN for unrecognizable documents",
+        "Returns confidence score (high/medium/low) and indicators array",
+        "Extracts tax_year and entity_name when identifiable",
         "Typecheck passes"
       ],
       "priority": 5,
       "passes": true,
-      "notes": "Fixed in kpi-page-generator.ts - benchmark line now renders before data bars"
+      "notes": "Complete: classifier.ts with keyword detection fast path and Haiku fallback"
     },
     {
       "id": "US-006",
-      "title": "Fix Valuation Range Chart",
-      "description": "As a system, I need to fix the Valuation Range Overview chart so that all elements are visible and properly positioned.",
+      "title": "Create Form 1120-S schema mapper (S-Corp)",
+      "description": "As a system, I want to map extracted tables from Form 1120-S to standard financial schema.",
       "acceptanceCriteria": [
-        "Fix 'Your Value' marker so it doesn't cover other text",
-        "Ensure Industry Low/High labels visible and connected to chart",
-        "Fix container height so bottom is not cut off",
-        "Position value marker correctly on the range scale",
-        "Use design token colors consistently",
+        "Create lib/extraction/mappings/form-1120s.ts with mapping config",
+        "Mapping covers income section (lines 1-6): gross_receipts, returns_allowances, cogs, gross_profit",
+        "Mapping covers deductions section (lines 7-20): officer_compensation (Line 7 - PRIMARY SDE ADD-BACK), salaries, rent, depreciation (Line 14), interest (Line 13)",
+        "Mapping covers Schedule L assets (Lines 1-15): cash, AR, inventory, loans_to_shareholders (Line 7 - RED FLAG), fixed_assets, total_assets",
+        "Mapping covers Schedule L liabilities (Lines 16-27): AP, loans_from_shareholders (Line 18), total_liabilities, retained_earnings",
+        "Handles BOY (beginning of year) and EOY (end of year) columns",
+        "Create lib/extraction/schema-mapper.ts that uses mapping to produce Stage2Output.structured_data",
+        "Uses Claude Haiku for ambiguous field mappings",
+        "Tracks unmapped fields in Stage2Output.unmapped_data",
         "Typecheck passes"
       ],
       "priority": 6,
       "passes": true,
-      "notes": "Fixed in puppeteer-chart-renderer.ts: increased height, smart label positioning, clamped marker to visible range"
+      "notes": "Complete: form-1120s.ts mapping + schema-mapper.ts with registry pattern"
     },
     {
       "id": "US-007",
-      "title": "Create KPI Trend Chart Template",
-      "description": "As a system, I need a consistent template for all KPI trend charts so that they all render correctly with the same quality.",
+      "title": "Create Form 1120 (C-Corp) schema mapper",
+      "description": "As a system, I want to map extracted tables from Form 1120 to standard financial schema so that C-Corporations are supported.",
       "acceptanceCriteria": [
-        "Create generateKPITrendChart(config) function or component",
-        "Props: title, data[], labels[], benchmark?, unit",
-        "Handles 1-4 years of data gracefully",
-        "Always includes Y-axis with scale labels",
-        "Always sorts years chronologically (left=oldest)",
-        "Benchmark line visible when provided",
-        "Consistent sizing across all KPI charts",
-        "Uses validation before rendering (shows placeholder if invalid)",
-        "Integrates with PDF generator for all KPI sections",
+        "Create lib/extraction/mappings/form-1120.ts with mapping config",
+        "Mapping covers income section (lines 1-11)",
+        "Mapping covers deductions section (lines 12-27): officer_compensation (Line 12 - PRIMARY SDE ADD-BACK)",
+        "Mapping covers charitable contributions (Line 19 - discretionary add-back)",
+        "Mapping covers income tax (Line 31 - add back for pre-tax SDE)",
+        "Mapping covers Schedule L (balance sheet)",
+        "Register mapping in schema-mapper.ts",
         "Typecheck passes"
       ],
       "priority": 7,
       "passes": true,
-      "notes": "Enhanced generateInlineSVGChart() in kpi-page-generator.ts with all required features"
+      "notes": "Complete: form-1120.ts with tax section for C-Corp"
+    },
+    {
+      "id": "US-008",
+      "title": "Create Form 1065 (Partnership) schema mapper",
+      "description": "As a system, I want to map extracted tables from Form 1065 to standard financial schema so that partnerships are supported.",
+      "acceptanceCriteria": [
+        "Create lib/extraction/mappings/form-1065.ts with mapping config",
+        "Mapping covers income section (lines 1-8)",
+        "Mapping covers deductions section (lines 9-21)",
+        "Mapping covers guaranteed payments to partners (Line 10) - PRIMARY OWNER COMP FOR PARTNERSHIPS",
+        "Mapping covers Schedule L (balance sheet)",
+        "guaranteed_payments field populated in Stage2Output: { services, capital, total }",
+        "Register mapping in schema-mapper.ts",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": true,
+      "notes": "Complete: form-1065.ts with income, deductions, Schedule L assets/liabilities, and Schedule K sections. Guaranteed payments marked as PRIMARY OWNER COMP."
+    },
+    {
+      "id": "US-009",
+      "title": "Create Schedule C (Sole Prop) schema mapper",
+      "description": "As a system, I want to map extracted tables from Schedule C to standard financial schema so that sole proprietorships are supported.",
+      "acceptanceCriteria": [
+        "Create lib/extraction/mappings/schedule-c.ts with mapping config",
+        "Mapping covers income section (lines 1-7)",
+        "Mapping covers expenses section (lines 8-27)",
+        "Mapping covers home office deduction (Line 30) - add back",
+        "Mapping covers car/truck expenses (Line 9) - typically 50% personal",
+        "Mapping covers meals (Line 24b) - typically 50% personal",
+        "Handles no balance sheet (all balance fields default to 0)",
+        "Notes that net profit = owner draws for SDE calculation",
+        "Register mapping in schema-mapper.ts",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "Schedule C has no officer compensation line - the entire net profit goes to owner."
+    },
+    {
+      "id": "US-010",
+      "title": "Create Income Statement schema mapper",
+      "description": "As a system, I want to map extracted tables from P&L statements to standard financial schema.",
+      "acceptanceCriteria": [
+        "Create lib/extraction/mappings/income-statement.ts with mapping config",
+        "Handles common P&L layouts (2-3 column formats)",
+        "Handles multi-year comparisons with YoY change calculation",
+        "Extracts expense breakdown by category",
+        "Handles 'owner salary' or 'officer compensation' rows",
+        "Uses Haiku for field matching (P&L formats vary widely)",
+        "Register mapping in schema-mapper.ts",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "P&L formats vary widely by accounting software. Use Haiku more heavily for field matching."
+    },
+    {
+      "id": "US-011",
+      "title": "Create Balance Sheet schema mapper with BOY/EOY",
+      "description": "As a system, I want to map extracted tables from Balance Sheets to standard financial schema with beginning and end of year values.",
+      "acceptanceCriteria": [
+        "Create lib/extraction/mappings/balance-sheet.ts with mapping config",
+        "Handles BOY (beginning of year) and EOY (end of year) columns",
+        "Extracts current assets, fixed assets, other assets",
+        "Extracts loans to shareholders (RED FLAG indicator)",
+        "Extracts loans from shareholders",
+        "Extracts current liabilities, long-term liabilities",
+        "Extracts equity components including retained earnings",
+        "Negative retained earnings flagged as red flag",
+        "Register mapping in schema-mapper.ts",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "Balance sheets are usually more consistent in format. BOY/EOY critical for working capital analysis."
+    },
+    {
+      "id": "US-012",
+      "title": "Create Schedule K extraction for S-Corps/Partnerships",
+      "description": "As a system, I want to extract Schedule K data from tax returns to identify all SDE add-backs.",
+      "acceptanceCriteria": [
+        "Create lib/extraction/mappings/schedule-k.ts with mapping for both 1120-S and 1065",
+        "Extracts ordinary business income (Line 1)",
+        "Extracts non-operating income (Lines 2-6)",
+        "Extracts capital gains (Lines 7, 8a, 10) - NON-RECURRING add-backs",
+        "Extracts Section 179 deduction (Line 12a) - MUST ADD BACK (accelerated depreciation)",
+        "Extracts distributions (Line 16a) for cash flow verification",
+        "schedule_k field populated in Stage2Output",
+        "Integrate with schema-mapper.ts to extract when 1120-S or 1065 detected",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "Schedule K contains critical SDE add-backs often missed. Section 179 is accelerated depreciation that MUST be added back."
+    },
+    {
+      "id": "US-013",
+      "title": "Create Schedule M-1 reconciliation extraction",
+      "description": "As a system, I want to extract Schedule M-1 (book-tax reconciliation) data to identify discrepancies.",
+      "acceptanceCriteria": [
+        "Create lib/extraction/mappings/schedule-m1.ts with mapping config",
+        "Extracts net income per books (Line 1)",
+        "Extracts reconciling items (Lines 2-3, 5-6)",
+        "Extracts income per Schedule K (Line 8)",
+        "schedule_m1 field populated in Stage2Output",
+        "Integrate with schema-mapper.ts",
+        "Significant differences (>5% variance) noted in warnings",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "M-1 reconciliation helps identify book/tax differences that may indicate unreported items."
+    },
+    {
+      "id": "US-014",
+      "title": "Create COGS detail extraction (Form 1125-A)",
+      "description": "As a system, I want to extract COGS detail from Form 1125-A to verify cost of goods sold.",
+      "acceptanceCriteria": [
+        "Create lib/extraction/mappings/form-1125a.ts with mapping config",
+        "Extracts beginning inventory, purchases, labor costs, other costs, ending inventory",
+        "cogs_detail field populated in Stage2Output.structured_data",
+        "Integrate with schema-mapper.ts when Form 1125-A detected in document",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "COGS detail critical for manufacturing/retail businesses to verify cost structure."
+    },
+    {
+      "id": "US-015",
+      "title": "Create COVID adjustment detection",
+      "description": "As a system, I want to identify COVID-era relief items so they can be normalized out of earnings.",
+      "acceptanceCriteria": [
+        "Create lib/extraction/covid-detector.ts with detectCovidAdjustments function",
+        "Detects PPP loan forgiveness (usually in 'Other income')",
+        "Detects EIDL advances",
+        "Detects Employee Retention Credit",
+        "Flags these as non-recurring items to SUBTRACT from normalized earnings",
+        "Works for 2020-2024 tax years",
+        "covid_adjustments field populated in FinalExtractionOutput",
+        "Integrate with pipeline",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": "COVID relief items are NON-RECURRING and must be SUBTRACTED from earnings. Critical for 2020-2024 valuations."
+    },
+    {
+      "id": "US-016",
+      "title": "Create related party transaction detection",
+      "description": "As a system, I want to identify potential related party transactions for arm's-length pricing review.",
+      "acceptanceCriteria": [
+        "Create lib/extraction/related-party-detector.ts with detectRelatedPartyIndicators function",
+        "Flags loans to shareholders (Schedule L Line 7 > 0)",
+        "Flags loans from shareholders (Schedule L Line 18 > 0)",
+        "Flags high rent expense (>10% of revenue) for related party review",
+        "Adds to red_flags output in Stage2Output",
+        "Integrate with pipeline",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": "Related party transactions may not be at arm's length. Shareholder loans are a common red flag."
+    },
+    {
+      "id": "US-017",
+      "title": "Create comprehensive data validator",
+      "description": "As a system, I want to validate extracted data for financial reasonableness before it affects valuations.",
+      "acceptanceCriteria": [
+        "Create lib/extraction/validator.ts with validateExtraction function",
+        "Create lib/extraction/validation-rules.ts with all validation rules",
+        "BS001: Assets = Liabilities + Equity (1% tolerance)",
+        "BS002: Loans to shareholders detected (warning/red flag)",
+        "BS003: Negative retained earnings (warning/red flag)",
+        "IS001: Gross Profit = Revenue - COGS",
+        "IS002: Revenue is positive",
+        "IS003: COGS detail reconciliation",
+        "IS004: Other income percentage reasonable (<10%)",
+        "IS005: Other deductions percentage reasonable (<20%)",
+        "SDE001: Officer compensation 5-50% of revenue (warning)",
+        "SDE002: Section 179 deduction detected (info)",
+        "SDE003: Partnership guaranteed payments detected (info)",
+        "SDE004: Capital gains detected (info)",
+        "M1001: Book-Tax reconciliation validates",
+        "CF001: Distributions vs net income",
+        "COVID001: COVID relief items detected",
+        "IND001: Gross margin industry reasonableness",
+        "RPT001: Related party transaction indicators",
+        "TREND001: YoY revenue change reasonable (<30%)",
+        "Returns ValidationResult[] with severity levels (error/warning/info)",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": "Comprehensive validator with 18+ rules. Errors block, warnings allow but flag."
+    },
+    {
+      "id": "US-018",
+      "title": "Create AI validation and enrichment (Stage 3)",
+      "description": "As a system, I want Claude to validate extracted data and suggest corrections for expert-level quality assurance.",
+      "acceptanceCriteria": [
+        "Create lib/extraction/ai-validator.ts with validateWithAI function",
+        "Function takes Stage2Output and ValidationResult[]",
+        "Uses Claude Sonnet by default",
+        "Escalates to Opus if confidence < 70 or errors > 3",
+        "Suggests corrections with reasoning",
+        "Identifies missing critical data",
+        "Generates suggested_sde_addbacks summary",
+        "Returns FinalExtractionOutput with validation status",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": "This is the intelligence layer. Sonnet reviews all extracted data for reasonableness."
+    },
+    {
+      "id": "US-019",
+      "title": "Create cross-document validation",
+      "description": "As a system, I want to validate data consistency across multiple uploaded documents.",
+      "acceptanceCriteria": [
+        "Create lib/extraction/cross-doc-validator.ts with validateCrossDocument function",
+        "Compares tax return revenue to P&L revenue (if both present)",
+        "Compares K-1 allocations to tax return totals",
+        "Compares multiple years for trend reasonableness",
+        "Returns CrossDocValidation results array",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": "Catches cases where tax return and P&L show different revenues."
+    },
+    {
+      "id": "US-020",
+      "title": "Create confidence scoring system",
+      "description": "As a system, I want to calculate an overall extraction confidence score for escalation decisions.",
+      "acceptanceCriteria": [
+        "Create lib/extraction/confidence-scorer.ts with calculateConfidence function",
+        "Weighs classification confidence, mapping completeness, validation results",
+        "Returns 0-100 score",
+        "Scores < 70 recommend Opus escalation",
+        "Scores < 50 recommend human review",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": "Drives escalation logic. Weights should be tuned over time."
+    },
+    {
+      "id": "US-021",
+      "title": "Create unified extraction pipeline orchestrator",
+      "description": "As a system, I want a single function that orchestrates all extraction stages.",
+      "acceptanceCriteria": [
+        "Create lib/extraction/pipeline.ts with extractDocumentPipeline function",
+        "Orchestrates: Stage 1 (Modal/pdfplumber) -> Stage 2 (Haiku) -> Stage 3 (Sonnet/Opus)",
+        "If Stage 1 returns is_scanned=true and OCR failed, returns flag for Claude Vision fallback",
+        "Emits progress events via callback ('stage1', 'stage2', 'stage3', 'complete', 'error')",
+        "Handles partial failures gracefully (continue with successful stages)",
+        "Returns FinalExtractionOutput",
+        "Logs each stage timing to console",
+        "Implements retry logic: 3 retries with exponential backoff (1s, 3s, 9s)",
+        "Rate limit errors, timeout errors, invalid JSON errors trigger retry",
+        "Permanent errors (bad PDF) don't retry",
+        "Typecheck passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": "Main entry point for extraction. Progress events help UI show status."
+    },
+    {
+      "id": "US-022",
+      "title": "Create extraction API route",
+      "description": "As a developer, I want a new API route for the extraction pipeline so the frontend can trigger extractions.",
+      "acceptanceCriteria": [
+        "Create app/api/reports/[id]/extract-v2/route.ts",
+        "POST handler accepts report ID",
+        "Handler fetches document files from Supabase storage",
+        "Handler runs pipeline for each document",
+        "Handler stores results in document_extractions table",
+        "Handler updates report status",
+        "Handler returns extraction summary with document IDs and confidence scores",
+        "Typecheck passes"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": "API entry point. Keep simple - delegate to pipeline.ts."
+    },
+    {
+      "id": "US-023",
+      "title": "Add extraction audit logging",
+      "description": "As a system, I want to log every extraction step with traceability for debugging.",
+      "acceptanceCriteria": [
+        "Create lib/extraction/audit-logger.ts with logExtractionStep function",
+        "Logs stage, timestamp, input size, output size, model used",
+        "Logs stored in console with structured JSON format",
+        "Logs include document_id and report_id for correlation",
+        "Integrate with pipeline.ts",
+        "Typecheck passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": "Console logging for now. Database storage can be added later."
+    },
+    {
+      "id": "US-024",
+      "title": "Create extraction test suite",
+      "description": "As a developer, I want automated tests for the extraction pipeline to verify changes don't break functionality.",
+      "acceptanceCriteria": [
+        "Create test fixtures in lib/extraction/__tests__/fixtures/",
+        "Create mock Stage1Output JSON for: 1120-S, 1065, Schedule C, P&L",
+        "Unit tests for classifier.ts",
+        "Unit tests for each schema mapper",
+        "Unit tests for validator.ts (all 18+ validation rules)",
+        "Unit tests for confidence-scorer.ts",
+        "Unit tests for covid-detector.ts",
+        "Unit tests for related-party-detector.ts",
+        "Integration test for full pipeline with mock data",
+        "All tests pass with npm run test",
+        "Typecheck passes"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": "Comprehensive test suite. Use mock data since Modal calls require live service."
     }
   ]
 }

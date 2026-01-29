@@ -1,87 +1,92 @@
 # Ralph Progress Log
 Started: Wed, Jan 29, 2026
-Branch: ralph/chart-visualization-fixes
-PRD: Chart Visualization Fixes (7 stories)
+Branch: ralph/pdf-extraction-v2
+PRD: PRD-H Robust PDF Extraction Pipeline (24 stories)
 ---
 
 ## Codebase Patterns
-- Charts are generated in lib/pdf/professional-pdf-generator.ts
-- Design tokens in lib/pdf/design-tokens.ts (COLORS, CHART_COLOR_PALETTE)
-- SVG charts rendered inline in HTML for PDF generation
-- KPI charts appear in pages 39-63 of the PDF report
-- Chart data comes from reportData.yearly_financials or calculation results
-- Chart validation should be done before rendering to show placeholder for bad data
-- All time-series charts should sort data chronologically (oldest year on left)
-- Benchmark lines should render BEFORE data bars so bars appear on top
+- Next.js app with app/ directory structure
+- Supabase for database and storage
+- Claude AI via Anthropic SDK for AI passes
+- Modal.com for Python serverless (pdfplumber extraction)
+- Types in lib/extraction/types.ts
+- Mappings in lib/extraction/mappings/ directory
+- Test fixtures in lib/extraction/__tests__/fixtures/
+- Database migrations in supabase/migrations/
 ---
 
-## Wed, Jan 29, 2026 - US-001, US-002, US-003, US-004 (Chart Validator)
-- Created lib/charts/chart-validator.ts with comprehensive validation:
-  - validateChartData() checks empty arrays, NaN/undefined, non-string labels, all-placeholder labels
-  - sortChronologically() sorts labels and values by year (oldest first)
-  - extractYear() handles various formats: '2024', 'FY2024', 'Q1 2024', etc.
-  - generatePlaceholderChart() creates styled SVG placeholder for invalid data
-  - generateYAxisTicks() calculates nice tick values for Y-axis scale
-  - formatYAxisLabel() formats numbers with units ($1.5M, 25%, 2.5x)
-- Created 35 tests in lib/charts/__tests__/chart-validator.test.ts
-- All tests pass, typecheck passes
-- **Learnings for future iterations:**
-  - Year extraction regex needs to handle FY2024 (no word boundary between FY and digits)
-  - Placeholder charts should use design tokens for consistency
+## Architecture Overview
+Three-stage extraction pipeline:
+1. **Stage 1 (Modal/pdfplumber)**: Deterministic PDF extraction - tables, text by region
+2. **Stage 2 (Claude Haiku)**: Document classification, schema mapping
+3. **Stage 3 (Claude Sonnet/Opus)**: AI validation, enrichment, SDE suggestions
+
+Modal endpoint: Called via HTTP POST from Next.js
+Fallback: If scanned PDF detected and OCR fails, route to Claude Vision
 ---
 
-## Wed, Jan 29, 2026 - US-005 (Benchmark Line Rendering)
-- Fixed benchmark line rendering order in kpi-page-generator.ts:
-  - Render order: grid -> benchmark -> data bars
-  - Benchmark line appears behind data for visibility
-- Enhanced generateInlineSVGChart() with:
-  - Data validation before rendering
-  - Chronological sorting of years
-  - Proper Y-axis labels with scale
-  - Consistent dimensions and spacing
-- **Learnings for future iterations:**
-  - SVG render order: elements drawn later appear on top
-  - Use <g> groups to organize rendering layers
+## Environment Variables Required
+- MODAL_TOKEN_ID: Modal authentication token ID
+- MODAL_TOKEN_SECRET: Modal authentication token secret
+- ANTHROPIC_API_KEY: For Haiku/Sonnet/Opus calls
 ---
 
-## Wed, Jan 29, 2026 - US-006 (Valuation Range Chart)
-- Fixed Valuation Range chart in puppeteer-chart-renderer.ts:
-  - Increased container height from 400px to 480px to prevent cutoff
-  - Added smart label positioning (center/left/right based on value position)
-  - Clamped marker position to 5-95% to stay within visible range
-  - Added speech bubble arrow pointing to marker line
-  - Used design token colors (#1E3A5F navy, #DC2626 red)
-  - Styled Industry Low/High labels in cards with better spacing
-- Typecheck passes
-- **Learnings for future iterations:**
-  - Edge values need clamping to stay within visible chart area
-  - Dynamic label positioning prevents overlap with chart edges
+## Test PDFs Location
+C:\Users\bened\OneDrive\Documents\biz-val-test-docs
 ---
 
-## Wed, Jan 29, 2026 - US-007 (KPI Trend Chart Template)
-- Enhanced generateInlineSVGChart() in kpi-page-generator.ts serves as KPI chart template:
-  - Validates data before rendering (shows placeholder if invalid)
-  - Sorts years chronologically (oldest first, left to right)
-  - Includes Y-axis with proper scale labels
-  - Benchmark line visible with dashed style
-  - Consistent sizing (450x230px) across all KPI charts
-  - Uses design token colors from chart-validator.ts
-- Integrated with PDF generator for all KPI sections
-- Typecheck passes
-- **Learnings for future iterations:**
-  - KPI charts already had inline SVG implementation - just needed enhancement
-  - Import validation functions rather than duplicating code
+## Wed, Jan 29, 2026 - US-001 (TypeScript Types)
+- Created lib/extraction/types.ts (685 lines)
+- Stage1Output: pdfplumber extraction with tables, text_by_region, metadata
+- Stage2Output: Haiku classification with structured_data, schedule_k, schedule_m1, red_flags
+- FinalExtractionOutput: complete pipeline output with validation, SDE suggestions
+- FinancialDocumentType: 18 document types supported
+- Supporting types: BalanceSheetData (BOY/EOY), ScheduleKData, CovidAdjustments, etc.
+- Database types: DocumentExtractionRow, DocumentExtractionInsert
+- Typecheck passes, no 'any' types used
+- **Learnings:**
+  - Include database row types alongside domain types for Supabase compatibility
+  - Use Record<string, T> for year-keyed financial data
 ---
 
-## Wed, Jan 29, 2026 - ALL 7 STORIES COMPLETE
-- US-001: Chart Data Validator ✅
-- US-002: Chronological Year Sorting ✅
-- US-003: Placeholder Chart Component ✅
-- US-004: Y-Axis Label Generation ✅
-- US-005: Benchmark Line Rendering Order ✅
-- US-006: Valuation Range Chart Fix ✅
-- US-007: KPI Trend Chart Template ✅
-- All typecheck passes
-- Ready for push to GitHub and Vercel deployment
+## Wed, Jan 29, 2026 - US-002 through US-006 (Infrastructure & Mapping)
+- US-002: Database migration adding extraction pipeline columns
+- US-003: Modal Python extraction service with pdfplumber + OCR
+- US-004: TypeScript Modal client with retry logic
+- US-005: Document classifier with keyword fast path + Haiku fallback
+- US-006: Form 1120-S mapping + schema-mapper.ts core
+- **Learnings:**
+  - Mapping registry pattern allows easy addition of new document types
+  - parseNumericValue() must handle parentheses for negatives
+  - Haiku is effective for ambiguous field mapping (narrow task)
+  - RedFlagIndicators auto-calculated from extracted data
+---
+
+## Wed, Jan 29, 2026 - US-007 (Form 1120 C-Corp Mapper)
+- Created lib/extraction/mappings/form-1120.ts
+- Income section (Lines 1-11): dividends, interest income, gross rents/royalties
+- Deductions section (Lines 12-27): officer comp (Line 12) as PRIMARY SDE ADD-BACK
+- Tax section (Lines 28-35): income tax (Line 31) add back for pre-tax SDE
+- Schedule L Assets and Liabilities with equity section
+- Charitable contributions (Line 19) marked as discretionary add-back
+- **Learnings:**
+  - C-Corp has dedicated Tax section unlike S-Corp
+  - Retained earnings in equity (unique to C-Corp structure)
+---
+
+## Wed, Jan 29, 2026 - US-008 (Form 1065 Partnership Mapper)
+- Created lib/extraction/mappings/form-1065.ts (572 lines)
+- Income section (Lines 1-8): gross receipts, COGS, gross profit, other income
+- Deductions section (Lines 9-21): guaranteed payments (Line 10) as PRIMARY OWNER COMP
+- Schedule L Assets: loans to partners flagged as RED FLAG
+- Schedule L Liabilities: partners capital accounts
+- Schedule K section (Partners' Distributive Share Items):
+  - Section 179 deduction - MUST ADD BACK (accelerated depreciation)
+  - Capital gains (short/long term, Section 1231) - non-recurring add-backs
+  - Cash distributions for cash flow verification
+- **Learnings:**
+  - Partnerships use guaranteed payments instead of officer compensation
+  - Schedule K critical for partnership SDE calculation
+  - Partners capital replaces retained earnings/stockholders equity
 ---
 
