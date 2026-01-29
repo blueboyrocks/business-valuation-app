@@ -48,6 +48,14 @@ function isNewPipelineAvailable(): boolean {
 }
 
 /**
+ * Check if strict mode is enabled (no fallback to Claude Vision)
+ * Set MODAL_EXTRACTION_STRICT=true for testing to surface errors
+ */
+function isStrictMode(): boolean {
+  return process.env.MODAL_EXTRACTION_STRICT === 'true';
+}
+
+/**
  * Convert FinalExtractionOutput from new pipeline to old extraction format
  */
 function convertPipelineOutputToLegacyFormat(
@@ -543,15 +551,40 @@ async function extractDocumentWithRetry(
           extractedData,
         };
       } else if (pipelineResult.needsClaudeVision) {
-        console.log(`[EXTRACT] Pipeline detected scanned PDF, falling back to Claude Vision`);
-        // Fall through to Claude Vision fallback
+        console.log(`[EXTRACT] Pipeline detected scanned PDF`);
+        if (isStrictMode()) {
+          console.error(`[EXTRACT] ❌ STRICT MODE: Scanned PDF detected, not falling back`);
+          return {
+            documentId: doc.id,
+            file_name: doc.file_name || doc.file_path,
+            success: false,
+            error: `STRICT MODE: Scanned PDF detected - Modal pipeline cannot process. Would fall back to Claude Vision in production.`,
+          };
+        }
+        console.log(`[EXTRACT] Falling back to Claude Vision`);
       } else {
-        console.error(`[EXTRACT] Pipeline failed: ${pipelineResult.error}`);
+        console.error(`[EXTRACT] ❌ Pipeline failed: ${pipelineResult.error}`);
+        if (isStrictMode()) {
+          return {
+            documentId: doc.id,
+            file_name: doc.file_name || doc.file_path,
+            success: false,
+            error: `STRICT MODE: Modal pipeline failed - ${pipelineResult.error}`,
+          };
+        }
         // Fall through to Claude Vision fallback
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`[EXTRACT] Pipeline error: ${errorMessage}`);
+      console.error(`[EXTRACT] ❌ Pipeline error: ${errorMessage}`);
+      if (isStrictMode()) {
+        return {
+          documentId: doc.id,
+          file_name: doc.file_name || doc.file_path,
+          success: false,
+          error: `STRICT MODE: Modal pipeline error - ${errorMessage}`,
+        };
+      }
       // Fall through to Claude Vision fallback
     }
     console.log(`[EXTRACT] Falling back to Claude Vision for ${doc.id}`);
