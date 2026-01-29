@@ -104,8 +104,8 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": "Previous work partially completed this. Verify all sections are wired."
+      "passes": true,
+      "notes": "Verified: accessor-first pattern in PDF generator, value injection wired in download-pdf and regenerate routes, safeString utilities used throughout."
     },
     {
       "id": "US-007",
@@ -122,8 +122,8 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": "Integration test for PRD-H. May build on existing test-manifest-consistency.ts."
+      "passes": true,
+      "notes": "Already implemented. test-data-consistency.ts passes all 8 tests: DataStore creation, no forbidden patterns, quality gate, value consistency, asset approach logic, weights sum."
     },
     {
       "id": "US-008",

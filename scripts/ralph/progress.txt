@@ -62,3 +62,28 @@ PRD: Combined PRD-H v2, PRD-I v2, PRD-J v2 (24 stories)
   - Always pass { hasCalculationEngine: true } when calculation engine results exist
 ---
 
+## Wed, Jan 29, 2026 - US-006 (Wire DataAccessor to PDF)
+- Verified professional-pdf-generator.ts uses accessor-first pattern:
+  - `accessor?.getX() ?? reportData.x` pattern throughout
+  - Key financial values (revenue, SDE, approaches, final value) all use accessor
+  - Remaining direct reportData accesses are for secondary fields or array data
+- Value injection wired in both routes:
+  - app/api/reports/[id]/download-pdf/route.ts:192
+  - app/api/reports/[id]/regenerate/route.ts:697
+- safeString utilities used throughout PDF generator
+- **Learnings for future iterations:**
+  - accessor-first pattern provides backwards compatibility
+  - Value injection runs AFTER reconcileWithNarratives
+---
+
+## Wed, Jan 29, 2026 - US-007 (Integration Test)
+- Verified scripts/test-data-consistency.ts already exists and passes:
+  - 8 tests pass: DataStore creation, section generation, no forbidden patterns, quality gate, value consistency, SDE multiple range, asset approach logic, weights sum
+  - Run via: npx tsx scripts/test-data-consistency.ts
+- Tests use generic mock data (not K-Force specific) for portability
+- Quality gate integrated with test script
+- **Learnings for future iterations:**
+  - Integration tests should use generic mock data, not specific reports
+  - Quality gate warnings are expected for content that happens to contain numbers matching financial values
+---
+
