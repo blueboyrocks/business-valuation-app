@@ -422,8 +422,8 @@
         "Typecheck passes"
       ],
       "priority": 22,
-      "passes": false,
-      "notes": "API entry point. Keep simple - delegate to pipeline.ts."
+      "passes": true,
+      "notes": "Complete: extract-v2/route.ts with POST (run pipeline) and GET (check status) handlers. Supports optional documentIds and skipAiValidation params."
     },
     {
       "id": "US-023",

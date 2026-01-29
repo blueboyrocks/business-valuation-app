@@ -366,3 +366,25 @@ C:\Users\bened\OneDrive\Documents\biz-val-test-docs
   - Keep createBasicFinalOutput for when AI validation is skipped or fails
 ---
 
+## Wed, Jan 29, 2026 - US-022 (Extraction API Route)
+- Created app/api/reports/[id]/extract-v2/route.ts (400 lines)
+- POST handler:
+  - Fetches documents from Supabase storage
+  - Runs extraction pipeline for each document
+  - Stores results in document_extractions table
+  - Updates report status (extracting/extracted/extraction_failed)
+  - Returns extraction summary with confidence scores
+- GET handler:
+  - Returns extraction status for report
+  - Includes document count, success/fail counts
+  - Average confidence score across documents
+- Optional params:
+  - documentIds: Extract specific documents only
+  - skipAiValidation: Skip Stage 3 for faster processing
+- **Learnings:**
+  - Use lazy-initialized Supabase client to avoid build-time errors
+  - Convert Blob from storage to Buffer using arrayBuffer()
+  - Upsert to document_extractions with onConflict: 'report_id,document_id'
+  - Map extraction status to report_status carefully
+---
+
