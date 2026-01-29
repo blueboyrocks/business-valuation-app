@@ -388,3 +388,28 @@ C:\Users\bened\OneDrive\Documents\biz-val-test-docs
   - Map extraction status to report_status carefully
 ---
 
+## Wed, Jan 29, 2026 - US-023 (Extraction Audit Logging)
+- Created lib/extraction/audit-logger.ts (375 lines)
+- ExtractionAuditLogger class:
+  - Level-specific logging: info, warn, error
+  - Stage lifecycle: stageStart, stageComplete, stageError
+  - Track retries: retryAttempt
+  - Track AI models: modelUsed
+  - Validation: validationResult
+  - Confidence: confidenceScore
+  - Pipeline: pipelineComplete
+  - Correlation: withReportId
+- Structured JSON log format:
+  - timestamp, level, stage, event, document_id
+  - Optional: report_id, duration_ms, model, input_size, output_size
+  - Optional: retry_count, error_message, metadata
+- Global logger:
+  - getAuditLogger(): Get global instance
+  - configureAuditLogger(): Configure global logger
+  - logExtractionStep(): Convenience function
+- **Learnings:**
+  - Use log level priority for filtering
+  - Output full JSON in development mode for debugging
+  - Create child loggers with withReportId for correlation
+---
+
