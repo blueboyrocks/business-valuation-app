@@ -306,6 +306,11 @@ export function injectValuesIntoNarrative(
   // Only process value ranges if we have authoritative low/high values
   console.log(`[INJECTOR] Value range check: low=${valueRangeLow}, high=${valueRangeHigh}, will process=${valueRangeLow > 0 && valueRangeHigh > 0}`);
   if (valueRangeLow > 0 && valueRangeHigh > 0) {
+    // Test first pattern for debugging
+    const testPattern = /(\$[\d,]+)\s*(?:to|-)\s*(\$[\d,]+)/gi;
+    const testMatch = testPattern.exec(modifiedContent);
+    console.log(`[INJECTOR] Test pattern match: ${testMatch ? testMatch[0] : 'none found'}`);
+
     for (const rangePattern of rangePatterns) {
       let rangeMatch: RegExpExecArray | null;
       while ((rangeMatch = rangePattern.exec(modifiedContent)) !== null) {
