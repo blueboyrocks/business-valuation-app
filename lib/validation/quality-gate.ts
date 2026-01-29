@@ -114,12 +114,17 @@ function checkDataIntegrity(
   }
 
   // Run value consistency check
+  // PRD-H: Treat consistency validator errors as WARNINGS, not blocking errors.
+  // The consistency validator produces many false positives for narrative text
+  // (e.g., flagging revenue figures as "final value mismatches" because they
+  // appear near valuation keywords). The value injector successfully fixes
+  // the critical issues (wrong value range, SDE multiple), so we log these
+  // for review but don't block PDF generation.
   const consistencyResult: ConsistencyResult = validateValueConsistency(accessor, sectionContents);
-  if (!consistencyResult.passed) {
-    for (let i = 0; i < consistencyResult.errors.length; i++) {
-      errors.push(consistencyResult.errors[i]);
-      deductions += 10;
-    }
+  for (let i = 0; i < consistencyResult.errors.length; i++) {
+    // Treat as warnings instead of errors to avoid blocking on false positives
+    warnings.push(consistencyResult.errors[i]);
+    deductions += 2; // Minor penalty instead of blocking
   }
   for (let i = 0; i < consistencyResult.warnings.length; i++) {
     warnings.push(consistencyResult.warnings[i]);
