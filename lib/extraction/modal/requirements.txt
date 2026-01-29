@@ -1,0 +1,14 @@
+# Modal PDF Extraction Service Dependencies
+# PRD-H: Robust PDF Extraction Pipeline
+
+# Core PDF extraction
+pdfplumber>=0.10.0
+pypdf>=4.0.0
+
+# OCR support for scanned documents
+pytesseract>=0.3.10
+pdf2image>=1.16.0
+Pillow>=10.0.0
+
+# Modal serverless framework
+modal>=0.64.0
