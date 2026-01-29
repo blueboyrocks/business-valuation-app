@@ -249,8 +249,8 @@
         "Typecheck passes"
       ],
       "priority": 13,
-      "passes": false,
-      "notes": "M-1 reconciliation helps identify book/tax differences that may indicate unreported items."
+      "passes": true,
+      "notes": "Complete: schedule-m1.ts with additions, subtractions, reconciliation, and analysis sections. Added SCHEDULE_M1 to FinancialDocumentType."
     },
     {
       "id": "US-014",

@@ -165,3 +165,19 @@ C:\Users\bened\OneDrive\Documents\biz-val-test-docs
   - Guaranteed payments = owner compensation for partnerships
 ---
 
+## Wed, Jan 29, 2026 - US-013 (Schedule M-1 Mapper)
+- Created lib/extraction/mappings/schedule-m1.ts (400+ lines)
+- Additions section (Lines 1-6): net income per books, federal income tax, capital losses, expenses not deductible
+- Subtractions section (Lines 7-8): income on books not taxed, deductions not charged to books
+- Reconciliation section (Line 9): income per return (should match Schedule K)
+- Analysis section: retained earnings reconciliation (C-Corp specific)
+- Added SCHEDULE_M1 to FinancialDocumentType union
+- Added classifier keywords for M-1 detection
+- **Learnings:**
+  - Schedule M-1 validates extraction accuracy (Line 9 should match Schedule K Line 1)
+  - Book-tax differences >5% of revenue warrant investigation
+  - Common differences: depreciation (Section 179/bonus), meals (50% limit), state taxes
+  - "Income not on books" field may indicate unreported income
+  - Travel and entertainment 50% disallowance appears in Line 5a
+---
+
