@@ -49,3 +49,16 @@ PRD: Combined PRD-H v2, PRD-I v2, PRD-J v2 (24 stories)
   - Asset approach logs use [AssetApproach] prefix for source selection
 ---
 
+## Wed, Jan 29, 2026 - US-005 (RECONCILE Override Logic)
+- Verified reconcileWithNarratives() in lib/extraction/narrative-data-extractor.ts already has correct implementation:
+  - Accepts { hasCalculationEngine: boolean } option
+  - Protected fields defined in calculationEngineFields Set: asset_approach_value, income_approach_value, market_approach_value, annual_revenue, valuation_amount
+  - Only fills MISSING data - never overwrites existing values when hasCalcEngine=true
+  - app/api/reports/[id]/regenerate/route.ts correctly passes hasCalculationEngine flag
+- Data flow is one-directional: Calculation Engine -> DataStore -> (Narratives, PDF)
+- [DATA_FLOW] logging already in place for debugging
+- **Learnings for future iterations:**
+  - reconcileWithNarratives() uses hasCalculationEngine flag to protect calc engine values
+  - Always pass { hasCalculationEngine: true } when calculation engine results exist
+---
+

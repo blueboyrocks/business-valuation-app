@@ -87,8 +87,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": "Critical fix. Previous work may have addressed this - verify and document."
+      "passes": true,
+      "notes": "Already fixed in previous PRD. reconcileWithNarratives() has hasCalculationEngine guard, protected fields defined in calculationEngineFields Set. Only fills missing data."
     },
     {
       "id": "US-006",
