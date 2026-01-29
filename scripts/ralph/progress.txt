@@ -165,3 +165,51 @@ Started: Wed, Jan 28, 2026  9:00:32 PM
   - When mapping between types, always check both source and destination type definitions
   - The getVal() helper pattern (try multiple paths) is useful for handling evolving data structures
 ---
+
+## 2026-01-28 11:59 PM - US-008: Verify DataAccessor Wiring in All PDF Sections
+- What was implemented:
+  - Audited lib/pdf/professional-pdf-generator.ts for direct reportData access patterns
+  - Updated generateCharts() method to accept optional accessor parameter
+  - Charts now use accessor values when available for:
+    - asset_approach_value, income_approach_value, market_approach_value
+    - final_value (valuation_amount), value_range_low, value_range_high
+    - risk_score, risk_level (risk_rating)
+  - Fixed type definition in narrative-value-injector.ts to include value_range_low, value_range_high, sde_multiple
+  - Documented which sections are accessor-wired vs narrative-injected
+
+- Files changed:
+  - lib/pdf/professional-pdf-generator.ts (modified, ~20 lines changed in generateCharts())
+  - lib/valuation/narrative-value-injector.ts (modified, fixed type definition)
+
+- **Section Wiring Documentation:**
+  - **Accessor-wired sections** (use DataAccessor methods directly in tables/displays):
+    - Cover page (company name, valuation date, industry, final value)
+    - Executive Summary key financial highlights table
+    - Conclusion of Value (approach values, weights, final value, range)
+    - Company Profile info table
+    - Financial Analysis metrics table
+    - Financial Summary (income/asset/liability line items)
+    - Asset/Income/Market Approach summary tables
+    - Valuation Reconciliation summary table
+    - Risk Assessment (risk score, rating)
+    - KPI Overview source metrics
+    - Mini-Report critical values table
+    - All Puppeteer charts (valuation, value map, risk gauge)
+
+  - **Narrative-injected sections** (text content from AI, not yet using value injector):
+    - Executive Summary narrative text
+    - Company Profile narrative text
+    - Industry Analysis narrative text
+    - Financial Analysis narrative text
+    - Asset/Income/Market Approach narrative text
+    - Valuation Reconciliation narrative text
+    - Risk Assessment narrative text
+    - Strategic Insights narrative text
+    - Note: narrative-value-injector.ts exists but not wired into pipeline (US-007 scope)
+
+- **Learnings for future iterations:**
+  - The accessor pattern `accessor?.getX() ?? reportData.x` provides graceful fallback
+  - Puppeteer chart generation happens before HTML building - accessor must be passed separately
+  - Some balance sheet line items (accounts_payable, bank_loans, other_current_assets) don't have accessor methods - these are detail items, not critical valuation values
+  - The narrative value injector has patterns for currency values, value ranges, and SDE multiples but needs to be wired into the narrative generation pipeline
+---

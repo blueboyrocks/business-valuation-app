@@ -34,30 +34,6 @@ function formatCurrency(value: number): string {
 }
 
 /**
- * Generate currency patterns that might appear in narrative text
- * e.g., "$4,200,000", "$4.2 million", "$4.2M", "4.2 million dollars"
- */
-function generateCurrencyPatterns(value: number): RegExp[] {
-  const patterns: RegExp[] = [];
-
-  // Standard currency format: $X,XXX,XXX
-  // Match values within 50% of target (to catch rounded/incorrect values)
-  const lowBound = Math.floor(value * 0.5);
-  const highBound = Math.ceil(value * 1.5);
-
-  // Match dollar amounts with commas (e.g., $4,200,000)
-  patterns.push(/\$[\d,]+(?:\.\d{2})?/g);
-
-  // Match "X.X million" or "X million" patterns
-  patterns.push(/\$?[\d.]+\s*million(?:\s+dollars)?/gi);
-
-  // Match "XM" patterns (e.g., "$4.2M")
-  patterns.push(/\$[\d.]+M/gi);
-
-  return patterns;
-}
-
-/**
  * Parse a currency string to a number
  * Handles formats: $1,234,567, $1.2M, $1.2 million, 1.2 million dollars
  */

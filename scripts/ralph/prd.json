@@ -142,8 +142,8 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": "Previous PRD did extensive wiring (US-007 through US-009). This story verifies completeness and catches any gaps."
+      "passes": true,
+      "notes": "Fixed: generateCharts() now accepts accessor and uses it for approach values, value ranges, risk scores. Documented accessor-wired vs narrative-injected sections. Narrative injector exists but is not yet wired (US-007)."
     },
     {
       "id": "US-009",
