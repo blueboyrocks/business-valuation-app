@@ -5,10 +5,22 @@
  *
  * Charts follow the pattern established in lib/pdf/kpi-page-generator.ts
  * using string-based SVG construction for Puppeteer/HTML-to-PDF rendering.
+ *
+ * PRD-J Chart Visualization Fixes:
+ * - All charts validate data before rendering
+ * - Time-series data is sorted chronologically (oldest first)
+ * - Y-axis labels with proper formatting
+ * - Benchmark lines rendered in correct order
  */
 
 import { CHART_COLORS, CHART_SERIES_PALETTE, CHART_DIMENSIONS, CHART_FONTS } from './theme';
 import { rect, line, text, circle, path, svgWrapper, gridLines, yAxis, xAxis } from './svg-primitives';
+import {
+  sortChronologically,
+  generatePlaceholderChart,
+  ChartConfig,
+  validateChartData,
+} from './chart-validator';
 
 // ============ DATA INTERFACES ============
 
@@ -90,14 +102,33 @@ export class ReportChartGenerator {
   /**
    * Vertical bar chart showing revenue by year.
    * Bars with value labels above and year labels below, Y-axis with gridlines.
+   *
+   * PRD-J fixes:
+   * - Validates data before rendering
+   * - Sorts years chronologically (oldest first)
    */
   generateRevenueTrendChart(labels: string[], values: number[]): string {
     const { width, height, padding } = CHART_DIMENSIONS;
-    if (labels.length === 0 || values.length === 0) {
-      return svgWrapper(width, height, text(width / 2, height / 2, 'No revenue data available', {
-        anchor: 'middle',
-        fill: CHART_COLORS.textLight,
-      }));
+
+    // Validate data - PRD-J US-001
+    const validation = validateChartData({
+      id: 'revenue-trend',
+      title: 'Revenue Trend',
+      type: 'bar',
+      data: { labels, values },
+    });
+
+    if (!validation.valid) {
+      return generatePlaceholderChart('Revenue Trend', 'Requires valid revenue data');
+    }
+
+    // Sort chronologically - PRD-J US-002
+    const sorted = sortChronologically(labels, values);
+    const sortedLabels = sorted.labels;
+    const sortedValues = sorted.values;
+
+    if (sortedLabels.length === 0 || sortedValues.length === 0) {
+      return generatePlaceholderChart('Revenue Trend', 'No revenue data available');
     }
 
     const plotLeft = padding.left;
@@ -107,11 +138,11 @@ export class ReportChartGenerator {
     const plotWidth = plotRight - plotLeft;
     const plotHeight = plotBottom - plotTop;
 
-    const maxVal = niceMax(Math.max(...values));
+    const maxVal = niceMax(Math.max(...sortedValues));
     const gridCount = 5;
 
     // Compute bar geometry
-    const barCount = values.length;
+    const barCount = sortedValues.length;
     const totalGap = (barCount + 1) * CHART_DIMENSIONS.barGap;
     const barWidth = Math.min(CHART_DIMENSIONS.barWidth, (plotWidth - totalGap) / barCount);
 
@@ -150,13 +181,13 @@ export class ReportChartGenerator {
     for (let i = 0; i < barCount; i++) {
       const centerX = plotLeft + barAreaWidth * (i + 0.5);
       const bx = centerX - barWidth / 2;
-      const barHeight = (values[i] / maxVal) * plotHeight;
+      const barHeight = (sortedValues[i] / maxVal) * plotHeight;
       const by = plotBottom - barHeight;
 
       parts.push(rect(bx, by, barWidth, barHeight, 'url(#revenueBarGrad)', { rx: 3 }));
 
       // Value label above bar
-      parts.push(text(centerX, by - 6, formatCompactCurrency(values[i]), {
+      parts.push(text(centerX, by - 6, formatCompactCurrency(sortedValues[i]), {
         fontSize: CHART_FONTS.valueSize,
         fontWeight: 'bold',
         anchor: 'middle',
@@ -164,7 +195,7 @@ export class ReportChartGenerator {
       }));
 
       // Year label below bar
-      parts.push(text(centerX, plotBottom + 16, labels[i], {
+      parts.push(text(centerX, plotBottom + 16, sortedLabels[i], {
         fontSize: CHART_FONTS.labelSize,
         anchor: 'middle',
         fill: CHART_COLORS.textLight,
@@ -181,14 +212,34 @@ export class ReportChartGenerator {
   /**
    * Line chart with two polylines (SDE and EBITDA) over years,
    * circle markers at each data point, and a legend below.
+   *
+   * PRD-J fixes:
+   * - Validates data before rendering
+   * - Sorts years chronologically (oldest first)
    */
   generateSDEEBITDATrendChart(labels: string[], sdeValues: number[], ebitdaValues: number[]): string {
     const { width, height, padding } = CHART_DIMENSIONS;
-    if (labels.length === 0) {
-      return svgWrapper(width, height, text(width / 2, height / 2, 'No earnings data available', {
-        anchor: 'middle',
-        fill: CHART_COLORS.textLight,
-      }));
+
+    // Validate data - PRD-J US-001
+    const validation = validateChartData({
+      id: 'sde-ebitda-trend',
+      title: 'SDE & EBITDA Trend',
+      type: 'line',
+      data: { labels, values: sdeValues, values2: ebitdaValues },
+    });
+
+    if (!validation.valid) {
+      return generatePlaceholderChart('SDE & EBITDA Trend', 'Requires valid earnings data');
+    }
+
+    // Sort chronologically - PRD-J US-002
+    const sorted = sortChronologically(labels, sdeValues, ebitdaValues);
+    const sortedLabels = sorted.labels;
+    const sortedSdeValues = sorted.values;
+    const sortedEbitdaValues = sorted.values2 || [];
+
+    if (sortedLabels.length === 0) {
+      return generatePlaceholderChart('SDE & EBITDA Trend', 'No earnings data available');
     }
 
     const plotLeft = padding.left;
@@ -199,7 +250,7 @@ export class ReportChartGenerator {
     const plotHeight = plotBottom - plotTop;
     const gridCount = 5;
 
-    const allValues = [...sdeValues, ...ebitdaValues].filter(v => v > 0);
+    const allValues = [...sortedSdeValues, ...sortedEbitdaValues].filter(v => v > 0);
     const maxVal = niceMax(allValues.length > 0 ? Math.max(...allValues) : 100);
 
     const parts: string[] = [];
@@ -221,11 +272,11 @@ export class ReportChartGenerator {
     parts.push(xAxis(plotBottom, plotLeft, plotRight));
     parts.push(yAxisLabels(gridCount, maxVal, plotLeft, plotTop, plotBottom, formatCompactCurrency));
 
-    // X-axis year labels
-    const stepX = labels.length > 1 ? plotWidth / (labels.length - 1) : 0;
-    for (let i = 0; i < labels.length; i++) {
-      const x = labels.length === 1 ? plotLeft + plotWidth / 2 : plotLeft + stepX * i;
-      parts.push(text(x, plotBottom + 16, labels[i], {
+    // X-axis year labels (sorted chronologically)
+    const stepX = sortedLabels.length > 1 ? plotWidth / (sortedLabels.length - 1) : 0;
+    for (let i = 0; i < sortedLabels.length; i++) {
+      const x = sortedLabels.length === 1 ? plotLeft + plotWidth / 2 : plotLeft + stepX * i;
+      parts.push(text(x, plotBottom + 16, sortedLabels[i], {
         fontSize: CHART_FONTS.labelSize,
         anchor: 'middle',
         fill: CHART_COLORS.textLight,
@@ -237,7 +288,7 @@ export class ReportChartGenerator {
       if (values.length === 0) return;
       const points: { x: number; y: number }[] = [];
       for (let i = 0; i < values.length; i++) {
-        const x = labels.length === 1 ? plotLeft + plotWidth / 2 : plotLeft + stepX * i;
+        const x = sortedLabels.length === 1 ? plotLeft + plotWidth / 2 : plotLeft + stepX * i;
         const y = plotBottom - (values[i] / maxVal) * plotHeight;
         points.push({ x, y });
       }
@@ -257,8 +308,8 @@ export class ReportChartGenerator {
     const sdeColor = CHART_SERIES_PALETTE[0]; // navy
     const ebitdaColor = CHART_SERIES_PALETTE[1]; // green
 
-    plotLine(sdeValues, sdeColor);
-    plotLine(ebitdaValues, ebitdaColor);
+    plotLine(sortedSdeValues, sdeColor);
+    plotLine(sortedEbitdaValues, ebitdaColor);
 
     // Legend
     const legendY = height - 10;
@@ -540,6 +591,10 @@ export class ReportChartGenerator {
   /**
    * Line chart with three margin series (gross, SDE, EBITDA) as percentages.
    * Polyline paths with circle markers and a legend below.
+   *
+   * PRD-J fixes:
+   * - Validates data before rendering
+   * - Sorts years chronologically (oldest first)
    */
   generateProfitabilityTrendChart(
     labels: string[],
@@ -548,11 +603,37 @@ export class ReportChartGenerator {
     ebitdaMargins: number[]
   ): string {
     const { width, height, padding } = CHART_DIMENSIONS;
-    if (labels.length === 0) {
-      return svgWrapper(width, height, text(width / 2, height / 2, 'No profitability data available', {
-        anchor: 'middle',
-        fill: CHART_COLORS.textLight,
-      }));
+
+    // Validate data - PRD-J US-001
+    const validation = validateChartData({
+      id: 'profitability-trend',
+      title: 'Profitability Margins',
+      type: 'line',
+      data: { labels, values: grossMargins || [] },
+    });
+
+    if (!validation.valid) {
+      return generatePlaceholderChart('Profitability Margins', 'Requires valid margin data');
+    }
+
+    // Sort chronologically - PRD-J US-002 (handling 3 value arrays)
+    // Create combined pairs and sort by year
+    const pairs = labels.map((label, i) => ({
+      label,
+      gross: grossMargins?.[i] ?? 0,
+      sde: sdeMargins?.[i] ?? 0,
+      ebitda: ebitdaMargins?.[i] ?? 0,
+      year: parseInt(label.match(/(19|20)\d{2}/)?.[0] || '0', 10),
+    }));
+    pairs.sort((a, b) => a.year - b.year);
+
+    const sortedLabels = pairs.map(p => p.label);
+    const sortedGross = pairs.map(p => p.gross);
+    const sortedSde = pairs.map(p => p.sde);
+    const sortedEbitda = pairs.map(p => p.ebitda);
+
+    if (sortedLabels.length === 0) {
+      return generatePlaceholderChart('Profitability Margins', 'No profitability data available');
     }
 
     const plotLeft = padding.left;
@@ -564,7 +645,7 @@ export class ReportChartGenerator {
     const gridCount = 5;
 
     // All margin values as percentages (0-100)
-    const allMargins = [...grossMargins, ...sdeMargins, ...ebitdaMargins].filter(v => v !== undefined);
+    const allMargins = [...sortedGross, ...sortedSde, ...sortedEbitda].filter(v => v !== undefined && v > 0);
     const maxMargin = niceMax(allMargins.length > 0 ? Math.max(...allMargins) : 100);
 
     const parts: string[] = [];
@@ -588,11 +669,11 @@ export class ReportChartGenerator {
     // Y-axis labels (percentages)
     parts.push(yAxisLabels(gridCount, maxMargin, plotLeft, plotTop, plotBottom, v => `${v.toFixed(0)}%`));
 
-    // X-axis year labels
-    const stepX = labels.length > 1 ? plotWidth / (labels.length - 1) : 0;
-    for (let i = 0; i < labels.length; i++) {
-      const x = labels.length === 1 ? plotLeft + plotWidth / 2 : plotLeft + stepX * i;
-      parts.push(text(x, plotBottom + 16, labels[i], {
+    // X-axis year labels (sorted chronologically)
+    const stepX = sortedLabels.length > 1 ? plotWidth / (sortedLabels.length - 1) : 0;
+    for (let i = 0; i < sortedLabels.length; i++) {
+      const x = sortedLabels.length === 1 ? plotLeft + plotWidth / 2 : plotLeft + stepX * i;
+      parts.push(text(x, plotBottom + 16, sortedLabels[i], {
         fontSize: CHART_FONTS.labelSize,
         anchor: 'middle',
         fill: CHART_COLORS.textLight,
@@ -604,7 +685,7 @@ export class ReportChartGenerator {
       if (!values || values.length === 0) return;
       const points: { x: number; y: number }[] = [];
       for (let i = 0; i < values.length; i++) {
-        const x = labels.length === 1 ? plotLeft + plotWidth / 2 : plotLeft + stepX * i;
+        const x = sortedLabels.length === 1 ? plotLeft + plotWidth / 2 : plotLeft + stepX * i;
         const y = plotBottom - (values[i] / maxMargin) * plotHeight;
         points.push({ x, y });
       }
@@ -623,9 +704,9 @@ export class ReportChartGenerator {
     const sdeSeriesColor = CHART_SERIES_PALETTE[0]; // navy
     const ebitdaSeriesColor = CHART_SERIES_PALETTE[1]; // green
 
-    plotSeries(grossMargins, grossColor);
-    plotSeries(sdeMargins, sdeSeriesColor);
-    plotSeries(ebitdaMargins, ebitdaSeriesColor);
+    plotSeries(sortedGross, grossColor);
+    plotSeries(sortedSde, sdeSeriesColor);
+    plotSeries(sortedEbitda, ebitdaSeriesColor);
 
     // Legend
     const legendY = height - 6;

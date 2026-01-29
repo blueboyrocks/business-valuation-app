@@ -15,35 +15,86 @@ import { KPIExplanation, getKPIExplanation } from '../content/kpi-explanations';
 import {
   generatePerformanceBadge,
 } from './puppeteer-chart-renderer';
+import {
+  sortChronologically,
+  generatePlaceholderChart,
+  formatYAxisLabel,
+  generateYAxisTicks,
+} from '../charts/chart-validator';
 
 /**
  * Generate an inline SVG bar chart for KPI visualization
  * This avoids Puppeteer overhead and is much faster
+ *
+ * PRD-J fixes applied:
+ * - Sort years chronologically (oldest to newest, left to right)
+ * - Add Y-axis labels with proper scale
+ * - Draw benchmark line AFTER bars for visibility
+ * - Validate data before rendering
  */
 function generateInlineSVGChart(kpi: KPIDetailedResult): string {
-  const values = kpi.historicalValues.map(h => h.value || 0);
-  const years = kpi.historicalValues.map(h => h.year.toString());
+  const rawValues = kpi.historicalValues.map(h => h.value || 0);
+  const rawYears = kpi.historicalValues.map(h => h.year.toString());
   const benchmark = kpi.benchmark || 0;
 
-  if (values.length === 0) return '';
+  // Validate: need at least 1 data point
+  if (rawValues.length === 0 || rawValues.every(v => v === 0 || v === undefined)) {
+    return generatePlaceholderChart(kpi.name, 'Requires historical data to display');
+  }
+
+  // Sort data chronologically (oldest first) - PRD-J US-003
+  const sorted = sortChronologically(rawYears, rawValues);
+  const years = sorted.labels;
+  const values = sorted.values;
 
   // Normalize values for display
   const isPercentage = kpi.format === 'percentage';
   const displayValues = isPercentage ? values.map(v => v * 100) : values;
   const displayBenchmark = isPercentage ? benchmark * 100 : benchmark;
 
-  const maxValue = Math.max(...displayValues, displayBenchmark) * 1.2;
+  // Chart dimensions
   const chartWidth = 450;
-  const chartHeight = 200;
-  const barWidth = 60;
-  const barGap = 30;
-  const startX = 60;
-  const bottomY = 170;
+  const chartHeight = 230; // Slightly taller for Y-axis labels
+  const leftPadding = 70; // More space for Y-axis labels
+  const rightPadding = 30;
+  const topPadding = 30;
+  const bottomPadding = 50;
+  const plotWidth = chartWidth - leftPadding - rightPadding;
+  const plotHeight = chartHeight - topPadding - bottomPadding;
+  const bottomY = chartHeight - bottomPadding;
+
+  // Calculate Y-axis scale - PRD-J US-004
+  const dataMax = Math.max(...displayValues, displayBenchmark);
+  const dataMin = 0;
+  const yTicks = generateYAxisTicks(dataMin, dataMax * 1.1, 5);
+  const yMax = yTicks[yTicks.length - 1] || dataMax * 1.2;
+
+  // Determine unit for Y-axis formatting
+  const unit = isPercentage ? '%' : kpi.format === 'times' ? 'x' : undefined;
+
+  // Generate Y-axis labels - PRD-J US-004
+  const yAxisLabels = yTicks.map((tick, index) => {
+    const y = bottomY - (tick / yMax) * plotHeight;
+    const label = formatYAxisLabel(tick, unit);
+    return `<text x="${leftPadding - 8}" y="${y + 4}" text-anchor="end" font-size="9" fill="#6B7280">${label}</text>`;
+  }).join('\n');
+
+  // Generate horizontal grid lines
+  const gridLines = yTicks.map(tick => {
+    const y = bottomY - (tick / yMax) * plotHeight;
+    return `<line x1="${leftPadding}" y1="${y}" x2="${chartWidth - rightPadding}" y2="${y}" stroke="#E5E7EB" stroke-width="0.5" stroke-dasharray="3,3"/>`;
+  }).join('\n');
+
+  // Calculate bar positions
+  const barCount = displayValues.length;
+  const barAreaWidth = plotWidth / barCount;
+  const barWidth = Math.min(60, barAreaWidth * 0.7);
+  const barGap = (barAreaWidth - barWidth) / 2;
 
   // Generate bars
   const bars = displayValues.map((value, index) => {
-    const barHeight = (value / maxValue) * 140;
-    const x = startX + index * (barWidth + barGap);
+    const barHeight = Math.max(2, (value / yMax) * plotHeight);
+    const x = leftPadding + index * barAreaWidth + barGap;
     const y = bottomY - barHeight;
 
     // Determine color based on performance
@@ -65,36 +116,52 @@ function generateInlineSVGChart(kpi: KPIDetailedResult): string {
 
     return `
       <rect x="${x}" y="${y}" width="${barWidth}" height="${barHeight}" fill="${color}" rx="4"/>
-      <text x="${x + barWidth / 2}" y="${y - 8}" text-anchor="middle" font-size="12" font-weight="bold" fill="#333">${formattedValue}</text>
-      <text x="${x + barWidth / 2}" y="${bottomY + 20}" text-anchor="middle" font-size="11" fill="#666">${years[index]}</text>
+      <text x="${x + barWidth / 2}" y="${y - 8}" text-anchor="middle" font-size="11" font-weight="bold" fill="#333">${formattedValue}</text>
+      <text x="${x + barWidth / 2}" y="${bottomY + 18}" text-anchor="middle" font-size="10" fill="#666">${years[index]}</text>
     `;
   }).join('');
 
-  // Benchmark line
-  const benchmarkY = bottomY - (displayBenchmark / maxValue) * 140;
+  // Benchmark line position
+  const benchmarkY = bottomY - (displayBenchmark / yMax) * plotHeight;
   const benchmarkLabel = isPercentage
     ? `${displayBenchmark.toFixed(1)}%`
     : kpi.format === 'times'
       ? `${displayBenchmark.toFixed(1)}x`
       : displayBenchmark.toFixed(2);
 
+  // SVG with correct render order: grid -> benchmark -> bars -> labels
+  // PRD-J US-005: Benchmark line rendered BEFORE data bars so it appears behind them
   return `
-    <svg width="${chartWidth}" height="${chartHeight + 30}" xmlns="http://www.w3.org/2000/svg" style="font-family: 'Inter', -apple-system, sans-serif;">
+    <svg width="${chartWidth}" height="${chartHeight}" xmlns="http://www.w3.org/2000/svg" style="font-family: 'Inter', -apple-system, sans-serif;">
       <!-- Background -->
       <rect width="100%" height="100%" fill="white"/>
 
-      <!-- Y-axis -->
-      <line x1="50" y1="20" x2="50" y2="${bottomY}" stroke="#E0E0E0" stroke-width="1"/>
+      <!-- Grid lines (render first) -->
+      <g class="grid-lines">
+        ${gridLines}
+      </g>
 
-      <!-- X-axis -->
-      <line x1="50" y1="${bottomY}" x2="${chartWidth - 20}" y2="${bottomY}" stroke="#E0E0E0" stroke-width="1"/>
+      <!-- Y-axis line -->
+      <line x1="${leftPadding}" y1="${topPadding}" x2="${leftPadding}" y2="${bottomY}" stroke="#E5E7EB" stroke-width="1"/>
 
-      <!-- Bars -->
-      ${bars}
+      <!-- X-axis line -->
+      <line x1="${leftPadding}" y1="${bottomY}" x2="${chartWidth - rightPadding}" y2="${bottomY}" stroke="#E5E7EB" stroke-width="1"/>
 
-      <!-- Benchmark line -->
-      <line x1="50" y1="${benchmarkY}" x2="${chartWidth - 20}" y2="${benchmarkY}" stroke="#2196F3" stroke-width="2" stroke-dasharray="6,4"/>
-      <text x="${chartWidth - 15}" y="${benchmarkY + 4}" font-size="10" fill="#2196F3" text-anchor="end">Benchmark: ${benchmarkLabel}</text>
+      <!-- Y-axis labels -->
+      <g class="y-axis-labels">
+        ${yAxisLabels}
+      </g>
+
+      <!-- Benchmark line (render BEFORE bars so bars appear on top) -->
+      <g class="benchmark-line">
+        <line x1="${leftPadding}" y1="${benchmarkY}" x2="${chartWidth - rightPadding}" y2="${benchmarkY}" stroke="#2196F3" stroke-width="2" stroke-dasharray="6,4"/>
+        <text x="${chartWidth - rightPadding + 5}" y="${benchmarkY + 4}" font-size="9" fill="#2196F3">Benchmark: ${benchmarkLabel}</text>
+      </g>
+
+      <!-- Data bars (render AFTER benchmark for proper layering) -->
+      <g class="data-bars">
+        ${bars}
+      </g>
     </svg>
   `;
 }
