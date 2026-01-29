@@ -5,6 +5,7 @@ import { createDataStoreFromResults } from '@/lib/valuation/data-store-factory';
 import type { CalculationEngineOutput } from '@/lib/calculations/types';
 import { runQualityGate } from '@/lib/validation/quality-gate';
 import { injectValuesIntoAllNarratives } from '@/lib/valuation/narrative-value-injector';
+import { generateManifest, serializeManifest } from '@/lib/valuation/manifest-generator';
 
 /**
  * Build section contents Map from report_data for quality gate
@@ -217,6 +218,38 @@ export async function POST(
     console.log(`[PDF] ✓ PDF generated successfully`);
     console.log(`[PDF] PDF size: ${pdfBuffer.length} bytes`);
     console.log(`[PDF] Generation time: ${duration}ms`);
+
+    // PRD-H US-002: Generate and save manifest to Supabase
+    if (accessor) {
+      try {
+        console.log(`[PDF] Generating manifest...`);
+        const manifest = generateManifest(accessor, reportId);
+        const serializedManifest = serializeManifest(manifest);
+
+        const { error: manifestError } = await getSupabaseClient()
+          .from('reports')
+          .update({ manifest_json: serializedManifest })
+          .eq('id', reportId);
+
+        if (manifestError) {
+          console.warn(`[PDF] Failed to save manifest: ${manifestError.message}`);
+        } else {
+          console.log(`[PDF] ✓ Manifest saved to reports.manifest_json`);
+          console.log(`[PDF] Manifest consistency check: passed=${manifest.consistency_check.passed}`);
+          if (manifest.consistency_check.errors.length > 0) {
+            console.warn(`[PDF] Manifest errors: ${manifest.consistency_check.errors.join(', ')}`);
+          }
+          if (manifest.consistency_check.warnings.length > 0) {
+            console.warn(`[PDF] Manifest warnings: ${manifest.consistency_check.warnings.join(', ')}`);
+          }
+        }
+      } catch (manifestErr: any) {
+        console.warn(`[PDF] Manifest generation failed: ${manifestErr.message}`);
+      }
+    } else {
+      console.warn(`[PDF] No DataAccessor available - skipping manifest generation`);
+    }
+
     console.log(`[PDF] ========================================`);
 
     // Return PDF as response
