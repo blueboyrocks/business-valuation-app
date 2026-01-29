@@ -220,6 +220,12 @@ export function reconcileWithNarratives(
   const narrativeData = extractDataFromNarratives(narratives);
   const reconciled = { ...structuredData };
 
+  // Log data flow mode for debugging
+  console.log(`[DATA_FLOW] Mode: ${hasCalcEngine ? 'CALCULATION_ENGINE (authoritative)' : 'NARRATIVE_FALLBACK'}`);
+  if (hasCalcEngine) {
+    console.log('[DATA_FLOW] Calculation engine values will NOT be overwritten by narrative data');
+  }
+
   // Fields that the calculation engine is authoritative over.
   // When the calc engine has run, these fields must NEVER be overwritten by narrative data.
   const calculationEngineFields = new Set([
@@ -247,22 +253,32 @@ export function reconcileWithNarratives(
   let reconciliationsMade = 0;
 
   for (const { narrativeKey, structuredKey, minValue } of mappings) {
-    // GUARD: Never overwrite calculation engine authoritative fields
-    if (hasCalcEngine && calculationEngineFields.has(structuredKey)) {
-      continue;
-    }
-
     const currentValue = reconciled[structuredKey];
     const narrativeValue = narrativeData[narrativeKey];
+    const isCalcEngineField = calculationEngineFields.has(structuredKey);
+
+    // GUARD: Never overwrite calculation engine authoritative fields when calc engine is present
+    if (hasCalcEngine && isCalcEngineField) {
+      // Log the data flow decision - calculation engine wins
+      console.log(`[DATA_FLOW] Source for ${structuredKey}: CALCULATION_ENGINE (calc=${currentValue || 0}, narrative=${narrativeValue || 0})`);
+      continue;
+    }
 
     // Only fill MISSING data (null, undefined, or 0) - never overwrite existing values
     if ((!currentValue || currentValue === 0) && narrativeValue && narrativeValue > 0) {
       // Apply minimum value filter if specified
-      if (minValue && narrativeValue < minValue) continue;
+      if (minValue && narrativeValue < minValue) {
+        console.log(`[DATA_FLOW] Source for ${structuredKey}: SKIPPED (narrative value ${narrativeValue} below minimum ${minValue})`);
+        continue;
+      }
 
+      console.log(`[DATA_FLOW] Source for ${structuredKey}: NARRATIVE_FALLBACK (calc=${currentValue || 0}, narrative=${narrativeValue})`);
       console.log(`[RECONCILE] Filling missing value for ${structuredKey}: $${narrativeValue.toLocaleString()}`);
       reconciled[structuredKey] = narrativeValue;
       reconciliationsMade++;
+    } else if (currentValue && currentValue > 0) {
+      // Log that existing value is preserved
+      console.log(`[DATA_FLOW] Source for ${structuredKey}: EXISTING_VALUE (calc=${currentValue}, narrative=${narrativeValue || 0})`);
     }
   }
 
@@ -286,9 +302,13 @@ export function reconcileWithNarratives(
       ) / totalWeight;
 
       reconciled.valuation_amount = Math.round(weightedValue);
+      console.log(`[DATA_FLOW] Source for valuation_amount: WEIGHTED_CALCULATION_FALLBACK (calc=0, computed=${reconciled.valuation_amount})`);
       console.log(`[RECONCILE] Calculated concluded value: $${reconciled.valuation_amount.toLocaleString()}`);
       reconciliationsMade++;
     }
+  } else if (hasCalcEngine && reconciled.valuation_amount && reconciled.valuation_amount > 0) {
+    // Log that calculation engine value is preserved
+    console.log(`[DATA_FLOW] Source for valuation_amount: CALCULATION_ENGINE (calc=${reconciled.valuation_amount})`);
   }
 
   if (reconciliationsMade > 0) {
