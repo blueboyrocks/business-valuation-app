@@ -234,3 +234,32 @@ C:\Users\bened\OneDrive\Documents\biz-val-test-docs
   - Management fees to related entities typically add back fully
 ---
 
+## Wed, Jan 29, 2026 - US-017 (Comprehensive Data Validator)
+- Created lib/extraction/validation-rules.ts (700+ lines)
+- Created lib/extraction/validator.ts (260+ lines)
+- 18 validation rules in 9 categories:
+  - Balance Sheet (BS001-BS003): equation check, loans to shareholders, negative retained earnings
+  - Income Statement (IS001-IS005): gross profit calc, revenue positive, COGS reconciliation, other income %, other deductions %
+  - SDE (SDE001-SDE004): officer comp %, Section 179, guaranteed payments, capital gains
+  - Schedule M-1 (M1001): book-tax reconciliation
+  - Cash Flow (CF001): distributions vs net income
+  - COVID (COVID001): relief item detection
+  - Industry (IND001): gross margin reasonableness
+  - Related Party (RPT001): multiple indicator detection
+  - Trend (TREND001): YoY revenue change
+- Validator functions:
+  - validateExtraction(): main validation against all rules
+  - validateSubset(): run specific rule IDs
+  - validateCategory(): run rules by category
+  - getSdeValidationInfo(): SDE-related info items
+  - getCriticalBlockers(): quick pre-processing check
+  - formatValidationResults(): human-readable output
+  - isDataUsable(): check if data is usable despite warnings
+  - getValidationStatus(): status string for database
+- **Learnings:**
+  - ValidationResult interface requires `passed: boolean` field
+  - ValidationResult does NOT have expected_value, actual_value, or suggestion fields (put in message)
+  - ScheduleM1Data uses `income_per_schedule_k` not `income_loss_per_return`
+  - Validation rules return null if check passes, ValidationResult if fails
+---
+

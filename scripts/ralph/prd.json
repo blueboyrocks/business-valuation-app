@@ -332,8 +332,8 @@
         "Typecheck passes"
       ],
       "priority": 17,
-      "passes": false,
-      "notes": "Comprehensive validator with 18+ rules. Errors block, warnings allow but flag."
+      "passes": true,
+      "notes": "Complete: validation-rules.ts with 18 rules in 9 categories (BS, IS, SDE, M1, CF, COVID, IND, RPT, TREND). validator.ts provides validateExtraction, validateSubset, validateCategory, getSdeValidationInfo, getCriticalBlockers, formatValidationResults, isDataUsable, getValidationStatus."
     },
     {
       "id": "US-018",
