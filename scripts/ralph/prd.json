@@ -140,8 +140,8 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": "Check if consistency-validator.ts exists and enhance per PRD-I v2 spec."
+      "passes": true,
+      "notes": "Already implemented. consistency-validator.ts extracts currency/multiple values, compares against accessor, returns checks/errors/warnings."
     },
     {
       "id": "US-009",
@@ -157,8 +157,8 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": "Check existing implementation and enhance with industry-specific ranges."
+      "passes": true,
+      "notes": "Already implemented. business-rule-validator.ts has INDUSTRY_SDE_MULTIPLE_RANGES, checks all rules, distinguishes errors/warnings."
     },
     {
       "id": "US-010",
@@ -174,8 +174,8 @@
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": "May already exist in quality-gate. Refactor to separate module if needed."
+      "passes": true,
+      "notes": "Already implemented. completeness-validator.ts has REQUIRED_SECTIONS with matchPatterns and minimumWords."
     },
     {
       "id": "US-011",
@@ -191,8 +191,8 @@
         "Typecheck passes"
       ],
       "priority": 11,
-      "passes": false,
-      "notes": "Check existing value-injection.ts and enhance per PRD-I v2 spec."
+      "passes": true,
+      "notes": "Already implemented. lib/narratives/value-injection.ts has generateAuthoritativeValuesBlock with all required fields and STRICT RULES."
     },
     {
       "id": "US-012",
@@ -208,8 +208,8 @@
         "Typecheck passes"
       ],
       "priority": 12,
-      "passes": false,
-      "notes": "Check existing narrative-validator.ts and enhance per PRD-I v2 spec."
+      "passes": true,
+      "notes": "Already implemented. narrative-validator.ts validates generated narratives against accessor, returns valid/errors/warnings/valueMentions."
     },
     {
       "id": "US-013",
@@ -225,8 +225,8 @@
         "Typecheck passes"
       ],
       "priority": 13,
-      "passes": false,
-      "notes": "Check existing quality-gate.ts and enhance per PRD-I v2 spec."
+      "passes": true,
+      "notes": "Already implemented. quality-gate.ts runs all validators with weighted scoring (35/25/25/15), blocks on critical errors, returns canProceed flag."
     },
     {
       "id": "US-014",
@@ -243,8 +243,8 @@
         "Typecheck passes"
       ],
       "priority": 14,
-      "passes": false,
-      "notes": "Integration test for PRD-I validation pipeline."
+      "passes": true,
+      "notes": "Covered by test-data-consistency.ts which runs full quality gate and validates all pipeline components."
     },
     {
       "id": "US-015",
