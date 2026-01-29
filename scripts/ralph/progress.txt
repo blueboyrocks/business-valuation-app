@@ -36,3 +36,16 @@ PRD: Combined PRD-H v2, PRD-I v2, PRD-J v2 (24 stories)
   - The test coverage is comprehensive - use as reference for future tests
 ---
 
+## Wed, Jan 29, 2026 - US-004 (Asset Approach Fallback)
+- Verified asset-approach-calculator.ts already has 3-tier fallback chain:
+  - Tier 1: Balance sheet calculation (primary)
+  - Tier 2: Pass 7 (AI-extracted) output
+  - Tier 3: 50% of total assets as floor estimate
+- Created 18 comprehensive tests in lib/calculations/__tests__/asset-approach-calculator.test.ts
+- Tests verify: all 3 tiers, warnings on fallback, output structure, auto-generated adjustments
+- Typecheck passes
+- **Learnings for future iterations:**
+  - BalanceSheetData uses specific property names (machinery_and_equipment not equipment)
+  - Asset approach logs use [AssetApproach] prefix for source selection
+---
+
