@@ -48,6 +48,9 @@ export function calculateAssetApproach(inputs: AssetApproachInputs): AssetApproa
   const totalLiabilities = safeNumber(bs.liabilities.total_liabilities);
   const bookEquity = safeNumber(bs.equity.total_equity);
 
+  // PRD-H US-005: Log asset approach inputs for debugging
+  console.log(`[ASSET_APPROACH] totalAssets=${totalAssets} liabilities=${totalLiabilities} bookEquity=${bookEquity}`);
+
   // Verify balance sheet balances
   const calculatedEquity = totalAssets - totalLiabilities;
   if (Math.abs(calculatedEquity - bookEquity) > 1) {
@@ -266,6 +269,9 @@ export function calculateAssetApproach(inputs: AssetApproachInputs): AssetApproa
 
   // Default weight for asset approach (typically 20% for operating companies)
   const weight = inputs.weight ?? 0.2;
+
+  // PRD-H US-005: Summary log with all key values
+  console.log(`[ASSET_APPROACH] totalAssets=${totalAssets} liabilities=${totalLiabilities} calculated=${adjustedNetAssetValue} final=${finalValue}`);
 
   return {
     book_value_of_equity: bookValueOfEquity,

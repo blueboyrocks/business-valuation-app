@@ -92,6 +92,10 @@ function mapFinancials(pass2: Record<string, unknown>): MultiYearFinancials {
 
 /**
  * Map pass 3 (balance sheet) to balance sheet format
+ *
+ * PRD-H US-005: Fixed to handle both nested (assets.total_assets) and flat (total_assets) structures.
+ * Pass 3 output uses BalanceSheetYear type which has total_assets at root level,
+ * not under assets.total_assets. Also handles current_assets.cash_and_equivalents naming.
  */
 function mapBalanceSheet(pass3: Record<string, unknown>): BalanceSheetData {
   // Try multiple possible locations for balance sheet data
@@ -100,103 +104,76 @@ function mapBalanceSheet(pass3: Record<string, unknown>): BalanceSheetData {
     safeGet<Record<string, unknown>>(pass3, 'balance_sheet', {}) ||
     safeGet<Record<string, unknown>>(pass3, 'most_recent_balance_sheet', {});
 
+  // Helper to get value from multiple possible paths
+  const getVal = (paths: string[], defaultVal: number = 0): number => {
+    for (const path of paths) {
+      const val = safeGet<number>(bs, path, 0);
+      if (val !== 0) return val;
+    }
+    return defaultVal;
+  };
+
+  // Get total_assets - try flat structure first (Pass 3 output), then nested (legacy)
+  const totalAssets = getVal(['total_assets', 'assets.total_assets']);
+  const totalLiabilities = getVal(['total_liabilities', 'liabilities.total_liabilities']);
+  const totalEquity = getVal(['equity.total_equity', 'total_equity']);
+
+  console.log(`[ASSET_APPROACH] mapBalanceSheet: totalAssets=${totalAssets} totalLiabilities=${totalLiabilities} from Pass3`);
+
   return {
-    period: safeString((bs as Record<string, unknown>)?.period ?? safeGet<unknown>(bs, 'period', 'Unknown')),
+    period: safeString((bs as Record<string, unknown>)?.period ?? safeGet<unknown>(bs, 'fiscal_year', 'Unknown')),
     assets: {
       current_assets: {
-        cash: safeGet<number>(bs, 'assets.current_assets.cash', 0),
-        accounts_receivable: safeGet<number>(bs, 'assets.current_assets.accounts_receivable', 0),
-        allowance_for_doubtful_accounts: safeGet<number>(
-          bs,
-          'assets.current_assets.allowance_for_doubtful_accounts',
-          0
-        ),
-        inventory: safeGet<number>(bs, 'assets.current_assets.inventory', 0),
-        prepaid_expenses: safeGet<number>(bs, 'assets.current_assets.prepaid_expenses', 0),
-        other_current_assets: safeGet<number>(bs, 'assets.current_assets.other_current_assets', 0),
-        total_current_assets: safeGet<number>(bs, 'assets.current_assets.total_current_assets', 0),
+        // Handle both naming conventions: cash_and_equivalents (Pass 3) vs cash (legacy)
+        cash: getVal(['current_assets.cash_and_equivalents', 'current_assets.cash', 'assets.current_assets.cash']),
+        accounts_receivable: getVal(['current_assets.accounts_receivable_net', 'current_assets.accounts_receivable', 'assets.current_assets.accounts_receivable']),
+        allowance_for_doubtful_accounts: getVal(['current_assets.allowance_doubtful_accounts', 'current_assets.allowance_for_doubtful_accounts', 'assets.current_assets.allowance_for_doubtful_accounts']),
+        inventory: getVal(['current_assets.inventory', 'assets.current_assets.inventory']),
+        prepaid_expenses: getVal(['current_assets.prepaid_expenses', 'assets.current_assets.prepaid_expenses']),
+        other_current_assets: getVal(['current_assets.other_current_assets', 'assets.current_assets.other_current_assets']),
+        total_current_assets: getVal(['current_assets.total_current_assets', 'assets.current_assets.total_current_assets']),
       },
       fixed_assets: {
-        land: safeGet<number>(bs, 'assets.fixed_assets.land', 0),
-        buildings: safeGet<number>(bs, 'assets.fixed_assets.buildings', 0),
-        machinery_and_equipment: safeGet<number>(
-          bs,
-          'assets.fixed_assets.machinery_and_equipment',
-          0
-        ),
-        furniture_and_fixtures: safeGet<number>(
-          bs,
-          'assets.fixed_assets.furniture_and_fixtures',
-          0
-        ),
-        vehicles: safeGet<number>(bs, 'assets.fixed_assets.vehicles', 0),
-        leasehold_improvements: safeGet<number>(
-          bs,
-          'assets.fixed_assets.leasehold_improvements',
-          0
-        ),
-        accumulated_depreciation: safeGet<number>(
-          bs,
-          'assets.fixed_assets.accumulated_depreciation',
-          0
-        ),
-        net_fixed_assets: safeGet<number>(bs, 'assets.fixed_assets.net_fixed_assets', 0),
+        land: getVal(['fixed_assets.land', 'assets.fixed_assets.land']),
+        buildings: getVal(['fixed_assets.buildings', 'assets.fixed_assets.buildings']),
+        machinery_and_equipment: getVal(['fixed_assets.machinery_equipment', 'fixed_assets.machinery_and_equipment', 'assets.fixed_assets.machinery_and_equipment']),
+        furniture_and_fixtures: getVal(['fixed_assets.furniture_fixtures', 'fixed_assets.furniture_and_fixtures', 'assets.fixed_assets.furniture_and_fixtures']),
+        vehicles: getVal(['fixed_assets.vehicles', 'assets.fixed_assets.vehicles']),
+        leasehold_improvements: getVal(['fixed_assets.leasehold_improvements', 'assets.fixed_assets.leasehold_improvements']),
+        accumulated_depreciation: getVal(['fixed_assets.accumulated_depreciation', 'assets.fixed_assets.accumulated_depreciation']),
+        net_fixed_assets: getVal(['fixed_assets.net_fixed_assets', 'assets.fixed_assets.net_fixed_assets']),
       },
       other_assets: {
-        intangible_assets: safeGet<number>(bs, 'assets.other_assets.intangible_assets', 0),
-        goodwill: safeGet<number>(bs, 'assets.other_assets.goodwill', 0),
-        other: safeGet<number>(bs, 'assets.other_assets.other', 0),
-        total_other_assets: safeGet<number>(bs, 'assets.other_assets.total_other_assets', 0),
+        intangible_assets: getVal(['other_assets.intangible_assets', 'other_assets.net_intangibles', 'assets.other_assets.intangible_assets']),
+        goodwill: getVal(['other_assets.goodwill', 'assets.other_assets.goodwill']),
+        other: getVal(['other_assets.other_long_term_assets', 'other_assets.other', 'assets.other_assets.other']),
+        total_other_assets: getVal(['other_assets.total_other_assets', 'assets.other_assets.total_other_assets']),
       },
-      total_assets: safeGet<number>(bs, 'assets.total_assets', 0),
+      total_assets: totalAssets,
     },
     liabilities: {
       current_liabilities: {
-        accounts_payable: safeGet<number>(bs, 'liabilities.current_liabilities.accounts_payable', 0),
-        accrued_expenses: safeGet<number>(bs, 'liabilities.current_liabilities.accrued_expenses', 0),
-        current_portion_long_term_debt: safeGet<number>(
-          bs,
-          'liabilities.current_liabilities.current_portion_long_term_debt',
-          0
-        ),
-        other_current_liabilities: safeGet<number>(
-          bs,
-          'liabilities.current_liabilities.other_current_liabilities',
-          0
-        ),
-        total_current_liabilities: safeGet<number>(
-          bs,
-          'liabilities.current_liabilities.total_current_liabilities',
-          0
-        ),
+        accounts_payable: getVal(['current_liabilities.accounts_payable', 'liabilities.current_liabilities.accounts_payable']),
+        accrued_expenses: getVal(['current_liabilities.accrued_expenses', 'liabilities.current_liabilities.accrued_expenses']),
+        current_portion_long_term_debt: getVal(['current_liabilities.current_portion_long_term_debt', 'liabilities.current_liabilities.current_portion_long_term_debt']),
+        other_current_liabilities: getVal(['current_liabilities.other_current_liabilities', 'liabilities.current_liabilities.other_current_liabilities']),
+        total_current_liabilities: getVal(['current_liabilities.total_current_liabilities', 'liabilities.current_liabilities.total_current_liabilities']),
       },
       long_term_liabilities: {
-        notes_payable: safeGet<number>(bs, 'liabilities.long_term_liabilities.notes_payable', 0),
-        mortgages: safeGet<number>(bs, 'liabilities.long_term_liabilities.mortgages', 0),
-        shareholder_loans: safeGet<number>(
-          bs,
-          'liabilities.long_term_liabilities.shareholder_loans',
-          0
-        ),
-        other_long_term_liabilities: safeGet<number>(
-          bs,
-          'liabilities.long_term_liabilities.other_long_term_liabilities',
-          0
-        ),
-        total_long_term_liabilities: safeGet<number>(
-          bs,
-          'liabilities.long_term_liabilities.total_long_term_liabilities',
-          0
-        ),
+        notes_payable: getVal(['long_term_liabilities.notes_payable_long_term', 'long_term_liabilities.notes_payable', 'liabilities.long_term_liabilities.notes_payable']),
+        mortgages: getVal(['long_term_liabilities.mortgage_payable', 'long_term_liabilities.mortgages', 'liabilities.long_term_liabilities.mortgages']),
+        shareholder_loans: getVal(['long_term_liabilities.due_to_shareholders', 'long_term_liabilities.shareholder_loans', 'liabilities.long_term_liabilities.shareholder_loans']),
+        other_long_term_liabilities: getVal(['long_term_liabilities.other_long_term_liabilities', 'liabilities.long_term_liabilities.other_long_term_liabilities']),
+        total_long_term_liabilities: getVal(['long_term_liabilities.total_long_term_liabilities', 'liabilities.long_term_liabilities.total_long_term_liabilities']),
       },
-      total_liabilities: safeGet<number>(bs, 'liabilities.total_liabilities', 0),
+      total_liabilities: totalLiabilities,
     },
     equity: {
-      common_stock: safeGet<number>(bs, 'equity.common_stock', 0),
-      additional_paid_in_capital: safeGet<number>(bs, 'equity.additional_paid_in_capital', 0),
-      retained_earnings: safeGet<number>(bs, 'equity.retained_earnings', 0),
-      treasury_stock: safeGet<number>(bs, 'equity.treasury_stock', 0),
-      total_equity: safeGet<number>(bs, 'equity.total_equity', 0),
+      common_stock: getVal(['equity.common_stock']),
+      additional_paid_in_capital: getVal(['equity.additional_paid_in_capital']),
+      retained_earnings: getVal(['equity.retained_earnings']),
+      treasury_stock: getVal(['equity.treasury_stock']),
+      total_equity: totalEquity,
     },
   };
 }
