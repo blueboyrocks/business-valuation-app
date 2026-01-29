@@ -515,6 +515,74 @@ export interface CalcResultsForNarrative {
 }
 
 /**
+ * CalculationEngineOutput interface subset for type safety
+ * Full type is in lib/calculations/types.ts
+ */
+interface CalculationEngineOutputPartial {
+  earnings?: {
+    weighted_sde?: number;
+    weighted_ebitda?: number;
+  };
+  asset_approach?: {
+    adjusted_net_asset_value?: number;
+    weight?: number;
+  };
+  income_approach?: {
+    income_approach_value?: number;
+    weight?: number;
+  };
+  market_approach?: {
+    market_approach_value?: number;
+    adjusted_multiple?: number;
+    weight?: number;
+  };
+  synthesis?: {
+    final_concluded_value?: number;
+    value_range?: {
+      low?: number;
+      high?: number;
+    };
+    approach_summary?: Array<{
+      approach: 'Asset' | 'Income' | 'Market';
+      weight: number;
+    }>;
+  };
+}
+
+/**
+ * Convert CalculationEngineOutput to CalcResultsForNarrative
+ * This extracts the key values needed for narrative generation from the full calculation engine output.
+ */
+export function convertToCalcResultsForNarrative(
+  calcOutput: CalculationEngineOutputPartial | null | undefined
+): CalcResultsForNarrative | undefined {
+  if (!calcOutput?.synthesis?.final_concluded_value) {
+    return undefined;
+  }
+
+  // Extract approach weights from approach_summary
+  const approachSummary = calcOutput.synthesis.approach_summary || [];
+  const assetWeight = approachSummary.find(a => a.approach === 'Asset')?.weight ?? calcOutput.asset_approach?.weight ?? 0.20;
+  const incomeWeight = approachSummary.find(a => a.approach === 'Income')?.weight ?? calcOutput.income_approach?.weight ?? 0.40;
+  const marketWeight = approachSummary.find(a => a.approach === 'Market')?.weight ?? calcOutput.market_approach?.weight ?? 0.40;
+
+  return {
+    concluded_value: calcOutput.synthesis.final_concluded_value,
+    value_range_low: calcOutput.synthesis.value_range?.low ?? 0,
+    value_range_high: calcOutput.synthesis.value_range?.high ?? 0,
+    sde_multiple: calcOutput.market_approach?.adjusted_multiple ?? 0,
+    weighted_sde: calcOutput.earnings?.weighted_sde ?? 0,
+    weighted_ebitda: calcOutput.earnings?.weighted_ebitda ?? 0,
+    asset_approach_value: calcOutput.asset_approach?.adjusted_net_asset_value ?? 0,
+    income_approach_value: calcOutput.income_approach?.income_approach_value ?? 0,
+    market_approach_value: calcOutput.market_approach?.market_approach_value ?? 0,
+    asset_weight: assetWeight,
+    income_weight: incomeWeight,
+    market_weight: marketWeight,
+  };
+}
+
+/**
  * Format currency for display in values block
  */
 function formatCurrencyForBlock(value: number): string {
@@ -651,6 +719,7 @@ export function buildNarrativePassPrompt(
       pass1?.valuation_date as string,
       revenue
     );
+    console.log(`[NARRATIVE_PROMPT] Section: ${passId}, Values block length: ${valuesBlock.length} chars`);
     console.log(`[NARRATIVE ${passId}] Values block injected with concluded value: ${formatCurrencyForBlock(calculationResults.concluded_value)}`);
   }
 

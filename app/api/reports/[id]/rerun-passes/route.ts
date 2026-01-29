@@ -8,7 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { executePass, executeNarrativePass, executeAllNarrativePasses } from '@/lib/claude/pass-executor';
+import { executePass, executeNarrativePass, executeAllNarrativePasses, convertToCalcResultsForNarrative } from '@/lib/claude/pass-executor';
 import { aggregatePassOutputsToReportData } from '@/lib/report-aggregator';
 import { NARRATIVE_EXECUTION_ORDER } from '@/lib/claude/prompts-v2';
 import { checkReportQuality, formatQualityReport } from '@/lib/validation/quality-checker';
@@ -99,6 +99,7 @@ export async function POST(
       report_status: string;
       report_data: Record<string, unknown> | null;
       pass_outputs: Record<string, unknown> | null;
+      calculation_results: Record<string, unknown> | null;
       document_text?: string;
     };
 
@@ -204,6 +205,14 @@ export async function POST(
     if (validNarrativePasses.length > 0) {
       console.log(`[RERUN] Starting narrative passes...`);
 
+      // Convert calculation results to the format needed for narrative generation
+      const calcResultsForNarrative = convertToCalcResultsForNarrative(report.calculation_results);
+      if (calcResultsForNarrative) {
+        console.log(`[RERUN] Injecting authoritative values into narrative prompts (concluded: $${calcResultsForNarrative.concluded_value.toLocaleString()})`);
+      } else {
+        console.log(`[RERUN] No calculation results available - values block will not be injected into narrative prompts`);
+      }
+
       // Check if all narrative passes are selected
       const allNarrativesSelected = validNarrativePasses.length === 11;
 
@@ -230,7 +239,8 @@ export async function POST(
                   processing_message: `Running Narrative ${passId}: ${passName}...`,
                 }).eq('id', reportId);
               }
-            }
+            },
+            calcResultsForNarrative
           );
 
           // Store combined results
@@ -278,7 +288,8 @@ export async function POST(
               reportId,
               report,
               existingPassOutputs,
-              priorNarratives
+              priorNarratives,
+              calcResultsForNarrative
             );
 
             narrativeResults[passId] = narrativeResult;

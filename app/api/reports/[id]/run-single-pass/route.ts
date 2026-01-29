@@ -16,7 +16,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { executePass, executeNarrativePass } from '@/lib/claude/pass-executor';
+import { executePass, executeNarrativePass, convertToCalcResultsForNarrative } from '@/lib/claude/pass-executor';
 
 let supabase: ReturnType<typeof createClient> | null = null;
 
@@ -58,10 +58,10 @@ export async function POST(
   console.log(`[SINGLE-PASS] Starting ${passLabel} for report ${reportId}`);
 
   try {
-    // Load report + pass outputs
+    // Load report + pass outputs + calculation_results
     const { data: reportData, error: fetchError } = await getSupabaseClient()
       .from('reports')
-      .select('id, company_name, report_data, pass_outputs')
+      .select('id, company_name, report_data, pass_outputs, calculation_results')
       .eq('id', reportId)
       .maybeSingle();
 
@@ -79,6 +79,7 @@ export async function POST(
       company_name: string;
       report_data: Record<string, unknown> | null;
       pass_outputs: Record<string, unknown> | null;
+      calculation_results: Record<string, unknown> | null;
     };
 
     const existingPassOutputs: Record<string, unknown> = report.pass_outputs || {};
@@ -106,12 +107,21 @@ export async function POST(
       const existingNarratives = (existingPassOutputs['narratives'] as Record<string, unknown>) || {};
       const priorNarratives = (existingNarratives.pass_results as Record<string, unknown>) || {};
 
+      // Convert calculation results to the format needed for narrative generation
+      const calcResultsForNarrative = convertToCalcResultsForNarrative(report.calculation_results);
+      if (calcResultsForNarrative) {
+        console.log(`[SINGLE-PASS] Injecting authoritative values into ${narrativePassId} prompt (concluded: $${calcResultsForNarrative.concluded_value.toLocaleString()})`);
+      } else {
+        console.log(`[SINGLE-PASS] No calculation results available for ${narrativePassId} - values block will not be injected`);
+      }
+
       result = await executeNarrativePass(
         narrativePassId!,
         reportId,
         report,
         existingPassOutputs,
-        priorNarratives
+        priorNarratives,
+        calcResultsForNarrative
       );
 
       // Save narrative result into pass_outputs.narratives.pass_results[passId]

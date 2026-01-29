@@ -7,7 +7,10 @@
  */
 
 import Anthropic from '@anthropic-ai/sdk';
-import { getPassConfig, buildPassPrompt, PassConfig, getNarrativePassConfig, buildNarrativePassPrompt, type CalcResultsForNarrative } from './pass-configs';
+import { getPassConfig, buildPassPrompt, PassConfig, getNarrativePassConfig, buildNarrativePassPrompt, type CalcResultsForNarrative, convertToCalcResultsForNarrative } from './pass-configs';
+
+// Re-export for convenience
+export { type CalcResultsForNarrative, convertToCalcResultsForNarrative } from './pass-configs';
 import { NARRATIVE_EXECUTION_ORDER } from './prompts-v2';
 
 export interface ExecutePassOptions {
