@@ -263,3 +263,30 @@ C:\Users\bened\OneDrive\Documents\biz-val-test-docs
   - Validation rules return null if check passes, ValidationResult if fails
 ---
 
+## Wed, Jan 29, 2026 - US-018 (AI Validation and Enrichment - Stage 3)
+- Created lib/extraction/ai-validator.ts (670+ lines)
+- Main functions:
+  - validateWithAI(): Main Stage 3 function that uses Claude Sonnet/Opus
+  - buildValidationPrompt(): Creates detailed prompt with financial summary
+  - buildFinancialSummary(): Human-readable data for AI review
+  - callClaudeForValidation(): API call with JSON parsing
+  - buildYearlyFinancialData(): Converts Stage2 to YearlyFinancialData
+  - calculateSdeAddbacksFromData(): Quick SDE estimate without AI call
+  - mapDocTypeToEntityType(): Maps document type to entity type
+- Escalation logic:
+  - Uses Sonnet by default (claude-sonnet-4-20250514)
+  - Escalates to Opus if confidence < 70% or errors > 3
+  - Returns FinalExtractionOutput with all validation data
+- SDE add-backs calculated:
+  - Officer compensation / guaranteed payments
+  - Depreciation, amortization, interest
+  - Section 179 deduction
+  - Non-recurring capital gains (excluded)
+  - Owner benefits
+- **Learnings:**
+  - Stage2Output uses `processing_metadata` not `metadata`
+  - RedFlagIndicators uses `negative_retained_earnings` not `has_negative_retained_earnings`
+  - EntityType enum doesn't include 'UNKNOWN' - use 'LLC' as default
+  - Can generate UUID without external library using simple function
+---
+
