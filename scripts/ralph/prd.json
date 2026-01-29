@@ -174,8 +174,8 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": "Schedule C has no officer compensation line - the entire net profit goes to owner."
+      "passes": true,
+      "notes": "Complete: schedule-c.ts with income, expenses, net profit, COGS detail, and vehicle sections. Net profit marked as owner compensation."
     },
     {
       "id": "US-010",

@@ -90,3 +90,22 @@ C:\Users\bened\OneDrive\Documents\biz-val-test-docs
   - Partners capital replaces retained earnings/stockholders equity
 ---
 
+## Wed, Jan 29, 2026 - US-009 (Schedule C Sole Prop Mapper)
+- Created lib/extraction/mappings/schedule-c.ts (410 lines)
+- Income section (Lines 1-7): gross receipts, COGS, gross profit, gross income
+- Expenses section (Lines 8-27): 20+ expense line items
+- Net profit section (Lines 29-31): net profit = owner compensation
+- COGS detail section (Part III): inventory tracking
+- Vehicle information section (Part IV): business use percentage
+- SDE add-backs marked:
+  - Net profit (Line 31) - ENTIRE amount is owner comp
+  - Home office (Line 30) - full add-back
+  - Car/truck (Line 9) - 50% personal typical
+  - Meals (Line 24b) - 50% personal typical
+  - Depreciation (Line 13) - standard add-back
+- **Learnings:**
+  - Schedule C has NO balance sheet (sole props don't file Schedule L)
+  - Net profit IS the owner's compensation for SDE calculation
+  - Vehicle miles help validate business use percentage claims
+---
+
