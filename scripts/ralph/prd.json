@@ -212,8 +212,8 @@
         "Typecheck passes"
       ],
       "priority": 11,
-      "passes": false,
-      "notes": "Balance sheets are usually more consistent in format. BOY/EOY critical for working capital analysis."
+      "passes": true,
+      "notes": "Complete: balance-sheet.ts with current assets, fixed assets, other assets, current liabilities, long-term liabilities, and equity sections. Red flags marked for shareholder loans and negative retained earnings."
     },
     {
       "id": "US-012",

@@ -128,3 +128,22 @@ C:\Users\bened\OneDrive\Documents\biz-val-test-docs
   - Owner comp may appear as: Officer Compensation, Owner Salary, Member Draws, etc.
 ---
 
+## Wed, Jan 29, 2026 - US-011 (Balance Sheet Mapper)
+- Created lib/extraction/mappings/balance-sheet.ts (650+ lines)
+- Current assets: cash, A/R (gross/allowance/net), inventory, prepaid, loans to shareholders
+- Fixed assets: land, buildings, equipment, vehicles, leasehold improvements, accumulated depreciation
+- Other assets: goodwill, intangibles, investments, deferred tax assets
+- Current liabilities: A/P, accrued expenses, short-term debt, deferred revenue
+- Long-term liabilities: long-term debt, mortgages, equipment notes, capital leases
+- Equity: common/preferred stock, APIC, members/partners capital, retained earnings, distributions
+- RED FLAGS marked:
+  - Loans to shareholders (may be disguised distributions)
+  - Negative retained earnings (accumulated losses)
+  - Loans from shareholders (related party debt)
+- **Learnings:**
+  - Balance sheets typically more consistent than P&Ls
+  - BOY/EOY detection via column headers: "Beginning", "End", date ranges
+  - Key validation: Assets = Liabilities + Equity (1% tolerance)
+  - Entity-specific equity terms: stockholders vs members vs partners capital
+---
+
