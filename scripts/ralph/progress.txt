@@ -196,3 +196,22 @@ C:\Users\bened\OneDrive\Documents\biz-val-test-docs
   - LIFO recapture triggered by S-Corp election is non-recurring
 ---
 
+## Wed, Jan 29, 2026 - US-015 (COVID Adjustment Detection)
+- Created lib/extraction/covid-detector.ts (390 lines)
+- Keyword patterns for: PPP, EIDL, ERC/ERTC, other COVID relief
+- COVID_RELEVANT_YEARS: 2020-2024
+- detectCovidAdjustments(): main detection function
+  - Searches raw text for COVID keywords
+  - Extracts dollar amounts near keywords
+  - Analyzes "other income" line for hidden relief
+  - Returns CovidDetectionResult with adjustments and warnings
+- isLikelyCovidRelief(): field-level COVID check helper
+- getCovidSdeAdjustment(): SDE adjustment recommendation
+- **Learnings:**
+  - COVID items must be SUBTRACTED from earnings (non-recurring income)
+  - PPP forgiveness usually in "Other Income" line
+  - ERC can appear as payroll tax refund or reduced payroll expense
+  - Field names vary: ppp_loan_forgiveness, eidl_advances, employee_retention_credit
+  - Need to match existing CovidAdjustments type structure
+---
+

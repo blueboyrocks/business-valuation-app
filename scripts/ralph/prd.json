@@ -283,8 +283,8 @@
         "Typecheck passes"
       ],
       "priority": 15,
-      "passes": false,
-      "notes": "COVID relief items are NON-RECURRING and must be SUBTRACTED from earnings. Critical for 2020-2024 valuations."
+      "passes": true,
+      "notes": "Complete: covid-detector.ts with keyword detection for PPP, EIDL, ERC and amount extraction. Includes helper functions for field-level checks and SDE adjustments."
     },
     {
       "id": "US-016",
