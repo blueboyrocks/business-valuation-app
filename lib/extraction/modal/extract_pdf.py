@@ -35,6 +35,7 @@ image = (
         "pytesseract>=0.3.10",
         "pdf2image>=1.16.0",
         "Pillow>=10.0.0",
+        "fastapi[standard]",  # Required for web endpoints
     )
 )
 
@@ -308,7 +309,7 @@ def extract_with_pdfplumber(pdf_bytes: bytes) -> dict:
 
 
 @app.function(image=image, timeout=120)
-@modal.web_endpoint(method="POST")
+@modal.fastapi_endpoint(method="POST")
 def extract_pdf(pdf_base64: str = "", document_id: str = "", filename: str = "") -> dict:
     """
     Extract tables and text from a PDF.
@@ -356,7 +357,7 @@ def extract_pdf(pdf_base64: str = "", document_id: str = "", filename: str = "")
 
 
 @app.function(image=image, timeout=120)
-@modal.web_endpoint(method="GET")
+@modal.fastapi_endpoint(method="GET")
 def health() -> dict:
     """Health check endpoint."""
     return {

@@ -3,10 +3,15 @@
  *
  * This module contains the core extraction logic that can be called
  * from both the API route and directly from the orchestrator.
+ *
+ * Uses the new Modal/pdfplumber pipeline when MODAL_EXTRACTION_URL is configured,
+ * with fallback to Claude Vision for compatibility.
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
+import { extractDocumentPipeline, PipelineResult } from './extraction/pipeline';
+import { FinalExtractionOutput } from './extraction/types';
 
 // Lazy-initialize clients to avoid build-time errors
 let supabase: SupabaseClient | null = null;
@@ -34,6 +39,117 @@ function getAnthropicClient(): Anthropic {
 // Retry configuration
 const MAX_RETRIES = 3;
 const RETRY_DELAY_MS = 2000;
+
+/**
+ * Check if the new Modal-based extraction pipeline is available
+ */
+function isNewPipelineAvailable(): boolean {
+  return !!process.env.MODAL_EXTRACTION_URL;
+}
+
+/**
+ * Convert FinalExtractionOutput from new pipeline to old extraction format
+ */
+function convertPipelineOutputToLegacyFormat(
+  pipelineResult: PipelineResult,
+  taxYear: string
+): Record<string, unknown> {
+  const finalOutput = pipelineResult.finalOutput;
+  if (!finalOutput) {
+    throw new Error('No final output from pipeline');
+  }
+
+  const yearData = finalOutput.financial_data[taxYear];
+  if (!yearData) {
+    // Try to get the first available year
+    const availableYears = Object.keys(finalOutput.financial_data);
+    if (availableYears.length === 0) {
+      throw new Error('No financial data in pipeline output');
+    }
+  }
+
+  // Get document info
+  const docInfo = finalOutput.documents?.[0];
+  const documentType = docInfo?.document_type || 'Other';
+  const extractedTaxYear = docInfo?.tax_year || taxYear;
+
+  // Get actual year data
+  const data = yearData || finalOutput.financial_data[Object.keys(finalOutput.financial_data)[0]];
+
+  return {
+    document_type: documentType,
+    tax_year: parseInt(extractedTaxYear) || new Date().getFullYear(),
+    entity_info: {
+      business_name: finalOutput.company_info?.name || null,
+      ein: finalOutput.company_info?.ein || null,
+      address: finalOutput.company_info?.address
+        ? `${finalOutput.company_info.address.street || ''}, ${finalOutput.company_info.address.city || ''}, ${finalOutput.company_info.address.state || ''} ${finalOutput.company_info.address.zip || ''}`.trim()
+        : null,
+      entity_type: finalOutput.company_info?.entity_type || 'Other',
+      fiscal_year_end: finalOutput.company_info?.fiscal_year_end || null,
+    },
+    income_statement: {
+      gross_receipts_sales: data?.revenue || 0,
+      returns_allowances: data?.returns_allowances || 0,
+      cost_of_goods_sold: data?.cost_of_goods_sold || 0,
+      gross_profit: data?.gross_profit || 0,
+      total_income: data?.total_income || 0,
+      total_deductions: data?.total_operating_expenses || 0,
+      taxable_income: data?.operating_income || 0,
+      net_income: data?.net_income || 0,
+    },
+    expenses: {
+      compensation_of_officers: data?.expenses?.officer_compensation || 0,
+      salaries_wages: data?.expenses?.salaries_wages || 0,
+      repairs_maintenance: data?.expenses?.repairs_maintenance || 0,
+      bad_debts: data?.expenses?.bad_debts || 0,
+      rents: data?.expenses?.rent || 0,
+      taxes_licenses: data?.expenses?.taxes_licenses || 0,
+      interest: data?.expenses?.interest || 0,
+      depreciation: data?.expenses?.depreciation || 0,
+      depletion: 0,
+      advertising: data?.expenses?.advertising || 0,
+      pension_profit_sharing: data?.expenses?.pension_profit_sharing || 0,
+      employee_benefits: data?.expenses?.employee_benefits || 0,
+      other_deductions: data?.expenses?.other_deductions || 0,
+    },
+    balance_sheet: {
+      total_assets: data?.balance_sheet?.eoy_total_assets || 0,
+      cash: data?.balance_sheet?.eoy_cash || 0,
+      accounts_receivable: data?.balance_sheet?.eoy_accounts_receivable || 0,
+      inventory: data?.balance_sheet?.eoy_inventory || 0,
+      fixed_assets: data?.balance_sheet?.eoy_buildings_depreciable || 0,
+      accumulated_depreciation: data?.balance_sheet?.eoy_accumulated_depreciation || 0,
+      other_assets: data?.balance_sheet?.eoy_other_assets || 0,
+      total_liabilities: data?.balance_sheet?.eoy_total_liabilities || 0,
+      accounts_payable: data?.balance_sheet?.eoy_accounts_payable || 0,
+      loans_payable: data?.balance_sheet?.eoy_long_term_debt || 0,
+      other_liabilities: data?.balance_sheet?.eoy_other_liabilities || 0,
+      retained_earnings: data?.balance_sheet?.eoy_retained_earnings || 0,
+      total_equity: data?.balance_sheet?.eoy_total_equity || 0,
+    },
+    owner_info: {
+      owner_compensation: data?.expenses?.officer_compensation || 0,
+      distributions: 0,
+      loans_to_shareholders: data?.balance_sheet?.eoy_loans_to_shareholders || 0,
+      loans_from_shareholders: data?.balance_sheet?.eoy_loans_from_shareholders || 0,
+    },
+    additional_data: {
+      number_of_employees: null,
+      accounting_method: null,
+      business_activity: null,
+      naics_code: null,
+    },
+    extraction_notes: [
+      `Extracted via new Modal/pdfplumber pipeline`,
+      `Processing time: ${pipelineResult.processingTimeMs}ms`,
+      `Validation status: ${finalOutput.validation?.status || 'unknown'}`,
+      ...(finalOutput.validation?.issues?.map(i => `${i.severity}: ${i.message}`) || []),
+    ],
+    // Include the full pipeline output for reference
+    _pipeline_output: finalOutput,
+  };
+}
 
 // Lightweight extraction prompt - focused only on data extraction
 const EXTRACTION_SYSTEM_PROMPT = `You are a financial document extraction specialist. Your ONLY task is to extract structured financial data from tax returns and financial documents.
@@ -370,23 +486,94 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
 }
 
 /**
- * Extract data from a single document with retry logic
+ * Extract data from a single document with retry logic.
+ * Tries the new Modal/pdfplumber pipeline first if configured,
+ * falls back to Claude Vision if not available or on failure.
  */
 async function extractDocumentWithRetry(
   doc: DocumentRecord,
   reportId: string
 ): Promise<ExtractionResult> {
+  // Download PDF from Supabase Storage first (needed for both approaches)
+  let pdfBuffer: Buffer;
+  try {
+    pdfBuffer = await downloadDocument(doc.file_path);
+    console.log(`[EXTRACT] Loaded PDF: ${pdfBuffer.length} bytes`);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[EXTRACT] Failed to download document ${doc.id}:`, errorMessage);
+    return {
+      documentId: doc.id,
+      file_name: doc.file_name || doc.file_path,
+      success: false,
+      error: `Failed to download document: ${errorMessage}`,
+    };
+  }
+
+  // Try new Modal pipeline first if available
+  if (isNewPipelineAvailable()) {
+    console.log(`[EXTRACT] Using new Modal/pdfplumber pipeline for ${doc.id}`);
+    try {
+      const pipelineResult = await extractDocumentPipeline(
+        pdfBuffer,
+        doc.id,
+        doc.file_name || 'document.pdf',
+        {
+          maxRetries: MAX_RETRIES,
+          skipAiValidation: false, // Enable full AI validation
+        }
+      );
+
+      if (pipelineResult.success && pipelineResult.finalOutput) {
+        // Get the tax year from the pipeline result
+        const docInfo = pipelineResult.finalOutput.documents?.[0];
+        const taxYear = docInfo?.tax_year || String(new Date().getFullYear());
+
+        // Convert to legacy format for compatibility
+        const extractedData = convertPipelineOutputToLegacyFormat(pipelineResult, taxYear);
+
+        console.log(`[EXTRACT] ✓ New pipeline succeeded for ${doc.file_name || doc.file_path}`);
+        console.log(`[EXTRACT] Document type: ${extractedData.document_type}, Tax year: ${extractedData.tax_year}`);
+        console.log(`[EXTRACT] Processing time: ${pipelineResult.processingTimeMs}ms`);
+
+        return {
+          documentId: doc.id,
+          file_name: doc.file_name || doc.file_path,
+          success: true,
+          extractedData,
+        };
+      } else if (pipelineResult.needsClaudeVision) {
+        console.log(`[EXTRACT] Pipeline detected scanned PDF, falling back to Claude Vision`);
+        // Fall through to Claude Vision fallback
+      } else {
+        console.error(`[EXTRACT] Pipeline failed: ${pipelineResult.error}`);
+        // Fall through to Claude Vision fallback
+      }
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      console.error(`[EXTRACT] Pipeline error: ${errorMessage}`);
+      // Fall through to Claude Vision fallback
+    }
+    console.log(`[EXTRACT] Falling back to Claude Vision for ${doc.id}`);
+  }
+
+  // Fallback: Use Claude Vision (original approach)
+  return extractWithClaudeVision(doc, pdfBuffer);
+}
+
+/**
+ * Extract data using Claude Vision API (original/fallback approach)
+ */
+async function extractWithClaudeVision(
+  doc: DocumentRecord,
+  pdfBuffer: Buffer
+): Promise<ExtractionResult> {
   let lastError: string = '';
+  const pdfBase64 = pdfBuffer.toString('base64');
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      console.log(`[EXTRACT] Attempt ${attempt}/${MAX_RETRIES} for document ${doc.id}`);
-
-      // Download PDF from Supabase Storage
-      const pdfBuffer = await downloadDocument(doc.file_path);
-      const pdfBase64 = pdfBuffer.toString('base64');
-
-      console.log(`[EXTRACT] Loaded PDF: ${pdfBuffer.length} bytes`);
+      console.log(`[EXTRACT-VISION] Attempt ${attempt}/${MAX_RETRIES} for document ${doc.id}`);
 
       // Call Claude API
       const response = await getAnthropicClient().messages.create({
@@ -434,8 +621,8 @@ async function extractDocumentWithRetry(
         throw new Error('Missing document_type in extracted data');
       }
 
-      console.log(`[EXTRACT] Successfully extracted data from ${doc.file_name || doc.file_path}`);
-      console.log(`[EXTRACT] Document type: ${extractedData.document_type}, Tax year: ${extractedData.tax_year}`);
+      console.log(`[EXTRACT-VISION] ✓ Successfully extracted data from ${doc.file_name || doc.file_path}`);
+      console.log(`[EXTRACT-VISION] Document type: ${extractedData.document_type}, Tax year: ${extractedData.tax_year}`);
 
       return {
         documentId: doc.id,
@@ -446,12 +633,12 @@ async function extractDocumentWithRetry(
 
     } catch (error: unknown) {
       lastError = error instanceof Error ? error.message : 'Unknown error';
-      console.error(`[EXTRACT] Attempt ${attempt} failed for ${doc.id}:`, lastError);
+      console.error(`[EXTRACT-VISION] Attempt ${attempt} failed for ${doc.id}:`, lastError);
 
       if (attempt < MAX_RETRIES) {
         // Wait before retry with exponential backoff
         const delay = RETRY_DELAY_MS * Math.pow(2, attempt - 1);
-        console.log(`[EXTRACT] Retrying in ${delay}ms...`);
+        console.log(`[EXTRACT-VISION] Retrying in ${delay}ms...`);
         await sleep(delay);
       }
     }
