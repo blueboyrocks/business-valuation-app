@@ -300,8 +300,8 @@
         "Typecheck passes"
       ],
       "priority": 16,
-      "passes": false,
-      "notes": "Related party transactions may not be at arm's length. Shareholder loans are a common red flag."
+      "passes": true,
+      "notes": "Complete: related-party-detector.ts with loans to/from shareholders, high rent, management fees, and high other expenses detection."
     },
     {
       "id": "US-017",

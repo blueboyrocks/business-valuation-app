@@ -215,3 +215,22 @@ C:\Users\bened\OneDrive\Documents\biz-val-test-docs
   - Need to match existing CovidAdjustments type structure
 ---
 
+## Wed, Jan 29, 2026 - US-016 (Related Party Detection)
+- Created lib/extraction/related-party-detector.ts (440 lines)
+- Detection functions for:
+  - Loans to shareholders (eoy_loans_to_shareholders > $1,000)
+  - Loans from shareholders (eoy_loans_from_shareholders > $1,000)
+  - High rent expense (>10% of revenue)
+  - Management fees (keyword search + amount threshold)
+  - High "other expenses" (>15% of total expenses)
+- Configurable thresholds in THRESHOLDS constant
+- Severity classification (high/medium/low) based on amount
+- Helper functions: detectRelatedPartyIndicators(), mergeRelatedPartyRedFlags(), getRelatedPartySdeAdjustments()
+- **Learnings:**
+  - StructuredFinancialData uses balance_sheet, not balance_sheet_eoy
+  - BalanceSheetData has boy_* and eoy_* prefixed fields
+  - RedFlagIndicators uses has_loans_to_shareholders (boolean) + loans_to_shareholders_amount (number)
+  - Related party rent is often hidden owner compensation
+  - Management fees to related entities typically add back fully
+---
+
