@@ -22,6 +22,7 @@ export type FinancialDocumentType =
   | 'FORM_1065'       // Partnership
   | 'SCHEDULE_C'      // Sole Proprietorship (attached to 1040)
   | 'SCHEDULE_K1'     // Partner/Shareholder K-1
+  | 'SCHEDULE_M1'     // Book-Tax Reconciliation
   // Financial Statements
   | 'INCOME_STATEMENT'      // P&L
   | 'BALANCE_SHEET'         // Statement of Financial Position

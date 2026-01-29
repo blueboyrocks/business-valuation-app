@@ -151,6 +151,14 @@ const DOCUMENT_KEYWORDS: Record<FinancialDocumentType, string[]> = {
     'Tenant',
     'Monthly Rent',
   ],
+  SCHEDULE_M1: [
+    'Schedule M-1',
+    'Reconciliation of Income',
+    'Book Income',
+    'Net income per books',
+    'Income per return',
+    'Book-Tax Reconciliation',
+  ],
   UNKNOWN: [],
 };
 
