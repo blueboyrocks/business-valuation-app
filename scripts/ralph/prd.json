@@ -106,7 +106,7 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "Critical fix. Previous PRD added hasCalculationEngine guard but the RECONCILE log suggests it's not working or there's another code path. Need to trace the full data flow."
     },
     {

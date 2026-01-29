@@ -114,3 +114,27 @@ Started: Wed, Jan 28, 2026  9:00:32 PM
   - Mini-report intentionally excludes narrative-heavy sections to focus on data verification
   - Test banners use yellow background (#FEF3C7) with orange border (#F59E0B) for visibility
 ---
+
+## 2026-01-28 11:30 PM - US-006: Find and Remove RECONCILE Override Logic
+- What was implemented:
+  - Searched entire codebase for RECONCILE, reconcile, 'narrative value', 'Using narrative', override patterns
+  - Verified reconcileWithNarratives() in lib/extraction/narrative-data-extractor.ts already has correct hasCalculationEngine guard
+  - Verified app/api/reports/[id]/regenerate/route.ts correctly passes hasCalculationEngine flag (line 689)
+  - Confirmed no code paths allow narrative values to overwrite calculation engine values when hasCalcEngine=true
+  - The "[RECONCILE] Using narrative value" log mentioned in PRD was from an older version - already fixed
+  - Added comprehensive [DATA_FLOW] logging to trace value sources:
+    - Logs mode: CALCULATION_ENGINE (authoritative) vs NARRATIVE_FALLBACK at function start
+    - For each critical field: [DATA_FLOW] Source for <field>: <source> (calc=<value>, narrative=<value>)
+    - Sources: CALCULATION_ENGINE (calc wins), NARRATIVE_FALLBACK (filled missing), EXISTING_VALUE (preserved), SKIPPED (below minimum)
+  - Data flow is correctly one-directional: Tax Data -> Calculations -> DataStore -> Narratives
+
+- Files changed:
+  - lib/extraction/narrative-data-extractor.ts (modified, added ~26 lines of DATA_FLOW logging)
+
+- **Learnings for future iterations:**
+  - reconcileWithNarratives() accepts { hasCalculationEngine: boolean } option - always pass this when calc engine ran
+  - calculationEngineFields Set defines which fields are protected: asset_approach_value, income_approach_value, market_approach_value, annual_revenue, valuation_amount
+  - The function ONLY fills missing data (null, undefined, 0) - never overwrites existing values
+  - hasCalcEngine is determined by: !!calcResults?.synthesis?.final_concluded_value
+  - If calc engine didn't run, values can be filled from narrative extraction as fallback
+---
