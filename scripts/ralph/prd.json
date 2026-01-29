@@ -176,8 +176,8 @@
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": "Previous PRD created lib/narratives/value-injection.ts and US-026 was supposed to wire it into orchestrator but is marked PENDING. This may be the missing link."
+      "passes": true,
+      "notes": "Wired: Added convertToCalcResultsForNarrative() helper in pass-configs.ts to convert CalculationEngineOutput. Updated run-single-pass and rerun-passes routes to fetch calculation_results and pass to narrative passes. Added [NARRATIVE_PROMPT] logging. All narrative passes (11a-11k) now receive authoritative values from calculation engine."
     },
     {
       "id": "US-011",
