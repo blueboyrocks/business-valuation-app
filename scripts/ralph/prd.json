@@ -125,8 +125,8 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": "Enhance existing file, don't create new. The injector exists but isn't catching all the K-Force issues. Key question: is it running at the right point in the pipeline?"
+      "passes": true,
+      "notes": "Enhanced with: [INJECTOR] logging, value range replacement ($X to $Y), SDE multiple replacement (4.9x), improved currency patterns (million dollars, $XK), foundValues tracking. Pipeline verified: runs after narrative generation and RECONCILE."
     },
     {
       "id": "US-008",

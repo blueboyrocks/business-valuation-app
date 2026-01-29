@@ -213,3 +213,35 @@ Started: Wed, Jan 28, 2026  9:00:32 PM
   - Some balance sheet line items (accounts_payable, bank_loans, other_current_assets) don't have accessor methods - these are detail items, not critical valuation values
   - The narrative value injector has patterns for currency values, value ranges, and SDE multiples but needs to be wired into the narrative generation pipeline
 ---
+
+## 2026-01-29 12:10 AM - US-007: Enhance Narrative Value Injector
+- What was implemented:
+  - Enhanced lib/valuation/narrative-value-injector.ts with:
+    - Added [INJECTOR] logging: logs section type, found values count, and replaced count
+    - Added parseMultiple() function for SDE multiple parsing (handles "4.9x", "4.9 times")
+    - Added formatMultiple() function for consistent multiple formatting
+    - Added foundValues tracking to NarrativeValueInjectionResult interface
+    - Enhanced parseCurrency() to handle all formats: $1,234,567, $1.2M, $1.2 million, 1.2 million dollars, $500K
+    - Added VALUE RANGE REPLACEMENT section with patterns for:
+      - "$X to $Y" or "$X - $Y"
+      - "between $X and $Y"
+      - "from $X to $Y"
+      - "range of $X to $Y"
+    - Added SDE MULTIPLE REPLACEMENT section with patterns for:
+      - "SDE multiple of 4.9x"
+      - "multiple of 4.9x"
+      - "4.9x multiple"
+      - "valued at 4.9x"
+    - injectValuesIntoAllNarratives now returns totalFound count and logs start/complete messages
+  - Verified pipeline order: injector runs AFTER reconcileWithNarratives() in both regenerate and download-pdf routes
+
+- Files changed:
+  - lib/valuation/narrative-value-injector.ts (modified, ~180 lines added/changed)
+
+- **Learnings for future iterations:**
+  - The injector uses CurrencyValueType for lookup (7 types) vs replacement type which adds value_range and sde_multiple
+  - Value range and SDE multiple values are fetched separately (valueRangeLow, valueRangeHigh, sdeMultiple) not in authValues Record
+  - Pattern matching uses regex with global flag, must reset lastIndex after modifying content
+  - 5% tolerance threshold for "significantly different" values prevents over-correction of rounding differences
+  - The injector is already wired into download-pdf (line 166) and regenerate (line 697) routes
+---
