@@ -318,18 +318,21 @@ export function runQualityGate(
   const canProceed = blockingErrors.length === 0;
   const passed = canProceed && score >= 70;
 
-  // Log results for debugging
-  console.log('[QualityGate] Score:', score);
-  console.log('[QualityGate] Data Integrity:', dataIntegrity.score, '(weight:', dataIntegrity.weight, ')');
-  console.log('[QualityGate] Business Rules:', businessRules.score, '(weight:', businessRules.weight, ')');
-  console.log('[QualityGate] Completeness:', completeness.score, '(weight:', completeness.weight, ')');
-  console.log('[QualityGate] Formatting:', formatting.score, '(weight:', formatting.weight, ')');
-  console.log('[QualityGate] Can Proceed:', canProceed);
+  // PRD-H US-009: Log results in specified format for debugging
+  console.log(`[QUALITY_GATE] Score: ${score}, CanProceed: ${canProceed}, Errors: ${JSON.stringify(blockingErrors)}`);
+  console.log('[QUALITY_GATE] Category scores: Data Integrity=%d, Business Rules=%d, Completeness=%d, Formatting=%d',
+    dataIntegrity.score, businessRules.score, completeness.score, formatting.score);
   if (blockingErrors.length > 0) {
-    console.log('[QualityGate] Blocking Errors:', blockingErrors);
+    console.log('[QUALITY_GATE] Blocking Errors (%d):', blockingErrors.length);
+    for (const err of blockingErrors) {
+      console.log('[QUALITY_GATE]   - %s', err);
+    }
   }
   if (warnings.length > 0) {
-    console.log('[QualityGate] Warnings:', warnings);
+    console.log('[QUALITY_GATE] Warnings (%d):', warnings.length);
+    for (const warn of warnings) {
+      console.log('[QUALITY_GATE]   - %s', warn);
+    }
   }
 
   return {

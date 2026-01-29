@@ -176,7 +176,8 @@ const METRIC_DEFINITIONS: MetricDefinition[] = [
       'valuation conclusion', 'concluded value', 'determined value',
       'estimated value', 'appraised value',
     ],
-    criticalSections: ['executiveSummary', 'conclusionOfValue', 'valuationReconciliation'],
+    // PRD-H US-009: Use snake_case to match buildSectionContents() keys in download-pdf route
+    criticalSections: ['executive_summary', 'conclusion_of_value', 'valuation_reconciliation'],
   },
   {
     name: 'SDE Multiple',
@@ -188,7 +189,7 @@ const METRIC_DEFINITIONS: MetricDefinition[] = [
       'sde multiple', 'earnings multiple', 'sde multiplier',
       'multiple of sde', 'multiplied by', 'market multiple',
     ],
-    criticalSections: ['executiveSummary', 'marketApproach'],
+    criticalSections: ['executive_summary', 'market_approach_analysis'],
   },
   {
     name: 'Normalized SDE',
@@ -200,6 +201,7 @@ const METRIC_DEFINITIONS: MetricDefinition[] = [
       'normalized sde', 'weighted sde', 'normalized earnings',
       'adjusted sde', 'discretionary earnings', 'seller',
     ],
+    criticalSections: ['executive_summary', 'financial_analysis'],
   },
   {
     name: 'Revenue',
@@ -211,6 +213,7 @@ const METRIC_DEFINITIONS: MetricDefinition[] = [
       'revenue', 'annual revenue', 'total revenue', 'sales',
       'gross revenue', 'top line',
     ],
+    criticalSections: ['executive_summary', 'financial_analysis'],
   },
   // ============ APPROACH VALUES ============
   {
@@ -223,7 +226,7 @@ const METRIC_DEFINITIONS: MetricDefinition[] = [
       'asset approach', 'asset-based', 'adjusted net asset',
       'book value', 'net asset value', 'asset method',
     ],
-    criticalSections: ['executiveSummary', 'assetApproach', 'valuationReconciliation'],
+    criticalSections: ['executive_summary', 'asset_approach_analysis', 'valuation_reconciliation'],
   },
   {
     name: 'Income Approach Value',
@@ -235,7 +238,7 @@ const METRIC_DEFINITIONS: MetricDefinition[] = [
       'income approach', 'capitalization of earnings', 'discounted cash flow',
       'dcf', 'income method', 'earnings-based',
     ],
-    criticalSections: ['executiveSummary', 'incomeApproach', 'valuationReconciliation'],
+    criticalSections: ['executive_summary', 'income_approach_analysis', 'valuation_reconciliation'],
   },
   {
     name: 'Market Approach Value',
@@ -247,7 +250,7 @@ const METRIC_DEFINITIONS: MetricDefinition[] = [
       'market approach', 'comparable', 'guideline', 'transaction',
       'market method', 'market-based', 'comp',
     ],
-    criticalSections: ['executiveSummary', 'marketApproach', 'valuationReconciliation'],
+    criticalSections: ['executive_summary', 'market_approach_analysis', 'valuation_reconciliation'],
   },
   // ============ CAP RATE ============
   {
@@ -260,7 +263,7 @@ const METRIC_DEFINITIONS: MetricDefinition[] = [
       'cap rate', 'capitalization rate', 'discount rate',
       'required return', 'rate of return',
     ],
-    criticalSections: ['incomeApproach', 'valuationReconciliation'],
+    criticalSections: ['income_approach_analysis', 'valuation_reconciliation'],
   },
   // ============ VALUE RANGE ============
   {
@@ -272,7 +275,7 @@ const METRIC_DEFINITIONS: MetricDefinition[] = [
     keywords: [
       'range', 'low end', 'minimum', 'floor', 'lower bound',
     ],
-    criticalSections: ['executiveSummary', 'valuationReconciliation'],
+    criticalSections: ['executive_summary', 'valuation_reconciliation'],
   },
   {
     name: 'Value Range High',
@@ -283,7 +286,7 @@ const METRIC_DEFINITIONS: MetricDefinition[] = [
     keywords: [
       'range', 'high end', 'maximum', 'ceiling', 'upper bound',
     ],
-    criticalSections: ['executiveSummary', 'valuationReconciliation'],
+    criticalSections: ['executive_summary', 'valuation_reconciliation'],
   },
 ];
 
