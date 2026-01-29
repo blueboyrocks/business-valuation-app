@@ -1,686 +1,116 @@
-# Ralph Progress: Data Integrity + Validation + Polish (PRD H+I+J Combined)
-
-## Branch: ralph/data-integrity-validation-polish
+# Ralph Progress Log
+Started: Wed, Jan 28, 2026  9:00:32 PM
+---
 
 ## Codebase Patterns
-- Two asset approach implementations exist: lib/calculations/asset-approach-calculator.ts (detailed, used by calculation engine) and lib/valuation/engine.ts (simplified, legacy) - only modify the former
-- AssetApproachCalculation now includes `source` field ('pass7'|'balance_sheet'|'estimated') - all mocks must include it
-- ValuationDataStore interface is the single source of truth; all fields are `readonly`
-- Factory function `createValuationDataStore` is the ONLY way to create a store - it validates required fields and deep-freezes
-- Test files that need mock ValuationDataStore objects use `buildMockStore()` helpers that construct the full interface manually (not through the factory)
-- When adding new fields to ValuationDataStore, must update 3 test mock builders: data-accessor.test.ts, consistency-validator.test.ts, deterministic-validator.test.ts
-- RiskFactor type is imported from lib/calculations/types.ts
-- Pre-existing typecheck error in lib/claude/transform-to-final-report.ts (line 1000, `risk_assessment` property) - not caused by our changes
-- deepFreeze is now exported from data-store.ts for reuse
-- DataAccessor has both old and new naming conventions: old (getIndustry, getNAICSCode, getSDEFormatted) are @deprecated, new (getIndustryName, getNaicsCode, getFormattedSDE) are canonical
-- Use getApproachValue('asset'|'income'|'market') and getApproachWeight() for generic approach access
-- formatCurrency uses Intl.NumberFormat - output format is `$X,XXX` (no cents by default)
-- DataAccessor.formatPercentage expects decimal input (0.156 -> "15.6%"); safePercentage expects already-percentage input (25.5 -> "25.5%")
-- DataAccessor edge cases: returns 0 for margins/ratios when denominator is 0 (revenue, current_liabilities, equity)
-- Test edge cases use `buildMockStore({ financial: { ...store.financial, revenue: 0 } })` pattern for section-level overrides
-- reconcileWithNarratives() accepts `{ hasCalculationEngine: boolean }` option - when true, it skips calc engine authoritative fields (approach values, revenue, concluded value)
-- Data flow is one-directional: Calculation Engine -> DataStore -> Narratives. Narratives NEVER modify calculation values.
-- In professional-pdf-generator.ts, accessor is optional - always use `accessor ? accessor.method() : fallbackValue` pattern
-- Use canonical accessor method names (getFormattedSDE, getFormattedValueRange, getFormattedApproachWeight) not deprecated ones (getSDEFormatted, getValueRangeFormatted)
-- Wrap accessor string outputs in safeString() when embedding in HTML text nodes to prevent [object Object] or undefined
-- TypeScript target doesn't support Map for-of iteration directly; use `Array.from(map.keys())` pattern instead of `for (const [k,v] of map)`
-- lib/validation/ directory contains cross-section validators (consistency, business rules, completeness); lib/valuation/ contains internal DataStore validators
-- PROFESSIONAL_SECTION_ORDER in lib/pdf/section-ordering.ts is the canonical section ordering reference; use generateTocEntries() for TOC, getOrderedSections() for section iteration
-- generateTocEntries() accepts optional sectionContents Map<string,string> for content-length-based page estimation; entries include sectionNumber for numbered TOC items
-- Consistency validator checks ALL dollar amounts in a section when ANY keyword for a metric appears; mock section text in critical sections (executiveSummary, conclusionOfValue) should avoid including non-final-value dollar amounts to prevent false positive mismatches
-- Validation pipeline tests use buildMockStore() with a generic "Apex Consulting Group" Professional Services firm - not K-Force specific
-- lib/pdf/design-tokens.ts is the centralized design system: COLORS, CHART_COLOR_PALETTE, TYPOGRAPHY, FONT_SIZES, and generateDesignTokenCSS(). Use these for any new PDF styling or chart coloring.
-- All tables in professional-pdf-generator.ts use `class="data-table"` with `.currency`/`.percentage`/`.total-row` cell/row classes. New tables should follow this pattern. External tables (from CalculationTableGenerator) use legacy `table:not(.data-table)` selectors.
-
-## Status: IN PROGRESS
-
-## Story Progress:
-- US-001: DONE - Enhance ValuationDataStore interface
-- US-002: DONE - Enhance DataAccessor with complete getters
-- US-003: DONE - Create safe string utilities
-- US-004: DONE - Unit tests for DataStore, DataAccessor, safe-string
-- US-005: DONE - Asset approach fallback chain
-- US-006: DONE - Remove RECONCILE override logic
-- US-007: DONE - Wire DataAccessor into PDF (cover, exec summary, conclusion, company)
-- US-008: DONE - Wire DataAccessor into PDF (financial, asset/income/market approach)
-- US-009: DONE - Wire DataAccessor into PDF (reconciliation, risk, KPI, remaining)
-- US-010: DONE - Create value consistency validator
-- US-011: DONE - Create business rule validator
-- US-012: DONE - Create content completeness validator
-- US-013: DONE - Create narrative value injection system
-- US-014: DONE - Create post-generation narrative validator
-- US-015: DONE - Create pre-PDF quality gate
-- US-016: DONE - Validation pipeline integration tests
-- US-017: DONE - Professional section ordering
-- US-018: DONE - Dynamic table of contents
-- US-019: DONE - Design system tokens
-- US-020: DONE - Professional table styling CSS
-- US-021: DONE - SDE calculation detail table
-- US-022: DONE - Cap rate buildup table
-- US-023: DONE - Asset adjustment table
-- US-024: DONE - Chart design standards
-- US-025: DONE - Professional disclaimers section
-- US-026: PENDING - Wire value injection into narrative passes
-- US-027: PENDING - Wire quality gate into API endpoints
-- US-028: PENDING - End-to-end integration test
-
-## Notes:
-- Combined from PRD-H (Data Integrity), PRD-I (Validation), PRD-J (Polish)
-- Dependency order: Foundation (1-4) -> Fixes (5-6) -> PDF Wiring (7-9) -> Validators (10-15) -> Tests (16) -> Polish (17-25) -> Wiring (26-27) -> Final Test (28)
-- Key existing files: lib/valuation/data-store.ts, lib/valuation/data-accessor.ts, lib/valuation/data-store-factory.ts, lib/pdf/professional-pdf-generator.ts
-- RECONCILE logic found in: lib/extraction/narrative-data-extractor.ts, app/api/reports/[id]/regenerate/route.ts, lib/claude/prompts-v2/pass-09-market-approach.ts
+- ValuationDataAccessor is the authoritative source for all financial values in PDF generation
+- Use accessor methods (getFinalValue(), getRevenue(), etc.) instead of raw reportData access
+- Structured logs use format: console.log('[PREFIX] key=value section=name')
 
 ---
 
-## 2026-01-27 - US-001
+## 2026-01-28 9:20 PM - US-001: Add Structured Logging for Critical Values
 - What was implemented:
-  - Added DataIntegrityError class with missingFields property
-  - Added RiskInfo interface (overall_score, overall_rating, factors array)
-  - Added DataQualityInfo interface (completeness_score, years_of_data, missing_fields)
-  - Added new ValuationData fields: dlom_amount, dloc_rate, dloc_amount
-  - Added CompanyData.sic_code field
-  - Added factory validation: throws DataIntegrityError when final_value, revenue, or weighted_sde are missing/zero
-  - Exported deepFreeze function for reuse
-  - Updated all test mock builders with new required fields
-  - Added 14 new tests for PRD-H fields and DataIntegrityError validation
+  - Added structured logging with [MANIFEST] prefix in lib/pdf/professional-pdf-generator.ts
+  - 15 critical values logged at generation start: final_value, revenue, sde_normalized, sde_weighted, asset_approach, income_approach, market_approach, sde_multiple, cap_rate, dlom_percentage, value_range_low, value_range_high, asset_weight, income_weight, market_weight
+  - Added summary log: [MANIFEST] GENERATION_COMPLETE values_logged=15
+  - All values retrieved through accessor methods when available
+
 - Files changed:
-  - lib/valuation/data-store.ts (enhanced interfaces, added error class, added validation)
-  - lib/valuation/__tests__/data-store.test.ts (added new field + validation tests)
-  - lib/valuation/__tests__/data-accessor.test.ts (updated mock builder)
-  - lib/valuation/__tests__/consistency-validator.test.ts (updated mock builder)
-  - lib/qa/__tests__/deterministic-validator.test.ts (updated mock builder)
+  - lib/pdf/professional-pdf-generator.ts (added 20 lines)
+
 - **Learnings for future iterations:**
-  - ValuationDataStore is used by many files (6 production, 5 test). Adding fields requires updating all manual mock builders in test files.
-  - The 3 test files with manual `buildMockStore()` helpers (data-accessor, consistency-validator, deterministic-validator) don't use the factory; they construct objects directly.
-  - RiskFactor type already existed in lib/calculations/types.ts - reuse it rather than defining a new one.
-  - The factory now rejects inputs without revenue > 0 - any test creating a store through the factory MUST provide revenue.
-  - Pre-existing typecheck error in transform-to-final-report.ts is not our concern.
+  - The generate() method already had an accessor parameter and was using it for many values
+  - Accessor methods use pattern like getFinalValue(), getSDEMultiple(), etc.
+  - For percentages (cap_rate, dlom_percentage, weights), accessor returns decimals (0.15 for 15%), need to multiply by 100 for display
+  - The accessor has both deprecated methods (getSDEMultipleFormatted) and new methods (getFormattedSDEMultiple)
 ---
 
-## 2026-01-27 - US-002
+## 2026-01-28 9:45 PM - US-002: Create JSON Manifest Generator with Supabase Storage
 - What was implemented:
-  - Added new exported types: ApproachType ('asset'|'income'|'market'), SDEType ('current'|'normalized'|'weighted'), ValueRange interface
-  - Added company getters: getIndustryName(), getNaicsCode(), getSicCode(), getLocation(), getYearsInBusiness(), getFiscalYearLabel(yearsBack)
-  - Added revenue with period lookup: getRevenue(period?), getFormattedRevenue(period?), getRevenueGrowthRate(), getFormattedRevenueGrowthRate()
-  - Added SDE with type: getSDE(type?), getFormattedSDE(type?) - supports 'current', 'normalized', 'weighted'
-  - Added formatted earnings: getFormattedNetIncome(), getFormattedEBITDA()
-  - Added margin formatters: getFormattedSDEMargin(), getFormattedEBITDAMargin(), getFormattedProfitMargin(), getFormattedGrossMargin(), getGrossMargin()
-  - Added balance sheet: getBookValue(), getFormattedTotalAssets(), getFormattedTotalLiabilities(), getFormattedBookValue(), getFormattedTotalEquity(), getFormattedCurrentRatio(), getFormattedWorkingCapital(), getFormattedDebtToEquityRatio()
-  - Added generic approach access: getApproachValue(approach), getFormattedApproachValue(approach), getApproachWeight(approach), getFormattedApproachWeight(approach)
-  - Added formatted aliases: getFormattedFinalValue(), getFormattedSDEMultiple(), getFormattedCapRate(), getFormattedPreliminaryValue()
-  - Added value range: getValueRange() returns {low, high, display}, getFormattedValueRange() returns {low, high, display} as strings
-  - Added DLOM/DLOC: getDLOMRate(), getFormattedDLOMRate(), getDLOMAmount(), getFormattedDLOMAmount(), getDLOCRate(), getFormattedDLOCRate(), getDLOCAmount()
-  - Added risk: getRiskScore(), getRiskRating(), getRiskFactors()
-  - Added data quality: getCompletenessScore(), getYearsOfData(), getMissingFields()
-  - Added getRawStore() returning Readonly<ValuationDataStore>
-  - Switched formatCurrency to use Intl.NumberFormat with style:'currency'
-  - Deprecated old method names (getIndustry, getNAICSCode, getSDEFormatted, etc.) with @deprecated JSDoc
+  - Created lib/valuation/manifest-generator.ts with:
+    - ReportManifest interface with generated_at, valuation_id, critical_values, value_appearances, consistency_check
+    - CriticalValues interface with all required fields: revenue_current_year, sde_normalized, sde_weighted, final_concluded_value, value_range_low/high, approach values (asset/income/market), sde_multiple_used, cap_rate, dlom_percentage, approach_weights
+    - generateManifest(accessor, valuationId) function that extracts all values from DataAccessor
+    - Basic consistency checks: weight sum = 1.0, value range validation, zero value checks
+    - serializeManifest() and parseManifest() for JSON storage/retrieval
+  - Created Supabase migration: supabase/migrations/20260128000000_add_manifest_json_column.sql
+    - Adds manifest_json JSONB column to reports table
+  - Updated app/api/reports/[id]/download-pdf/route.ts:
+    - Imports generateManifest and serializeManifest
+    - After PDF generation, generates manifest and saves to reports.manifest_json
+    - Logs manifest generation status and any consistency errors/warnings
+
 - Files changed:
-  - lib/valuation/data-accessor.ts (enhanced with ~60 new methods, 369→685 lines)
+  - lib/valuation/manifest-generator.ts (created, 207 lines)
+  - supabase/migrations/20260128000000_add_manifest_json_column.sql (created, 13 lines)
+  - app/api/reports/[id]/download-pdf/route.ts (modified, added import + 28 lines for manifest saving)
+
 - **Learnings for future iterations:**
-  - Existing callers use old method names (getIndustry, getNAICSCode, getSDEFormatted, getSDEMultipleFormatted, getCapRateFormatted, getFinalValueFormatted, getValueRangeFormatted, getStore). Keep deprecated aliases to avoid breaking changes.
-  - formatCurrency uses Intl.NumberFormat('en-US', {style:'currency'}) which produces identical output to the old `$${value.toLocaleString()}` approach.
-  - The accessor is used in: chart-data-builder.ts, professional-pdf-generator.ts, regenerate/route.ts, and all test files.
-  - getRevenue() now accepts optional period parameter but returns current revenue when called without args (backward compatible).
-  - getSDE() now accepts optional type parameter ('current'|'normalized'|'weighted') but defaults to 'current' (backward compatible).
+  - ValuationDataAccessor has methods like getSDE('normalized') and getSDE('weighted') for different SDE types
+  - getApproachValue('asset'/'income'/'market') returns approach values
+  - getApproachWeight('asset'/'income'/'market') returns weights as decimals (0.40 = 40%)
+  - Supabase migrations use format: YYYYMMDDHHMMSS_description.sql
+  - JSONB column type is optimal for manifest storage - allows querying without regeneration
+  - The download-pdf route already reconstructs DataAccessor from calculation_results
 ---
 
-## 2026-01-28 - US-003
+## 2026-01-28 10:15 PM - US-003: Create Manifest Consistency Validator
 - What was implemented:
-  - Created new file lib/utils/safe-string.ts with 6 exported utility functions
-  - safeString(value, fallback) - handles null, undefined, string, number, boolean, Date, Array, Object; for objects tries common property names (label, name, value, text, title, display, year, id)
-  - safeYear(value, fallback) - extracts 4-digit year from numbers (1900-2100), strings ("FY 2024", "2024-12-31"), dates, objects
-  - safePeriodLabel(value, prefix) - formats as "FY 2024" etc.
-  - safeCurrency(value, fallback) - formats as USD using Intl.NumberFormat with 0 decimals
-  - safePercentage(value, decimals, fallback) - formats as "25.5%"
-  - safeMultiple(value, suffix, fallback) - formats as "2.50x"
-  - All functions handle NaN, Infinity, invalid Date gracefully
+  - Created lib/valuation/manifest-validator.ts with:
+    - ManifestValidationResult interface with passed, errors, warnings
+    - validateManifest(manifest: ReportManifest): ManifestValidationResult function
+    - 5 comprehensive consistency checks:
+      1. Value appearance consistency (within 1% tolerance for currency)
+      2. Approach weights sum to 1.0 (within 0.001 tolerance)
+      3. Value range valid (low < final < high)
+      4. Weighted value math correct (sum of approach x weight = final, within 2% tolerance)
+      5. No zero values for required fields (final_value, revenue, at least one approach > 0)
+    - Helper functions: checkValueAppearanceConsistency, checkWeightSum, checkValueRange, checkWeightedValueMath, checkRequiredFields
+    - formatCurrency() helper for readable error messages
+    - validateAndLogManifest() convenience function for debugging
+    - Structured logging with [MANIFEST_VALIDATOR] prefix
+
 - Files changed:
-  - lib/utils/safe-string.ts (new file, 197 lines)
+  - lib/valuation/manifest-validator.ts (created, 333 lines)
+
 - **Learnings for future iterations:**
-  - lib/utils/ directory did not exist - had to create it. lib/utils.ts (Tailwind CN utility) exists separately.
-  - safeCurrency strips $ and , from string inputs before parsing, allowing re-formatting of already-formatted strings.
-  - safePercentage strips % from string inputs before parsing.
-  - safeMultiple strips trailing 'x' from string inputs before parsing.
+  - Imports types from manifest-generator.ts: ReportManifest, CriticalValues, ValueAppearance, ApproachWeights
+  - Tolerances defined as constants: CURRENCY_TOLERANCE (1%), WEIGHT_SUM_TOLERANCE (0.001), WEIGHTED_CALC_TOLERANCE (2%)
+  - Value appearances can be Map or Record - validator handles both via instanceof check
+  - Warnings are used for unusual but not necessarily wrong values (e.g., approach has weight but value is 0)
 ---
 
-## 2026-01-28 - US-004
+## 2026-01-28 10:45 PM - US-004: Add Mini-Report Test Mode for Visual Verification
 - What was implemented:
-  - Extended data-store.test.ts with 3 additional deep-freeze tests (nested arrays, risk, data_quality sections) - now 82 tests total
-  - Extended data-accessor.test.ts with comprehensive new test suites - now 68 tests total:
-    - formatCurrency: $X,XXX format, rounding, zero, negatives
-    - formatPercentage: X.X% format, custom decimals, zero, 100%
-    - getSDEMargin: correct SDE/Revenue calculation, formatted output, zero revenue edge case
-    - getRiskRating: Low/Moderate/Elevated/High for all score ranges
-    - Edge cases: zero revenue margins, zero current liabilities, zero equity, book value, working capital
-    - Approach access: getApproachValue/Weight by type, formatted versions
-    - SDE type access: current/normalized/weighted, formatted
-    - Value range: structured and formatted ranges, DLOM/DLOC
-    - Data quality & metadata: completeness, years of data, missing fields, dates
-    - Revenue growth rate: calculation, single year fallback, zero prior year
-    - Fiscal year label: current and prior years
-  - Created new lib/utils/__tests__/safe-string.test.ts with 74 tests:
-    - safeString: null, undefined, string, number, NaN, Infinity, boolean, Date, invalid Date, array, empty array, objects with common props, [object Object] prevention, fallback, numeric object props, null/undefined object props
-    - safeYear: numbers in range, out of range, plain/FY/date strings, Date objects, objects with year-like props, null/undefined/NaN/invalid edge cases
-    - safePeriodLabel: default FY prefix, custom prefix, string/null/invalid
-    - safeCurrency: numbers, zero, negative, strings, pre-formatted, null/undefined/NaN/Infinity/objects
-    - safePercentage: numbers, custom decimals, zero, strings with %, null/undefined/NaN/objects
-    - safeMultiple: numbers, custom suffix, strings with x, zero, null/undefined/NaN/objects/non-numeric strings
-    - Cross-cutting: all functions tested against dangerous inputs to verify NEVER returning [object Object], undefined, null, or NaN
-  - All 224 tests pass, typecheck passes (only pre-existing error in transform-to-final-report.ts)
-- Files changed:
-  - lib/valuation/__tests__/data-store.test.ts (extended with deep freeze tests)
-  - lib/valuation/__tests__/data-accessor.test.ts (extended with 50+ new tests)
-  - lib/utils/__tests__/safe-string.test.ts (new file, 74 tests)
-- **Learnings for future iterations:**
-  - Test files use `buildMockStore()` with section-level overrides (e.g., `buildMockStore({ financial: { ...store.financial, revenue: 0 } })`) for testing edge cases.
-  - DataAccessor edge case handling: returns 0 for ratios/margins when denominator is 0 (revenue=0, current_liabilities=0, equity=0).
-  - formatPercentage expects decimal input (0.156 -> "15.6%") while safePercentage expects percentage input (25.5 -> "25.5%") - these are different conventions.
-  - The vitest runner supports glob patterns for running specific test files: `npx vitest run lib/valuation/__tests__/*.test.ts`.
----
+  - Added testMode=true query parameter support to POST /api/reports/[id]/download-pdf
+  - Added generateMiniReport() method to ProfessionalPDFGenerator class
+  - Mini-report includes only essential sections:
+    1. Cover page with "Mini-Report" and "Visual Verification (Test Mode)" subtitle
+    2. Critical Values Summary Table with all authoritative values in one place
+    3. Executive Summary with verification test banner
+    4. Value Reconciliation with verification checklist
+  - Critical Values Summary includes:
+    - Concluded value with value range
+    - Revenue & Earnings (Revenue, SDE normalized, SDE weighted, EBITDA)
+    - Valuation Approaches table with values, weights, and weighted values
+    - Key Multiples & Rates (SDE Multiple, Cap Rate, DLOM)
+    - Value Range (Low, Concluded, High)
+  - Added test banners in yellow to remind this is for visual verification
+  - Added verification checklist comparing expected vs displayed values
+  - Uses same DataAccessor/data flow as full report (not a separate code path)
+  - Mini-report generates compact ~5 page PDF for quick visual QA
+  - Different filename for mini-report: {company}_Mini_Report.pdf
 
-## 2026-01-28 - US-005
-- What was implemented:
-  - Added `AssetApproachSource` type ('pass7' | 'balance_sheet' | 'estimated') to types.ts
-  - Added `source` field to `AssetApproachCalculation` interface
-  - Added `pass7_adjusted_net_asset_value` optional field to `AssetApproachInputs`
-  - Implemented 3-tier fallback chain in `calculateAssetApproach`:
-    - Tier 1 (balance_sheet): Use balance sheet calculation if it produces a positive value
-    - Tier 2 (pass7): Fall back to Pass 7 AI-extracted NAV if balance sheet calc <= 0
-    - Tier 3 (estimated): Use 50% of total assets as floor estimate if both above fail
-  - Added 10% inventory obsolescence reserve to default adjustments (alongside existing 5% AR allowance)
-  - Each tier logs which source was used via console.log
-  - Moved Pass 7 fallback logic from calculation-engine.ts into the calculator itself
-  - Updated calculation-engine.ts to pass `pass7_adjusted_net_asset_value` to the calculator
-  - Exported `AssetApproachSource` from index.ts
-  - Updated data-store.test.ts mock with new `source` field
 - Files changed:
-  - lib/calculations/types.ts (added AssetApproachSource type, source field to AssetApproachCalculation)
-  - lib/calculations/asset-approach-calculator.ts (added fallback chain, inventory adjustment, pass7 input)
-  - lib/calculations/calculation-engine.ts (removed inline Pass 7 override, passes pass7 value to calculator)
-  - lib/calculations/index.ts (exported AssetApproachSource)
-  - lib/valuation/__tests__/data-store.test.ts (added source field to mock)
-- **Learnings for future iterations:**
-  - AssetApproachCalculation is only used in 3 files within lib/calculations/ (types.ts, asset-approach-calculator.ts, index.ts) plus test mocks - adding fields is low-risk.
-  - The calculation-engine.ts previously had inline fallback logic (lines 93-102) for Pass 7 override - this has been consolidated into the calculator itself.
-  - Two pre-existing test failures exist in data-quality-scorer.test.ts and tax-form-validator.test.ts - not related to our changes.
-  - The `safeNumber` utility from calculations/utils.ts safely converts undefined/null to 0, useful for optional input params.
-  - There are TWO different asset approach implementations: lib/calculations/asset-approach-calculator.ts (detailed, used by calculation engine) and lib/valuation/engine.ts (simplified, legacy). Only the former was updated.
----
+  - app/api/reports/[id]/download-pdf/route.ts (modified, added testMode parsing + conditional generation)
+  - lib/pdf/professional-pdf-generator.ts (added generateMiniReport() method + buildMiniReportHTML() helper, ~520 lines)
 
-## 2026-01-28 - US-006
-- What was implemented:
-  - Added `hasCalculationEngine` option to `reconcileWithNarratives()` to prevent narrative values from overwriting deterministic calculation engine values
-  - When `hasCalculationEngine: true`, the function skips all calc-engine-authoritative fields: asset_approach_value, income_approach_value, market_approach_value, annual_revenue, valuation_amount
-  - The concluded value fallback calculation (weighted average from approach values) is also skipped when the calc engine has already produced a concluded value
-  - Updated the regenerate route to pass `{ hasCalculationEngine: hasCalcEngine }` to `reconcileWithNarratives()`
-  - Verified pass-09-market-approach.ts "RECONCILE" mentions are legitimate prompt instructions (reconciling SDE vs revenue multiples within the market approach) - no code changes needed
-  - Data flow is now strictly one-directional: Calculation Engine -> DataStore -> Narratives
-- Files changed:
-  - lib/extraction/narrative-data-extractor.ts (added hasCalculationEngine guard, improved docs)
-  - app/api/reports/[id]/regenerate/route.ts (passes hasCalculationEngine flag to reconcile)
 - **Learnings for future iterations:**
-  - `reconcileWithNarratives()` has only one caller: the regenerate route. Any changes to its signature are low-risk.
-  - `extractDataFromNarratives()` is only called internally by `reconcileWithNarratives()` - it's not exported independently for use elsewhere.
-  - The pass-09-market-approach.ts uses "RECONCILE" in prompt text to instruct the AI to reconcile SDE vs revenue multiple methods within the market approach - this is legitimate analytical guidance, not a code path that overwrites values.
-  - The `hasCalcEngine` variable in regenerate/route.ts is true when `calcResults?.synthesis?.final_concluded_value` exists.
-  - Pre-existing test failures (4 tests in 3 files: calculation-engine, data-quality-scorer, tax-form-validator) continue to be unrelated to our work.
----
-
-## 2026-01-28 - US-007
-- What was implemented:
-  - Wired DataAccessor into 4 PDF sections in lib/pdf/professional-pdf-generator.ts:
-  - **Cover Page**: Uses accessor.getCompanyName(), accessor.getValuationDate(), accessor.getFormattedFinalValue(), accessor.getIndustryName(), accessor.getNaicsCode() with safeString() fallbacks
-  - **Executive Summary**: Added "Key Financial Highlights" box using accessor.getFormattedRevenue(), getFormattedSDE(), getFormattedFinalValue(), getFormattedValueRange().display, getFormattedApproachValue/Weight for all 3 approaches
-  - **Conclusion of Value**: Replaced raw reportData access with accessor methods throughout: getFormattedFinalValue() for main value card, getFormattedApproachValue/Weight('asset'|'income'|'market') for approach table, getFormattedSDE('weighted') for normalized SDE, getFormattedSDEMultiple(), getFormattedCapRate(), getFormattedValueRange().display for key metrics. Used canonical method names instead of deprecated ones.
-  - **Company Profile**: Added company info header box using accessor.getCompanyName(), getIndustryName(), getNaicsCode() with safeString() wrappers
-  - Added import for safeString from lib/utils/safe-string.ts
-  - All accessor usage has graceful fallbacks (ternary with reportData values when accessor is undefined)
-- Files changed:
-  - lib/pdf/professional-pdf-generator.ts (added safeString import, updated cover page, exec summary, conclusion of value, company profile sections)
-- **Learnings for future iterations:**
-  - The PDF generator's buildHTML method receives accessor as an optional parameter - all accessor usage MUST have fallback paths for when accessor is undefined
-  - The file uses template literals extensively for HTML generation - accessor calls are embedded directly in template expressions
-  - The Conclusion of Value section was already partially wired with accessor (old deprecated method names) - updated to use canonical names (getFormattedSDE('weighted') vs getWeightedSDEFormatted(), getFormattedValueRange().display vs getValueRangeFormatted())
-  - safeString() is useful for wrapping accessor.getCompanyName() etc. to prevent [object Object] or undefined in cover page/company profile where values are displayed as plain text
-  - Enterprise value and liquidation value are computed separately (not from accessor) and don't need accessor wiring - they use their own calculation logic
-  - The exec summary section content is markdown narrative - adding a financial highlights box after the narrative is the correct pattern for injecting accessor-sourced values
----
-
-## 2026-01-28 - US-008
-- What was implemented:
-  - Wired DataAccessor into 4 additional PDF sections in lib/pdf/professional-pdf-generator.ts:
-  - **Financial Analysis**: Added "Key Financial Metrics" summary box with accessor.getFormattedRevenue(), getFormattedRevenueGrowthRate(), getFormattedSDE(), getFormattedEBITDA(), getFormattedSDEMargin(), getFormattedGrossMargin(), getFormattedTotalAssets(), getFormattedTotalLiabilities(), getFormattedBookValue(), getFormattedCurrentRatio()
-  - **Asset Approach**: Added "Asset Approach Summary" box with accessor.getFormattedApproachValue('asset'), getFormattedApproachWeight('asset'), getFormattedTotalAssets(), getFormattedTotalLiabilities(), getFormattedBookValue()
-  - **Income Approach**: Added "Income Approach Summary" box with accessor.getFormattedApproachValue('income'), getFormattedApproachWeight('income'), getFormattedSDE('normalized'), getFormattedCapRate()
-  - **Market Approach**: Added "Market Approach Summary" box with accessor.getFormattedApproachValue('market'), getFormattedApproachWeight('market'), getFormattedSDE('normalized'), getFormattedSDEMultiple()
-  - All summary boxes use conditional rendering (only when accessor is defined) with consistent styling matching the pattern from US-007
-- Files changed:
-  - lib/pdf/professional-pdf-generator.ts (added accessor-sourced summary boxes to 4 sections, +120 lines)
-- **Learnings for future iterations:**
-  - The Financial Summary section (separate from Financial Analysis) already had accessor wiring with fallback pattern `accessor?.method() ?? reportData.field` - no changes needed there
-  - Narrative sections (financial_analysis, asset_approach_analysis, etc.) come from reportData/narratives as markdown content - these are narrative text, not financial values, so they correctly use reportData
-  - The pattern for each section is: accessor summary box at the top, then charts if any, then narrative content below
-  - Market approach section had existing marketTableHTML placement - the summary box was added before it to maintain flow
----
-
-## 2026-01-28 - US-009
-- What was implemented:
-  - Wired DataAccessor into 5 remaining PDF sections in lib/pdf/professional-pdf-generator.ts:
-  - **Valuation Reconciliation**: Added "Reconciliation Summary" box with all 3 approach values and weights, DLOM adjustment with rate, and concluded fair market value with value range display
-  - **Risk Assessment**: Added "Risk Profile Overview" box with accessor.getRiskScore() and accessor.getRiskRating() via safeString(). Wrapped risk_factors table cell values (category, rating, score, description) in safeString() to prevent [object Object]/undefined
-  - **KPI Overview**: Added "Source Financial Metrics" box with accessor.getFormattedRevenue(), getFormattedSDEMargin(), getFormattedEBITDAMargin(), getFormattedCurrentRatio(). Wrapped all 8 KPI card values in safeString() to protect against NaN from formatKPI()
-  - **Strategic Insights**: Added "Company Snapshot" box with accessor company name, revenue, SDE, and concluded value
-  - **Assumptions & Limiting Conditions**: Added introductory paragraph with accessor.getCompanyName() and accessor.getValuationDate() via safeString()
-  - **Sources/Bibliography**: Wrapped citation table values (inline, source name, year, context) in safeString()
-- Files changed:
-  - lib/pdf/professional-pdf-generator.ts (added accessor-sourced summary boxes to 5 sections, wrapped existing values in safeString)
-- **Learnings for future iterations:**
-  - The valuation reconciliation section only has narrative content (from valuation_synthesis) - no pre-existing financial value embedding, making it safe to add accessor summary box at top
-  - Risk factors come from reportData.risk_factors (array of objects with category, rating, score, description) - these are NOT from the DataAccessor since they're detailed per-factor data. The accessor only provides aggregate risk score and rating
-  - KPI values are computed by calculateKPIs() from yearlyData financial data - these are independent calculations, not stored in the DataStore. The accessor summary box provides the authoritative source metrics that underpin the KPI calculations
-  - formatKPI() handles null -> 'N/A' but doesn't protect against NaN; wrapping in safeString() adds that safety layer
-  - The bibliography section uses CitationManager-generated strings, not financial values from reportData - safeString wrapping is defensive protection
-  - All 6 remaining sections now follow the same pattern: accessor summary box (when accessor defined) at top, followed by charts/content
----
-
-## 2026-01-28 - US-010
-- What was implemented:
-  - Created lib/validation/consistency-validator.ts - a value consistency validator that compares section text against authoritative DataAccessor values
-  - Exported types: ConsistencyCheck, ConsistencyResult
-  - Main function: validateValueConsistency(accessor, sectionContents: Map<string,string>) returns ConsistencyResult with passed, checks, errors, warnings
-  - Checks 4 metrics: Final Value/Concluded Value (1% tolerance), SDE Multiple (5% tolerance), Normalized SDE (1% tolerance), Revenue (1% tolerance)
-  - extractCurrencyValues() uses regex to find $X,XXX,XXX patterns and $X.XM/B shorthand
-  - extractMultiples() finds Xx and "X times" patterns
-  - Each metric has keyword-based matching to identify which extracted values correspond to which metric
-  - Critical sections (executiveSummary, conclusionOfValue, etc.) produce errors on mismatch; non-critical sections produce warnings
-  - getContext() provides surrounding text for each match to aid debugging
-  - Candidates filtered to within 10x range of authoritative value to avoid false positives from unrelated numbers
-  - Used Array.from(map.keys()) instead of for-of on Map to avoid downlevelIteration TS config issue
-- Files changed:
-  - lib/validation/consistency-validator.ts (new file, ~230 lines)
-  - scripts/ralph/prd.json (US-010 passes: true)
-  - scripts/ralph/progress.txt (updated status, added progress entry)
-- **Learnings for future iterations:**
-  - The existing lib/valuation/consistency-validator.ts validates DataStore internal consistency (financial ratios, balance sheet). The new lib/validation/consistency-validator.ts validates cross-section text value consistency - they are complementary, not duplicates.
-  - TypeScript target in this project doesn't support Map iteration via for-of directly - use Array.from(map.keys()) pattern instead.
-  - lib/validation/ already had quality-checker.ts and report-output-validator.ts - the new file sits alongside them.
-  - Currency regex must handle both full format ($1,234,567) and shorthand ($1.2M) to catch values in narrative text.
-  - Multiple extraction needs upper bound filter (< 100) to avoid matching things like "100x" that might be percentage references.
----
-
-## 2026-01-28 - US-011
-- What was implemented:
-  - Created lib/validation/business-rule-validator.ts with 6 business rule checks
-  - Exported types: BusinessRuleResult (rule, passed, severity, message, details), BusinessRuleValidation (passed, results, errors, warnings)
-  - Main function: validateBusinessRules(accessor) returns BusinessRuleValidation
-  - Rule 1 (SDE Multiple): Industry-specific ranges for Engineering Services, Professional Services, Manufacturing, Retail, Restaurant, Healthcare, Technology, Construction, Transportation, plus default. Warning if outside range, error if > 1.5x max. Uses case-insensitive substring matching on industry name.
-  - Rule 2 (Asset Approach Positive): Error if total_assets > 0 but asset approach value <= 0
-  - Rule 3 (Approach Weights): Error if weights don't sum to 100% within 1% tolerance (compares decimal sum to 1.0)
-  - Rule 4 (Value Range Spread): Warning if spread < 10% or > 50% of final value
-  - Rule 5 (Final Value Positive): Error if final value <= 0
-  - Rule 6 (Cap Rate): Error if outside 5%-60%, warning if outside 10%-50%
-  - Distinguishes errors (blocking) from warnings (advisory) - `passed` is false only when errors exist
-- Files changed:
-  - lib/validation/business-rule-validator.ts (new file, ~250 lines)
-- **Learnings for future iterations:**
-  - Industry multiple ranges are defined in multiple places: lib/valuation/industry-multiples-lookup.ts (by NAICS code, detailed with ceiling), lib/qa/auto-correction-engine.ts (by NAICS code), and now lib/validation/business-rule-validator.ts (by industry name string). The business rule validator uses industry name matching because DataAccessor exposes getIndustryName() not NAICS codes for simple validation.
-  - DataAccessor stores approach weights as decimals (0.40 = 40%), so weight sum check compares against 1.0 not 100.
-  - DataAccessor stores cap rate as decimal (0.25 = 25%), so cap rate range check uses 0.05-0.60 bounds.
-  - The validator only uses DataAccessor methods - no direct DataStore access needed. This keeps it decoupled from the store structure.
----
-
-## 2026-01-28 - US-012
-- What was implemented:
-  - Created lib/validation/completeness-validator.ts with content completeness validation
-  - Exported types: SectionCheck, CompletenessResult
-  - Main function: validateCompleteness(sectionContents: Map<string,string>) returns CompletenessResult with passed, sections array, errors, warnings, totalWordCount
-  - 11 required sections with minimum word counts: Executive Summary (400), Conclusion of Value (50), Company Profile (200), Industry Analysis (150), Financial Analysis (300), Asset Approach (100), Income Approach (150), Market Approach (200), Risk Assessment (150), Assumptions and Limiting Conditions (100), Sources and References (50)
-  - Case-insensitive partial matching via sectionMatches() - handles camelCase keys ("executiveSummary"), display names ("Executive Summary"), and slug formats ("executive-summary")
-  - countWords() strips HTML tags before counting
-  - Missing required sections are errors (blocking) - `passed` is false
-  - Below-minimum word counts are warnings (advisory)
-  - Total word count below 5000 is a warning
-  - Used Array.from(map.keys()) pattern for Map iteration (consistent with other validators)
-- Files changed:
-  - lib/validation/completeness-validator.ts (new file, ~210 lines)
-- **Learnings for future iterations:**
-  - Section keys in the PDF generator use camelCase (e.g., "executiveSummary", "conclusionOfValue") - the matcher normalizes by stripping spaces/hyphens/underscores and lowercasing
-  - The match uses bidirectional contains check: normalized key includes pattern OR pattern includes normalized key - this handles both partial and full section name matches
-  - countWords strips HTML tags first since section content may be HTML from the PDF generator
-  - No DataAccessor dependency needed - this validator only needs section text content
----
-
-## 2026-01-28 - US-013
-- What was implemented:
-  - Created new directory lib/narratives/ and file lib/narratives/value-injection.ts
-  - Exported function: generateAuthoritativeValuesBlock(accessor) - generates a formatted text block with all authoritative financial values from the DataAccessor, including:
-    - Company information (name, industry, NAICS code, valuation date)
-    - Valuation conclusion (fair market value, value range, SDE multiple, DLOM status)
-    - Financial metrics (revenue, SDE current and normalized, SDE margin, EBITDA, net income)
-    - Valuation approaches (all 3 with values and weights)
-    - Balance sheet summary (total assets, liabilities, book value, working capital)
-    - Risk profile (score and rating)
-    - STRICT RULES section enforcing exact figure usage
-  - Exported function: buildNarrativePrompt(section, accessor, additionalContext?) - combines values block with section-specific writing instructions
-  - Section-specific instructions defined for: executive_summary (600-900 words), company_profile (300-500 words), industry_analysis (300-400 words), risk_assessment (300-400 words)
-  - Default instruction for unlisted sections: professional tone, exact value matching
-  - NarrativePromptOptions interface exported for additional context
-- Files changed:
-  - lib/narratives/value-injection.ts (new file, ~150 lines)
-- **Learnings for future iterations:**
-  - lib/narratives/ directory is new - created for this story. No existing narrative generation utilities existed.
-  - The value injection system is intentionally decoupled from the prompt files in lib/claude/prompts-v2/ - it generates a text block, not a prompt structure. This makes it easy to prepend to any existing prompt.
-  - Section keys in SECTION_INSTRUCTIONS use snake_case (e.g., 'executive_summary') to match the orchestrator's section naming convention found in prompts-v2/pass-11*.ts files.
-  - The values block uses a delimited format (===== markers) so it's visually distinct when prepended to prompts.
-  - Only 4 section-specific instructions are defined; the default instruction handles all other sections. Future stories may add more section-specific guidance.
-  - US-026 will wire this into the actual narrative generation passes in orchestrator-v2.ts.
----
-
-## 2026-01-28 - US-014
-- What was implemented:
-  - Created lib/validation/narrative-validator.ts - a post-generation narrative validator
-  - Exported types: ValueMention, NarrativeValidationResult
-  - Main function: validateNarrative(section, generatedText, accessor) returns NarrativeValidationResult with valid, section, errors, warnings, valueMentions
-  - Checks for 2 critical metrics: Final Value (1% tolerance) and SDE Multiple (5% tolerance)
-  - Final Value is critical in Executive Summary and Conclusion of Value sections
-  - SDE Multiple is critical in Executive Summary and Market Approach sections
-  - Uses regex extraction for currency ($X,XXX,XXX and $X.XM) and multiples (Xx, "X times")
-  - Filters candidates to within 10x range of authoritative value to avoid false positives
-  - Critical sections produce errors (blocking); non-critical sections produce warnings (advisory)
-  - validateNarrativeOrThrow() logs warnings to console and throws Error on critical errors
-  - Section identifiers support both snake_case (executive_summary) and camelCase (executiveSummary)
-- Files changed:
-  - lib/validation/narrative-validator.ts (new file, ~230 lines)
-- **Learnings for future iterations:**
-  - The extraction helpers (extractCurrencyValues, extractMultiples, valuesMatch, getContext) are duplicated from consistency-validator.ts - if a third validator needs them, consider extracting to a shared module.
-  - Section identifiers vary between the orchestrator (snake_case: executive_summary) and PDF generator (camelCase: executiveSummary) - the criticalIn arrays include both forms.
-  - The validator is designed to work standalone per-section (not across sections like consistency-validator) - it validates one narrative at a time as it's generated.
-  - Only 2 metric checks (Final Value and SDE Multiple) are implemented as these are the most commonly hallucinated values. Additional checks can be added to NARRATIVE_CHECKS array.
----
-
-## 2026-01-28 - US-015
-- What was implemented:
-  - Created lib/validation/quality-gate.ts - a comprehensive pre-PDF quality gate that aggregates all validators
-  - Exported types: QualityCategory, QualityGateResult
-  - Main function: runQualityGate(accessor, sectionContents, rawDataString) returns QualityGateResult with passed, score (0-100), categories (dataIntegrity, businessRules, completeness, formatting), blockingErrors, warnings, canProceed
-  - Data integrity checks (35% weight): detects [object Object], undefined, NaN in raw data and section contents; runs value consistency validator
-  - Business rules checks (25% weight): runs business-rule-validator (SDE multiple, asset approach, weights sum, value range, final value, cap rate)
-  - Completeness checks (25% weight): runs completeness-validator (required sections, word counts)
-  - Formatting checks (15% weight): detects N/A in critical fields (concluded value, revenue, SDE, etc.) in both section content and raw data
-  - canProceed is false if ANY blocking errors exist (from any category)
-  - passed requires canProceed AND score >= 70
-  - runQualityGateOrThrow() throws Error with detailed message listing all blocking errors; logs warnings to console when proceeding
-  - Console.log outputs all category scores and errors for debugging
-- Files changed:
-  - lib/validation/quality-gate.ts (new file, ~280 lines)
-- **Learnings for future iterations:**
-  - The existing lib/qa/quality-gate.ts is a DIFFERENT system - it uses input-based scoring with boolean checks (DataConsistencyInput, ValuationAccuracyInput, etc.) for the broader QA orchestrator. The new lib/validation/quality-gate.ts aggregates the three PRD-I validators (consistency, business rules, completeness) and adds data integrity + formatting checks.
-  - The quality gate accepts a rawDataString parameter (typically JSON.stringify of report data) for pattern-based scanning of [object Object], undefined, NaN across the entire data payload.
-  - Score calculation uses Math.max(0, 100 - deductions) per category, then weighted average across categories. Deductions are calibrated: [object Object] = 25pts per occurrence, consistency error = 10pts, missing section = 15pts, business rule error = 20pts.
-  - countOccurrences is a simple string indexOf loop - it's case-sensitive for [object Object] and undefined which is the correct behavior (these exact strings should never appear).
-  - N/A detection uses a proximity check: finds the field name in text, then checks the next 100 characters for "n/a", "not available", or "not applicable".
----
-
-## 2026-01-28 - US-016
-- What was implemented:
-  - Created lib/validation/__tests__/validation-pipeline.test.ts with 31 integration tests covering the complete validation pipeline
-  - Test: valid report data passes quality gate with score >= 70 (canProceed=true, no blocking errors)
-  - Test: runQualityGateOrThrow does not throw for valid data
-  - Test: inconsistent final value in executive summary detected by consistency validator (2 tests)
-  - Test: [object Object] in raw data blocks generation (3 tests: raw data, section content, runQualityGateOrThrow)
-  - Test: missing Executive Summary section blocks generation (3 tests: completeness, quality gate, runQualityGateOrThrow)
-  - Test: asset approach $0 with positive assets fails business rules (2 tests: validator + quality gate)
-  - Test: SDE multiple outside industry range generates warning or error (2 tests: below range, far above max)
-  - Test: approach weights not summing to 100% fails (4 tests: over 100%, under 100%, within tolerance passes, quality gate)
-  - Test: quality gate result structure (3 tests: all categories present, weights sum to 1.0, score range 0-100)
-  - Test: final value positive (2 tests: zero and negative)
-  - Test: cap rate validation (3 tests: below 5%, above 60%, warning range 5%-10%)
-  - Test: multiple blocking errors accumulate from different categories
-  - Test: undefined and NaN detection in raw data and section content (2 tests)
-  - Test: N/A in critical fields near concluded value
-  - Test: completeness word count warnings for short sections
-  - All tests use generic mock data (Apex Consulting Group, Professional Services - not K-Force specific)
-  - All 31 tests pass, typecheck passes (only pre-existing error)
-- Files changed:
-  - lib/validation/__tests__/validation-pipeline.test.ts (new file, 31 tests)
-  - scripts/ralph/prd.json (US-016 passes: true)
-  - scripts/ralph/progress.txt (updated status, added progress entry)
-- **Learnings for future iterations:**
-  - The consistency validator checks ALL dollar amounts in a section against the metric's authoritative value when ANY keyword for that metric appears in the section. This means mock section text must be carefully constructed: critical sections (executiveSummary, conclusionOfValue) should NOT contain non-final-value dollar amounts, because they'll be picked up as mismatched candidates.
-  - Mock store values should be chosen so that revenue, SDE, and other amounts are clearly separated from the final value to avoid the consistency validator's 0.1x-10x candidate range picking up cross-metric false positives.
-  - The `buildMockStore()` pattern with section-level overrides (`buildMockStore({ valuation: { ...buildMockStore().valuation, field: newValue } })`) works well for creating targeted test variants.
-  - The `generateWords(minWords, sentences)` helper is useful for creating section content that meets minimum word count requirements while embedding specific test phrases.
-  - Pre-existing test failures (4 tests in 3 files: calculation-engine, data-quality-scorer, tax-form-validator) continue to be unrelated to our work.
----
-
-## 2026-01-28 - US-017
-- What was implemented:
-  - Created lib/pdf/section-ordering.ts with PROFESSIONAL_SECTION_ORDER constant defining 18 sections in canonical order
-  - SectionDefinition interface with key, displayName, estimatedPages for each section
-  - getOrderedSections() function takes a section Map and returns ordered array of present sections
-  - generateTocEntries() function builds TOC entries with estimated page numbers from a Set of present section keys
-  - getSectionDisplayName() utility for looking up display names by key
-  - Order: executiveSummary, conclusionOfValue, companyProfile, industryAnalysis, financialAnalysis, financialSummary, sdeCalculationTable, financialTrends, assetApproach, incomeApproach, capRateBuildupTable, marketApproach, valuationReconciliation, riskAssessment, keyPerformanceIndicators, strategicInsights, assumptionsAndConditions, sourcesAndReferences
-  - Updated professional-pdf-generator.ts TOC generation to use generateTocEntries() instead of ad-hoc inline ordering
-  - Executive Summary is first content section after TOC (page 3)
-  - Industry Analysis is included when content is available
-  - KPI Detail Pages handled as sub-items after KPI section
-  - sdeCalculationTable and capRateBuildupTable placeholders included in order for future US-021/US-022
-- Files changed:
-  - lib/pdf/section-ordering.ts (new file, ~100 lines)
-  - lib/pdf/professional-pdf-generator.ts (imported section-ordering, replaced TOC generation)
-- **Learnings for future iterations:**
-  - The PDF generator renders sections via a massive inline HTML template literal (lines 1084-1879). It is NOT data-driven - section HTML is hardcoded in order. The PROFESSIONAL_SECTION_ORDER constant serves as the canonical reference for this ordering and is used by the TOC generator.
-  - The section rendering order in the template already matches PROFESSIONAL_SECTION_ORDER. Any future section reordering would require moving the HTML blocks in the template to match.
-  - Some sections are always present (executiveSummary, conclusionOfValue, financialSummary, keyPerformanceIndicators), while others are conditional on content availability.
-  - riskAssessment section renders if ANY of: riskAssessment narrative, charts.riskGauge, or inlineSvgCharts.riskGauge are truthy.
-  - KPI Detail Pages are sub-sections, not a top-level entry in PROFESSIONAL_SECTION_ORDER. They're handled separately in the TOC as indented sub-items.
-  - coverPage and tableOfContents are implicit (always pages 1-2) and not in the order constant since they aren't content sections.
----
-
-## 2026-01-28 - US-018
-- What was implemented:
-  - Enhanced generateTocEntries() in lib/pdf/section-ordering.ts to accept optional sectionContents Map for content-based page estimation
-  - Added countContentWords() helper that strips HTML tags and counts words
-  - Added estimatePages() that uses ~350 words/page heuristic with minimum 1 page per section
-  - generateTocEntries() now returns sectionNumber alongside displayName, pageNumber, and key
-  - Updated TOC CSS in professional-pdf-generator.ts with professional styling:
-    - Dotted leaders between section title and page number (.toc-leader with border-bottom: 1px dotted)
-    - Section numbers in navy bold (.toc-number)
-    - Proper flexbox layout with baseline alignment
-    - Sub-item styling for KPI detail pages (.toc-sub-item)
-  - Updated TOC HTML generation to build a sectionContents Map from available content variables
-  - TOC items now render with numbered sections (e.g., "1. Executive Summary ....... 3")
-  - KPI sub-items use consistent dotted leader styling instead of inline styles
-  - Falls back to static estimatedPages when content is not available for a section
-- Files changed:
-  - lib/pdf/section-ordering.ts (added content-based page estimation, sectionNumber output)
-  - lib/pdf/professional-pdf-generator.ts (TOC CSS enhancement, TOC HTML generation with section numbers, dotted leaders, content map)
-- **Learnings for future iterations:**
-  - The conclusionOfValue section is always-present but has no dedicated content string variable - its content is generated inline from accessor/reportData. Don't try to set sectionContents for it.
-  - Always-present sections (executiveSummary, conclusionOfValue, financialSummary, keyPerformanceIndicators) are added unconditionally to presentSections, but only some have content variables for the sectionContents map.
-  - The TOC dotted leader uses a flex element with border-bottom: 1px dotted - this renders correctly in PDF/HTML contexts where CSS leaders (content: leader('.')) may not be supported.
-  - The sectionNumber is a sequential counter across present sections only (skipping absent sections), starting at 1.
----
-
-## 2026-01-28 - US-019
-- What was implemented:
-  - Created lib/pdf/design-tokens.ts as the centralized design system file
-  - COLORS constant with 10 named colors: primary (#1E3A5F navy), primaryLight (#2E5A8F), accent (#C9A962 gold), positive (#059669), negative (#DC2626), text (#1F2937), textLight (#6B7280), background (#FFFFFF), backgroundAlt (#F9FAFB), border (#E5E7EB)
-  - CHART_COLOR_PALETTE array: ['#1E3A5F', '#059669', '#C9A962', '#7C3AED', '#DC2626', '#0891B2']
-  - TYPOGRAPHY constant with 3 font stacks: headingFont (Merriweather/Georgia/serif), bodyFont (Inter/system/sans-serif), monoFont (JetBrains Mono/monospace)
-  - FONT_SIZES constant: h1 (28pt), h2 (18pt), h3 (14pt), body (11pt), small (10pt), xs (9pt)
-  - generateDesignTokenCSS() function that outputs a <style> block with CSS custom properties and .data-table professional table styling (gradient header, zebra striping, total-row highlight, currency/percentage alignment)
-  - All constants exported with `as const` for type safety
-- Files changed:
-  - lib/pdf/design-tokens.ts (new file, ~130 lines)
-- **Learnings for future iterations:**
-  - lib/charts/theme.ts already has CHART_COLORS with similar values (primary, secondary, accent) but uses different keys and additional chart-specific colors (danger, warning, success, grid). The design-tokens.ts is the broader system; chart theme.ts remains the chart-specific config.
-  - The PDF generator (professional-pdf-generator.ts) has a massive inline <style> block (lines 762-1124) with hardcoded color values. Future stories can import COLORS/TYPOGRAPHY from design-tokens.ts to replace those literals.
-  - COLORS.backgroundAlt uses #F9FAFB (matching the PDF generator's tbody tr:nth-child(even)) while CHART_COLORS.backgroundAlt uses #F5F5F5 - slight difference exists between PDF and chart contexts.
-  - The generateDesignTokenCSS() includes both CSS custom properties (:root vars) and .data-table class styles. The data-table styles are included here because US-020 needs them and they're a core part of the design system.
----
-
-## 2026-01-28 - US-020
-- What was implemented:
-  - Imported `generateDesignTokenCSS` from `lib/pdf/design-tokens.ts` into the PDF generator
-  - Injected design token CSS (including `.data-table` styles) into the PDF `<style>` block via `${generateDesignTokenCSS()}`
-  - Scoped existing generic table CSS to `table:not(.data-table)` for backward compatibility with any non-data-table HTML
-  - Applied `class="data-table"` to all 17 existing tables in the PDF generator:
-    - 3 full tables with `<thead>`: Bibliography/Citations, Valuation Approaches, Risk Factor Breakdown
-    - 11 summary/metrics tables: Exec Summary highlights, Conclusion metrics, Company Profile info, Financial Analysis metrics, Asset/Income/Market Approach summaries, Reconciliation summary, Risk Profile, KPI metrics, Strategic Insights snapshot
-    - 3 financial statement tables: Income, Assets, Liabilities
-  - Applied `.currency` class to right-aligned currency/numeric value cells (monospace font, right-aligned)
-  - Applied `.percentage` class to right-aligned percentage value cells
-  - Applied `.total-row` class to highlight rows: Total Assets, Total Liabilities, SDE total, Concluded Fair Market Value
-  - Removed redundant inline styles (padding, border-bottom, text-align, background, font-weight) that are now handled by CSS classes
-  - Zebra striping now handled by `.data-table tbody tr:nth-child(even)` CSS instead of inline `style="background: ${i % 2 === 0 ? '#F9F9F9' : 'white'}"` per-row
-  - Risk factor table retained inline styles only for rating badge colors (conditional per-row)
-  - EBITDA row retained inline background (#E3F2FD blue) since it's distinct from the yellow total-row styling
-- Files changed:
-  - lib/pdf/professional-pdf-generator.ts (imported design-tokens, injected CSS, applied classes to all 17 tables, 242 insertions, 210 deletions)
-- **Learnings for future iterations:**
-  - The `.data-table` CSS from `generateDesignTokenCSS()` provides: gradient navy header, zebra striping, total-row yellow highlight (#FEF3C7), `.currency` right-aligned monospace, `.percentage` right-aligned, rounded corners, subtle box-shadow
-  - Existing generic table/thead/td CSS was scoped to `table:not(.data-table)` so any tables generated by external systems (sdeTableHTML, marketTableHTML, synthesisTableHTML from CalculationTableGenerator) continue to render correctly without `.data-table` class
-  - Summary tables inside info boxes (padding/background containers) don't need `<thead>` - they use `<tbody>` only with `.data-table` for consistent spacing and styling
-  - The `.total-row` class uses yellow background (#FEF3C7) with font-weight 600. For other highlight colors (e.g., EBITDA's blue #E3F2FD), use inline styles instead
-  - When adding new tables to the PDF, always use `class="data-table"` and use `.currency`/`.percentage`/`.total-row` classes as appropriate
----
-
-## 2026-01-28 - US-021
-- What was implemented:
-  - Enhanced SDE calculation detail table in lib/display/calculation-table-generator.ts:
-    - Added `class="data-table"` to the SDE table's `<table>` element for professional gradient header, zebra striping, and consistent styling
-    - Added `class="currency"` to all amount cells for right-aligned monospace formatting
-    - Imported and applied `safeString()` from lib/utils/safe-string.ts to all cell values (description, formatted_amount, source) to prevent [object Object] or undefined in output
-  - Enhanced SDE table input in lib/pdf/professional-pdf-generator.ts:
-    - Split "Depreciation & Amortization" into separate "Depreciation" and "Amortization" line items for granular detail
-    - Added more specific source references: "Tax Return Schedule C / W-2" for officer comp, "Form 4562" for depreciation/amortization
-    - Added "One-Time / Non-Recurring Expenses" add-back from reportData when available (source: "Owner Reported")
-    - Maintained filter for zero-amount items (only non-zero add-backs shown)
-  - Total SDE row already uses `.total-row` class (from existing CalculationTableGenerator logic)
-  - Table already integrated at correct PDF position (after Financial Analysis section, line ~1497)
-  - All values sourced from DataAccessor (accessor.getOfficerCompensation, getInterestExpense, getDepreciation, getAmortization, getSDE, getNetIncome)
-- Files changed:
-  - lib/display/calculation-table-generator.ts (added safeString import, data-table class, currency class, safeString wrapping)
-  - lib/pdf/professional-pdf-generator.ts (enhanced SDE add-back items with granular breakdown and better sources)
-- **Learnings for future iterations:**
-  - The CalculationTableGenerator's SDE table previously used generic `<table>` without `data-table` class, so it fell through to the `table:not(.data-table)` CSS selectors. Now it uses the professional design token styles.
-  - DataStore has 4 add-back fields: officer_compensation, interest_expense, depreciation, amortization. Additional add-backs (one_time_expenses) are only in reportData, not in the DataStore/DataAccessor.
-  - The `safeString` import was added to calculation-table-generator.ts - this is the first time a display module imports from utils/safe-string.
-  - Splitting D&A into separate lines gives readers better transparency into the SDE calculation components.
----
-
-## 2026-01-28 - US-022
-- What was implemented:
-  - Added cap rate buildup table types and generator to lib/display/calculation-table-generator.ts:
-    - CapRateBuiltupRow, CapRateBuiltupTable, CapRateBuiltupInput interfaces
-    - generateCapRateBuiltupTable() method that builds rows for all rate components (risk-free rate, equity risk premium, size premium, industry risk premium, company-specific risk premium), discount rate subtotal, growth rate deduction, and final capitalization rate
-    - capRateBuiltupTableToHTML() method that renders professional HTML with data-table class, percentage-aligned rate cells, subtotal/total-row styling, and source column
-    - formatRate() helper for consistent percentage formatting (e.g., "4.5%")
-    - Default sources for each component (e.g., "US Treasury 20-Year Bond", "Duff & Phelps")
-  - Integrated cap rate table into lib/pdf/professional-pdf-generator.ts:
-    - Imported CapRateBuiltupInput and DEFAULT_CAP_RATE_COMPONENTS from income-approach-calculator
-    - Cap rate table HTML generated alongside SDE, market, and synthesis tables using accessor.getCapRate() for the final rate and DEFAULT_CAP_RATE_COMPONENTS for individual component rates
-    - Added capRateTableHTML parameter to buildHTML() method signature
-    - Rendered cap rate buildup section between Income Approach and Market Approach sections with explanatory text
-    - Added capRateBuildupTable to TOC presentSections and sectionContents for dynamic TOC inclusion
-  - All values use safeString() wrapping and DataAccessor for the final cap rate value
-  - Table uses professional CSS classes: data-table, percentage, subtotal-row, total-row
-- Files changed:
-  - lib/display/calculation-table-generator.ts (added types, formatRate helper, generateCapRateBuiltupTable, capRateBuiltupTableToHTML)
-  - lib/pdf/professional-pdf-generator.ts (imports, capRateTableHTML generation, buildHTML parameter, section rendering, TOC integration)
-- **Learnings for future iterations:**
-  - The DataStore only stores the final cap_rate value, not individual components. The DEFAULT_CAP_RATE_COMPONENTS from income-approach-calculator.ts provides the standard component rates used in the build-up method.
-  - The capRateBuiltupTableToHTML() is a separate method (not routed through toHTML()) because CapRateBuiltupTable has a different structure than the existing table types (SDECalculationTable, MarketApproachTable, SynthesisTable).
-  - The section ordering already had a `capRateBuildupTable` placeholder in PROFESSIONAL_SECTION_ORDER (lib/pdf/section-ordering.ts) - it just needed content to be added.
-  - The cap rate section is rendered between income and market approach sections, matching the canonical section order.
----
-
-## 2026-01-28 - US-023
-- What was implemented:
-  - Added asset adjustment table types and generator to lib/display/calculation-table-generator.ts:
-    - AssetAdjustmentRow, AssetAdjustmentTable, AssetAdjustmentInput interfaces
-    - generateAssetAdjustmentTable() method that creates rows for 5 asset categories (Cash, AR, Inventory, Fixed Assets, Other Assets), plus Total Assets, Total Liabilities, and Adjusted Net Asset Value rows
-    - Default adjustments: 5% allowance for doubtful accounts on AR, 10% inventory obsolescence reserve (matching asset-approach-calculator.ts defaults)
-    - assetAdjustmentTableToHTML() method rendering professional HTML with data-table class, currency-aligned columns, total-row highlights, and a double-bordered net asset value row
-  - Integrated asset adjustment table into lib/pdf/professional-pdf-generator.ts:
-    - Added AssetAdjustmentInput import
-    - Added assetTableHTML variable alongside other table HTMLs
-    - Generated table from DataAccessor balance sheet values (getCash, getAccountsReceivable, getInventory, getFixedAssets, getTotalAssets, getTotalLiabilities)
-    - Calculated "Other Assets" as remainder (total_assets minus individual categories)
-    - Added assetTableHTML as parameter to buildHTML() method
-    - Rendered asset adjustment table within the Asset Approach section, between the summary box and narrative content
-  - All values use safeString() wrapping and formatCurrency() for safe rendering
-  - Table uses professional CSS classes: data-table, currency, total-row
-- Files changed:
-  - lib/display/calculation-table-generator.ts (added types, generateAssetAdjustmentTable, assetAdjustmentTableToHTML)
-  - lib/pdf/professional-pdf-generator.ts (imports, assetTableHTML generation, buildHTML parameter, section rendering)
-- **Learnings for future iterations:**
-  - The DataAccessor has raw getters for individual balance sheet items (getCash, getAccountsReceivable, getInventory, getFixedAssets, getIntangibleAssets) but no formatted versions - use formatCurrency() from the table generator for formatting these values.
-  - The BalanceSheetSummary in data-store.ts has accounts_payable but no accessor getter exists for it. Liabilities are only accessible at the total level through getTotalLiabilities().
-  - "Other Assets" is computed as the difference between total_assets and the sum of individually tracked categories. This includes intangible_assets and any items not broken out.
-  - The asset adjustment table follows the same pattern as capRateBuiltupTableToHTML: a dedicated HTML method separate from toHTML() since the table structure differs from SDE/Market/Synthesis tables.
-  - Default adjustments in the table generator match those in asset-approach-calculator.ts: 5% AR allowance and 10% inventory obsolescence.
----
-
-## 2026-01-28 - US-024
-- What was implemented:
-  - Updated lib/charts/theme.ts to derive all colors from the centralized design system (lib/pdf/design-tokens.ts):
-    - CHART_COLORS now imports COLORS, using primary, primaryLight, accent, positive, negative, text, textLight, background, backgroundAlt, and border from design tokens
-    - Grid color changed from standalone #E0E0E0 to COLORS.border (#E5E7EB) for consistency
-    - Success color changed from #4CAF50 to COLORS.positive (#059669) to match design system green
-    - Danger color changed from #F44336 to COLORS.negative (#DC2626) to match design system red
-    - BackgroundAlt unified from #F5F5F5 to COLORS.backgroundAlt (#F9FAFB)
-  - Added CHART_SERIES_PALETTE re-export from design tokens (navy, green, gold, purple, red, cyan) for multi-series chart coloring
-  - CHART_FONTS.family now references TYPOGRAPHY.bodyFont (Inter) from design tokens instead of hardcoded string
-  - Updated lib/charts/chart-generator.ts to use centralized palette:
-    - Revenue Trend: bars now use gradient fill (navy → lighter navy) via SVG <defs><linearGradient>
-    - SDE/EBITDA Trend: series use CHART_SERIES_PALETTE[0] (navy) and [1] (green) instead of CHART_COLORS.primary/secondary
-    - Valuation Comparison: approach bars use CHART_SERIES_PALETTE colors and gradient fills (solid → 70% opacity horizontal gradient)
-    - Profitability Margins: three series use CHART_SERIES_PALETTE[2] (gold), [0] (navy), [1] (green)
-    - KPI Benchmark: company bars use CHART_SERIES_PALETTE[0] (navy), benchmark bars use [2] (gold) for better visual distinction
-  - All chart generators already had value labels (above bars, at line points, at bar ends) - confirmed present
-  - Grid lines already used subtle styling (strokeWidth: 0.5, dashArray: '3,3') - now using lighter design token border color
-  - All 5 chart types (revenue trend, SDE/EBITDA trend, valuation comparison, risk gauge, profitability margins) + KPI benchmark verified
-- Files changed:
-  - lib/charts/theme.ts (imports from design-tokens.ts, derived all colors and fonts)
-  - lib/charts/chart-generator.ts (imports CHART_SERIES_PALETTE, gradient fills, palette colors for all multi-series charts)
-- **Learnings for future iterations:**
-  - CHART_COLORS.warning (#FFC107 amber) has no direct equivalent in design tokens - it's chart-specific for the risk gauge's yellow segments. Kept as a standalone value.
-  - The risk gauge uses a green-yellow-red gradient across 10 arc segments with intermediate colors (#8BC34A light green). These are chart-specific semantic colors for risk visualization, not general theme colors.
-  - SVG gradient fills use <defs><linearGradient> elements - must be placed inside the SVG element (via svgWrapper). The gradient IDs (revenueBarGrad, approachGrad0/1/2) must be unique per SVG.
-  - CHART_SERIES_PALETTE is the ordered 6-color array: navy[0], green[1], gold[2], purple[3], red[4], cyan[5]. Use consistent indices across related charts for visual coherence.
-  - The KPI page generator (lib/pdf/kpi-page-generator.ts) has its own hardcoded CSS colors (#1E3A5F, #C9A962) - these are HTML page styling, not chart SVG colors. They could be updated in a future story to use design tokens.
-  - svg-primitives.ts imports from theme.ts, so the color changes propagate automatically to grid lines, axes, and default text styles.
----
-
-## 2026-01-28 - US-025
-- What was implemented:
-  - Enhanced DisclaimerManager in lib/content/disclaimers.ts:
-    - Updated Standard of Value disclaimer to explicitly reference IRS Revenue Ruling 59-60 and its factors (nature/history of business, economic outlook, book value, earning capacity, dividend-paying capacity, goodwill, prior sales, comparable companies)
-    - Added CERTIFICATION_STATEMENT constant with USPAP and ASA compliance language
-    - Added getCertificationStatement() method
-    - Added generateProfessionalHTML(context) method that renders 6 numbered sections: (1) Purpose and Intended Use, (2) Standard of Value, (3) Valuation Date, (4) Limiting Conditions (8 numbered items), (5) Data Sources and Reliability, (6) Certification
-  - Enhanced design-tokens.ts with .disclaimer-section CSS:
-    - h3 headers with navy color and bottom border
-    - Justified paragraph text with proper line-height
-    - Ordered list styling for limiting conditions
-  - Updated professional-pdf-generator.ts:
-    - Imported createDisclaimerManager and DisclaimerContext
-    - Generates professionalDisclaimersHTML using DisclaimerManager with DataAccessor-sourced company name and valuation date
-    - Assumptions section now always renders (not conditional on AI narrative) since professional disclaimers are always generated
-    - AI-generated narrative content renders below the professional disclaimers as supplementary content with a separator border
-    - TOC always includes Assumptions & Conditions section
-    - Uses safeString() for all dynamic text injection
-- Files changed:
-  - lib/content/disclaimers.ts (added certification statement, IRS Rev Ruling 59-60 reference, generateProfessionalHTML method)
-  - lib/pdf/design-tokens.ts (added .disclaimer-section CSS styles)
-  - lib/pdf/professional-pdf-generator.ts (imported disclaimers, generated professional HTML, updated section rendering)
-- **Learnings for future iterations:**
-  - The DisclaimerManager was a dormant utility - it existed with full test coverage but was not integrated into the PDF pipeline. The AI-generated content from Pass 11j was the sole source. Now both coexist: professional disclaimers from DisclaimerManager are always present, and AI narrative is supplementary.
-  - DisclaimerContext requires company_name, valuation_date, and report_date. Only company_name and valuation_date are dynamically sourced from DataAccessor; report_date uses generatedDate.
-  - The Assumptions section is now unconditionally rendered (no longer wrapped in `${assumptionsLimitingConditions ? ... : ''}`) since the professional disclaimers HTML is always generated.
-  - The existing 21 disclaimers tests still pass because the new methods are additive and don't modify existing behavior.
+  - ProfessionalPDFGenerator uses Puppeteer with chromium for PDF generation
+  - safeString() helper used for sanitizing string output in HTML
+  - The accessor has formatted getter methods like getFormattedFinalValue(), getFormattedApproachValue('asset')
+  - getContent() helper extracts content from both string and {content: string} object formats
+  - Mini-report intentionally excludes narrative-heavy sections to focus on data verification
+  - Test banners use yellow background (#FEF3C7) with orange border (#F59E0B) for visibility
 ---
