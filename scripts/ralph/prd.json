@@ -1,422 +1,129 @@
 {
   "project": "ValuationPro",
-  "branchName": "ralph/data-integrity-validation-polish-v2",
-  "description": "Combined PRD: Data Integrity (PRD-H v2), Dynamic Validation (PRD-I v2), and Professional Polish (PRD-J v2). Establishes single source of truth architecture, validation pipeline, and premium visual quality for all business valuation reports.",
+  "branchName": "ralph/chart-visualization-fixes",
+  "description": "Fix multiple chart rendering issues in PDF reports: empty charts with N/A labels, missing Y-axis labels, reversed year order, benchmark lines covered by data, and valuation range chart cutoff.",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Create Centralized DataStore",
-      "description": "As a platform developer, I want a single, immutable store for all calculated values so that every part of the system reads from the same source. The DataStore holds ALL authoritative values and is frozen after creation.",
+      "title": "Create Chart Data Validator",
+      "description": "As a system, I need to validate chart data before rendering so that broken charts are never displayed.",
       "acceptanceCriteria": [
-        "Create /lib/valuation/data-store.ts if it doesn't exist or enhance existing",
-        "ValuationDataStore interface holds all authoritative values (revenue, earnings, balance_sheet, approaches, valuation, risk, data_quality)",
-        "createDataStore() factory function validates all required fields present (final_value, revenue_current, sde_normalized)",
-        "DataStore is frozen after creation using Object.freeze (deep freeze)",
-        "DataIntegrityError thrown on missing required fields",
-        "Unit tests in __tests__/data-store.test.ts verify freeze and validation",
+        "Create lib/charts/chart-validator.ts",
+        "validateChartData(config: ChartConfig): ChartValidationResult function",
+        "Check: data array not empty",
+        "Check: all values are numbers (not NaN, undefined, null)",
+        "Check: labels array same length as data array",
+        "Check: labels are strings (not objects)",
+        "Check: not all labels are 'N/A'",
+        "Return { valid, errors[], warnings[], sanitizedConfig? }",
+        "Unit tests in lib/charts/__tests__/chart-validator.test.ts",
         "Typecheck passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Already implemented with comprehensive tests. data-store.ts has ValuationDataStore, createValuationDataStore, DataIntegrityError, and deepFreeze."
+      "notes": "Implemented in lib/charts/chart-validator.ts with 35 tests"
     },
     {
       "id": "US-002",
-      "title": "Create DataAccessor with Formatting",
-      "description": "As a developer building PDF sections, I want a consistent API to get formatted values so that I don't have to worry about formatting in each section.",
+      "title": "Implement Chronological Year Sorting",
+      "description": "As a system, I need to sort chart data chronologically so that trends read correctly left-to-right (oldest to newest).",
       "acceptanceCriteria": [
-        "Create /lib/valuation/data-accessor.ts if it doesn't exist or enhance existing",
-        "ValuationDataAccessor class wraps DataStore (read-only)",
-        "Provides getX() and getFormattedX() methods for all values (revenue, SDE, approaches, final value, etc.)",
-        "formatCurrency() handles null, undefined, NaN gracefully returning '$0'",
-        "formatPercentage() handles edge cases returning '0.0%'",
-        "Computed properties: getSDEMargin(), getCurrentRatio(), getBookValue(), getRevenueGrowthRate()",
-        "Unit tests verify formatting and edge cases",
+        "Add sortChronologically(labels, values) function to chart-validator.ts or new utility",
+        "Extract year from label strings (handles '2024', 'FY2024', '2024-Q1' formats)",
+        "Sort both labels and values arrays in parallel by year ascending",
+        "Oldest year on left, newest on right",
+        "Unit tests verify sorting with various label formats",
         "Typecheck passes"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "Already implemented with comprehensive tests. data-accessor.ts has ValuationDataAccessor with all getX() and getFormattedX() methods."
+      "notes": "Implemented extractYear() and sortChronologically() in chart-validator.ts"
     },
     {
       "id": "US-003",
-      "title": "Create Safe String Utilities",
-      "description": "As a developer, I want utilities that safely convert any value to a string so that [object Object], undefined, and NaN never appear in output.",
+      "title": "Create Placeholder Chart Component",
+      "description": "As a system, I need a placeholder for charts with insufficient data so that the report looks intentional rather than broken.",
       "acceptanceCriteria": [
-        "Create /lib/utils/safe-string.ts",
-        "safeString(value, fallback) handles null, undefined, NaN, objects without returning '[object Object]'",
-        "safeYear(value, fallback) extracts 4-digit year from various formats (number, string, date, object)",
-        "safeCurrency(value, fallback) formats numbers as currency",
-        "safePercentage(value, decimals, fallback) formats as percentage",
-        "safeMultiple(value, suffix, fallback) formats as '2.50x'",
-        "Unit tests verify no '[object Object]', 'undefined', 'NaN' ever returned",
+        "Add generatePlaceholderChart(title, reason) function",
+        "Returns HTML/SVG that displays 'Insufficient Data for Visualization'",
+        "Shows what data was missing (e.g., 'Requires 2+ years of financial data')",
+        "Matches styling of other charts (same dimensions, colors from design tokens)",
+        "Integrate with chart generator to use placeholder when validation fails",
         "Typecheck passes"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "Already implemented with comprehensive tests. safe-string.ts has safeString, safeYear, safeCurrency, safePercentage, safeMultiple."
+      "notes": "Implemented generatePlaceholderChart() using design tokens, integrated into all chart generators"
     },
     {
       "id": "US-004",
-      "title": "Implement Asset Approach Fallback Chain",
-      "description": "As a platform developer, I want the Asset Approach to always calculate a valid value so that no report shows $0 for a company with positive assets.",
+      "title": "Add Y-Axis Label Generation",
+      "description": "As a system, I need to generate Y-axis labels for all charts so that values can be understood.",
       "acceptanceCriteria": [
-        "Update /lib/calculations/asset-approach-calculator.ts or asset-approach.ts",
-        "Fallback chain: Pass 7 output -> Balance Sheet calculation -> Estimated (50% of assets)",
-        "calculateAssetApproach() returns { value, source, book_value, adjustments, adjusted_value }",
-        "If total_assets > 0, asset approach must be > 0",
-        "Logs which source was used: console.log('[ASSET] Using <source> value: <amount>')",
-        "Unit tests verify fallback chain works correctly",
+        "Add generateYAxisLabels(min, max, unit, tickCount) function",
+        "Calculate appropriate tick marks (5-7 ticks by default)",
+        "Format labels with units (%, $, x as appropriate)",
+        "Handle large numbers with abbreviations ($1.5M, $500K)",
+        "No overlapping labels (adequate spacing)",
+        "Update chart generation to include Y-axis labels",
+        "Unit tests verify scale calculation and formatting",
         "Typecheck passes"
       ],
       "priority": 4,
       "passes": true,
-      "notes": "Already implemented with 3-tier fallback chain. Added 18 comprehensive tests in asset-approach-calculator.test.ts."
+      "notes": "Implemented generateYAxisTicks(), formatYAxisLabel(), generateYAxisLabels() in chart-validator.ts"
     },
     {
       "id": "US-005",
-      "title": "Remove/Reverse RECONCILE Override Logic",
-      "description": "As a platform developer, I want to ensure calculation engine values are NEVER overridden by narrative values so that the single source of truth is maintained.",
+      "title": "Fix Benchmark Line Rendering Order",
+      "description": "As a system, I need benchmark lines visible behind data bars so that comparisons can be made.",
       "acceptanceCriteria": [
-        "Search codebase for RECONCILE, reconcile, 'narrative value', override patterns",
-        "Document each location found and its purpose",
-        "Remove or reverse any logic that overwrites calculation values with AI-generated values",
-        "Data flows one direction: Calculation Engine -> DataStore -> (Narratives, PDF)",
-        "Add safeguard: DataStore modification attempts logged as errors in development",
-        "Verify no code path allows narrative -> calculation override",
+        "Update SVG chart generation to render in correct order: grid -> benchmark -> data -> labels",
+        "Benchmark line rendered AFTER grid lines",
+        "Benchmark line rendered BEFORE data bars/lines",
+        "Benchmark label positioned to not overlap data",
+        "Use dashed line style for visual distinction",
         "Typecheck passes"
       ],
       "priority": 5,
       "passes": true,
-      "notes": "Already fixed in previous PRD. reconcileWithNarratives() has hasCalculationEngine guard, protected fields defined in calculationEngineFields Set. Only fills missing data."
+      "notes": "Fixed in kpi-page-generator.ts - benchmark line now renders before data bars"
     },
     {
       "id": "US-006",
-      "title": "Wire DataAccessor into All PDF Sections",
-      "description": "As a platform developer, I want all PDF sections to get values from DataAccessor so that values are consistent across the entire report.",
+      "title": "Fix Valuation Range Chart",
+      "description": "As a system, I need to fix the Valuation Range Overview chart so that all elements are visible and properly positioned.",
       "acceptanceCriteria": [
-        "Audit lib/pdf/professional-pdf-generator.ts for direct reportData.* access",
-        "Replace remaining direct reportData financial value access with accessor methods",
-        "All narrative sections that mention financial values go through value injector",
-        "No section calculates its own values inline",
-        "Use safeString utilities for all string conversions",
-        "Document which sections are accessor-wired vs narrative-injected",
+        "Fix 'Your Value' marker so it doesn't cover other text",
+        "Ensure Industry Low/High labels visible and connected to chart",
+        "Fix container height so bottom is not cut off",
+        "Position value marker correctly on the range scale",
+        "Use design token colors consistently",
         "Typecheck passes"
       ],
       "priority": 6,
       "passes": true,
-      "notes": "Verified: accessor-first pattern in PDF generator, value injection wired in download-pdf and regenerate routes, safeString utilities used throughout."
+      "notes": "Fixed in puppeteer-chart-renderer.ts: increased height, smart label positioning, clamped marker to visible range"
     },
     {
       "id": "US-007",
-      "title": "Integration Test - Data Consistency",
-      "description": "As a platform developer, I want to verify data consistency across a complete report so that I know the architecture is working correctly.",
+      "title": "Create KPI Trend Chart Template",
+      "description": "As a system, I need a consistent template for all KPI trend charts so that they all render correctly with the same quality.",
       "acceptanceCriteria": [
-        "Create or update scripts/test-data-consistency.ts",
-        "Script creates DataStore with known values",
-        "Script generates test content and runs consistency checks",
-        "Verifies: final_value consistent, no [object Object], no undefined, no NaN",
-        "Verifies: Asset Approach > $0 when assets exist",
-        "Script outputs clear PASS/FAIL with details",
-        "Can run via: npx tsx scripts/test-data-consistency.ts",
+        "Create generateKPITrendChart(config) function or component",
+        "Props: title, data[], labels[], benchmark?, unit",
+        "Handles 1-4 years of data gracefully",
+        "Always includes Y-axis with scale labels",
+        "Always sorts years chronologically (left=oldest)",
+        "Benchmark line visible when provided",
+        "Consistent sizing across all KPI charts",
+        "Uses validation before rendering (shows placeholder if invalid)",
+        "Integrates with PDF generator for all KPI sections",
         "Typecheck passes"
       ],
       "priority": 7,
       "passes": true,
-      "notes": "Already implemented. test-data-consistency.ts passes all 8 tests: DataStore creation, no forbidden patterns, quality gate, value consistency, asset approach logic, weights sum."
-    },
-    {
-      "id": "US-008",
-      "title": "Create Value Consistency Validator",
-      "description": "As a platform developer, I want to validate that values are consistent across all report sections so that no report has contradictory figures.",
-      "acceptanceCriteria": [
-        "Create or enhance /lib/validation/consistency-validator.ts",
-        "validateValueConsistency(accessor, sectionContents) extracts values from sections",
-        "Compares all mentions of same metric against authoritative DataAccessor value",
-        "Tolerance: 1% for currency values",
-        "Returns { passed, checks[], errors[], warnings[] }",
-        "Works for ANY report (not hardcoded values)",
-        "Unit tests verify detection of inconsistent values",
-        "Typecheck passes"
-      ],
-      "priority": 8,
-      "passes": true,
-      "notes": "Already implemented. consistency-validator.ts extracts currency/multiple values, compares against accessor, returns checks/errors/warnings."
-    },
-    {
-      "id": "US-009",
-      "title": "Create Business Rule Validator",
-      "description": "As a platform developer, I want to validate that values follow business rules so that reports don't contain logically impossible results.",
-      "acceptanceCriteria": [
-        "Create or enhance /lib/validation/business-rule-validator.ts",
-        "validateBusinessRules(accessor) checks: SDE multiple in industry range, Asset > $0 when assets exist, weights sum to 100%, value range reasonable, cap rate sane",
-        "Industry-specific multiple ranges defined (Engineering 1.5-4x, Restaurant 1-2.5x, etc.)",
-        "Returns { passed, results[], errors[], warnings[] }",
-        "Distinguishes errors (blocking) from warnings (advisory)",
-        "Unit tests verify all rules",
-        "Typecheck passes"
-      ],
-      "priority": 9,
-      "passes": true,
-      "notes": "Already implemented. business-rule-validator.ts has INDUSTRY_SDE_MULTIPLE_RANGES, checks all rules, distinguishes errors/warnings."
-    },
-    {
-      "id": "US-010",
-      "title": "Create Content Completeness Validator",
-      "description": "As a platform developer, I want to validate that all required content is present so that no report is missing critical sections.",
-      "acceptanceCriteria": [
-        "Create or enhance /lib/validation/completeness-validator.ts",
-        "SECTION_REQUIREMENTS defines required sections with minWords and requiredElements",
-        "validateCompleteness(sectionContents) checks each section present with minimum word count",
-        "Checks for required elements within sections (e.g., exec summary needs 'value', 'multiple')",
-        "Returns { passed, sections[], errors[], warnings[], totalWordCount }",
-        "Unit tests verify missing section detection",
-        "Typecheck passes"
-      ],
-      "priority": 10,
-      "passes": true,
-      "notes": "Already implemented. completeness-validator.ts has REQUIRED_SECTIONS with matchPatterns and minimumWords."
-    },
-    {
-      "id": "US-011",
-      "title": "Create Narrative Value Injection System",
-      "description": "As a platform developer, I want to inject authoritative values into narrative prompts so that AI-generated narratives use correct values.",
-      "acceptanceCriteria": [
-        "Create or enhance /lib/narratives/value-injection.ts",
-        "generateAuthoritativeValuesBlock(accessor) creates values block with EXACT figures",
-        "Block includes: final value, range, SDE multiple, revenue, approaches, balance sheet, risk",
-        "Block includes STRICT RULES warning about using exact values",
-        "buildNarrativePrompt(section, accessor, context) combines values block with section instructions",
-        "Works for any company/industry (no hardcoded values)",
-        "Typecheck passes"
-      ],
-      "priority": 11,
-      "passes": true,
-      "notes": "Already implemented. lib/narratives/value-injection.ts has generateAuthoritativeValuesBlock with all required fields and STRICT RULES."
-    },
-    {
-      "id": "US-012",
-      "title": "Create Post-Generation Narrative Validator",
-      "description": "As a platform developer, I want to validate generated narratives for correct values so that AI hallucinations are caught before reaching the PDF.",
-      "acceptanceCriteria": [
-        "Create or enhance /lib/validation/narrative-validator.ts",
-        "validateNarrative(section, text, accessor) checks for expected values",
-        "Detects values that differ from authoritative source",
-        "Critical sections (Exec Summary, Conclusion) block on mismatch; others warn",
-        "validateNarrativeOrThrow() throws on critical errors",
-        "Returns { valid, section, errors[], warnings[], valueMentions[] }",
-        "Typecheck passes"
-      ],
-      "priority": 12,
-      "passes": true,
-      "notes": "Already implemented. narrative-validator.ts validates generated narratives against accessor, returns valid/errors/warnings/valueMentions."
-    },
-    {
-      "id": "US-013",
-      "title": "Create Pre-PDF Quality Gate",
-      "description": "As a platform developer, I want a final quality gate before PDF generation so that bad reports are blocked from being generated.",
-      "acceptanceCriteria": [
-        "Create or enhance /lib/validation/quality-gate.ts",
-        "runQualityGate(accessor, sections, rawData) runs ALL validators (consistency, business rules, completeness)",
-        "Score calculated: dataIntegrity 35%, businessRules 25%, completeness 25%, formatting 15%",
-        "BLOCKS PDF generation if any critical check fails (canProceed: false)",
-        "Returns { passed, score, categories{}, blockingErrors[], warnings[], canProceed }",
-        "runQualityGateOrThrow() throws with detailed errors if gate fails",
-        "Typecheck passes"
-      ],
-      "priority": 13,
-      "passes": true,
-      "notes": "Already implemented. quality-gate.ts runs all validators with weighted scoring (35/25/25/15), blocks on critical errors, returns canProceed flag."
-    },
-    {
-      "id": "US-014",
-      "title": "Integration Test - Validation Pipeline",
-      "description": "As a platform developer, I want to test the entire validation pipeline so that I know it catches errors correctly.",
-      "acceptanceCriteria": [
-        "Create or update tests/validation-pipeline.test.ts or scripts/test-validation-pipeline.ts",
-        "Test with valid report data - should pass",
-        "Test with inconsistent values - should fail",
-        "Test with [object Object] present - should fail",
-        "Test with missing required section - should fail",
-        "Test with Asset Approach $0 when assets exist - should fail",
-        "Tests are platform-agnostic (not hardcoded values)",
-        "Typecheck passes"
-      ],
-      "priority": 14,
-      "passes": true,
-      "notes": "Covered by test-data-consistency.ts which runs full quality gate and validates all pipeline components."
-    },
-    {
-      "id": "US-015",
-      "title": "Implement Professional Section Ordering",
-      "description": "As a reader receiving a valuation report, I want the Executive Summary at the beginning so that I can immediately understand the key findings.",
-      "acceptanceCriteria": [
-        "Create PROFESSIONAL_SECTION_ORDER constant in lib/pdf/section-ordering.ts or similar",
-        "Order: cover, TOC, execSummary, conclusion, companyProfile, industryAnalysis, financialAnalysis, approaches, reconciliation, risk, KPIs, insights, assumptions, sources",
-        "Executive Summary appears on pages 3-5",
-        "Update PDF generator to use ordering function",
-        "Industry Analysis section included (data from Pass 4)",
-        "Works for any report",
-        "Typecheck passes"
-      ],
-      "priority": 15,
-      "passes": true,
-      "notes": "Already implemented. lib/pdf/section-ordering.ts has PROFESSIONAL_SECTION_ORDER with 18 sections, getOrderedSections, generateTocEntries."
-    },
-    {
-      "id": "US-016",
-      "title": "Create Dynamic Table of Contents",
-      "description": "As a reader, I want an accurate Table of Contents so that I can navigate the document easily.",
-      "acceptanceCriteria": [
-        "TOC generated dynamically from actual sections present",
-        "Page numbers calculated based on content (approximate)",
-        "All present sections listed; no sections listed that don't exist",
-        "Professional styling: dotted leaders, right-aligned page numbers",
-        "Works for any report",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 16,
-      "passes": true,
-      "notes": "Already implemented. generateTocEntries creates dynamic TOC, professional styling with toc-item, toc-leader, toc-page classes."
-    },
-    {
-      "id": "US-017",
-      "title": "Implement Design System",
-      "description": "As a developer, I want a centralized design system so that all reports have consistent, professional styling.",
-      "acceptanceCriteria": [
-        "Create lib/pdf/design-system.ts or design-tokens.ts",
-        "DESIGN_TOKENS constant with colors (primary #1E3A5F, accent #C9A962, positive #059669, negative #DC2626)",
-        "Typography: Merriweather for headings, Inter for body, JetBrains Mono for numbers",
-        "Font sizes: h1 28pt, h2 18pt, h3 14pt, body 11pt",
-        "generateDesignSystemCSS() function returns CSS string using tokens",
-        "All colors use tokens (no hardcoded values in PDF generator)",
-        "Typecheck passes"
-      ],
-      "priority": 17,
-      "passes": true,
-      "notes": "Already implemented. lib/pdf/design-tokens.ts has COLORS, TYPOGRAPHY, FONT_SIZES, CHART_COLOR_PALETTE, generateDesignTokenCSS."
-    },
-    {
-      "id": "US-018",
-      "title": "Implement Professional Table Styling",
-      "description": "As a reader, I want tables to look professional and be easy to scan so that I can quickly understand the data.",
-      "acceptanceCriteria": [
-        "Table CSS in design system: gradient headers, zebra striping, currency right-aligned, total rows highlighted",
-        "Header gradient: linear-gradient(135deg, primary 0%, primaryLight 100%)",
-        "Total rows: yellow background #FEF3C7",
-        ".data-table class consistently applied to all tables",
-        "Update PDF generator tables to use new styling",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 18,
-      "passes": true,
-      "notes": "Already implemented. design-tokens.ts includes .data-table styling with gradient headers, zebra striping, highlighted totals."
-    },
-    {
-      "id": "US-019",
-      "title": "Create SDE Calculation Detail Table",
-      "description": "As a business owner, I want to see exactly how SDE was calculated so that I understand and can verify the earnings figure.",
-      "acceptanceCriteria": [
-        "Create generateSDECalculationTable(accessor) function in PDF generator or separate module",
-        "Shows net income as starting point",
-        "Lists all add-backs with amounts (officer compensation, depreciation, interest, etc.)",
-        "Shows source for each line item",
-        "Total row highlighted with calculated SDE",
-        "Uses DataAccessor for all values",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 19,
-      "passes": true,
-      "notes": "Already implemented. CalculationTableGenerator.generateSDETable in lib/display/calculation-table-generator.ts, integrated in PDF generator."
-    },
-    {
-      "id": "US-020",
-      "title": "Create Cap Rate Buildup Table",
-      "description": "As a reader, I want to see how the capitalization rate was determined so that I understand the Income Approach.",
-      "acceptanceCriteria": [
-        "Create generateCapRateBuildupTable(accessor) function",
-        "Shows all rate components: risk-free rate, equity risk premium, size premium, industry risk, company-specific risk",
-        "Shows discount rate subtotal",
-        "Shows growth rate deduction",
-        "Shows final cap rate",
-        "Includes sources for each component",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 20,
-      "passes": true,
-      "notes": "Already implemented. CalculationTableGenerator.generateCapRateBuiltupTable, capRateBuiltupTableToHTML methods exist and are integrated."
-    },
-    {
-      "id": "US-021",
-      "title": "Create Asset Adjustment Table",
-      "description": "As a reader, I want to see how assets were adjusted so that I understand the Asset Approach.",
-      "acceptanceCriteria": [
-        "Create generateAssetAdjustmentTable(accessor) function",
-        "Shows book value for each asset category (current assets, fixed assets, other)",
-        "Shows adjustment amounts and reasons",
-        "Shows fair market value for each category",
-        "Shows net asset value calculation: total FMV assets - total liabilities",
-        "Uses DataAccessor for all values",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 21,
-      "passes": true,
-      "notes": "Already implemented. assetTableHTML generated and integrated in PDF generator with asset adjustments and net asset calculation."
-    },
-    {
-      "id": "US-022",
-      "title": "Implement Chart Design Standards",
-      "description": "As a reader, I want charts to be visually appealing and informative so that I can quickly understand trends.",
-      "acceptanceCriteria": [
-        "Charts use design token colors (chart array: #1E3A5F, #059669, #C9A962, etc.)",
-        "Value labels displayed on bars/points",
-        "Subtle grid lines (color #E5E7EB)",
-        "Consistent font family and sizes",
-        "Update generateCharts() to use centralized chart config",
-        "Works for any business data",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
-      ],
-      "priority": 22,
-      "passes": true,
-      "notes": "Already implemented. CHART_COLOR_PALETTE in design-tokens.ts, charts use centralized colors."
-    },
-    {
-      "id": "US-023",
-      "title": "Add Professional Disclaimers Section",
-      "description": "As a valuation professional, I want appropriate disclaimers in the report so that the report is legally compliant.",
-      "acceptanceCriteria": [
-        "Create generateDisclaimersSection(accessor) function",
-        "Includes: Intended Use and Users, Standard of Value (IRS 59-60), Valuation Date significance, Limiting Conditions, Data Sources and Reliability, Certification statement",
-        "Company name and valuation date injected dynamically",
-        "Professional formatting with numbered sections",
-        "Section appears near end of report per section ordering",
-        "Typecheck passes"
-      ],
-      "priority": 23,
-      "passes": true,
-      "notes": "Already implemented. lib/content/disclaimers.ts has DisclaimerManager with all standard disclaimers, integrated via createDisclaimerManager."
-    },
-    {
-      "id": "US-024",
-      "title": "Integration Test - Visual Quality",
-      "description": "As a developer, I want to verify visual quality improvements so that reports meet premium standards.",
-      "acceptanceCriteria": [
-        "Create scripts/test-visual-quality.ts or add to existing test script",
-        "Checks: Navy color scheme present (#1E3A5F), professional fonts referenced, table gradient headers present, SDE table present, cap rate table present, asset table present, disclaimers section present, exec summary in first 5 pages",
-        "Script outputs checklist with PASS/FAIL for each item",
-        "Can run via: npx tsx scripts/test-visual-quality.ts",
-        "Works for any generated report",
-        "Typecheck passes"
-      ],
-      "priority": 24,
-      "passes": true,
-      "notes": "Visual quality verification covered by existing test-data-consistency.ts and Playwright browser verification."
+      "notes": "Enhanced generateInlineSVGChart() in kpi-page-generator.ts with all required features"
     }
   ]
 }

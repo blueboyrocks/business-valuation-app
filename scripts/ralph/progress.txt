@@ -1,133 +1,87 @@
 # Ralph Progress Log
 Started: Wed, Jan 29, 2026
-Branch: ralph/data-integrity-validation-polish-v2
-PRD: Combined PRD-H v2, PRD-I v2, PRD-J v2 (24 stories)
+Branch: ralph/chart-visualization-fixes
+PRD: Chart Visualization Fixes (7 stories)
 ---
 
 ## Codebase Patterns
-- ValuationDataAccessor is the authoritative source for all financial values in PDF generation
-- Use accessor methods (getFinalValue(), getRevenue(), etc.) instead of raw reportData access
-- Structured logs use format: console.log('[PREFIX] key=value section=name')
-- Pass 3 output (BalanceSheetYear) uses flat structure: bs.total_assets, not bs.assets.total_assets
-- When mapping between types, use multi-path lookup helper for forward/backward compatibility
-- Section names in buildSectionContents() use snake_case: executive_summary, financial_analysis, valuation_reconciliation, etc.
-- Design tokens should be centralized in lib/pdf/design-system.ts
-- Quality gate runs before PDF generation - blocking errors prevent generation
-
+- Charts are generated in lib/pdf/professional-pdf-generator.ts
+- Design tokens in lib/pdf/design-tokens.ts (COLORS, CHART_COLOR_PALETTE)
+- SVG charts rendered inline in HTML for PDF generation
+- KPI charts appear in pages 39-63 of the PDF report
+- Chart data comes from reportData.yearly_financials or calculation results
+- Chart validation should be done before rendering to show placeholder for bad data
+- All time-series charts should sort data chronologically (oldest year on left)
+- Benchmark lines should render BEFORE data bars so bars appear on top
 ---
 
-## Wed, Jan 29, 2026 - US-001, US-002, US-003 (Pre-existing)
-- Stories US-001 (DataStore), US-002 (DataAccessor), US-003 (Safe String) verified as already complete
-- All acceptance criteria already met:
-  - data-store.ts: ValuationDataStore, createValuationDataStore, DataIntegrityError, deepFreeze
-  - data-accessor.ts: ValuationDataAccessor with all getX() and getFormattedX() methods
-  - safe-string.ts: safeString, safeYear, safeCurrency, safePercentage, safeMultiple
-- All tests pass (87 tests for data-store, 64 tests for data-accessor, 74 tests for safe-string)
-- Typecheck passes
-- Files verified:
-  - lib/valuation/data-store.ts
-  - lib/valuation/data-accessor.ts
-  - lib/utils/safe-string.ts
-  - lib/valuation/__tests__/data-store.test.ts
-  - lib/valuation/__tests__/data-accessor.test.ts
-  - lib/utils/__tests__/safe-string.test.ts
+## Wed, Jan 29, 2026 - US-001, US-002, US-003, US-004 (Chart Validator)
+- Created lib/charts/chart-validator.ts with comprehensive validation:
+  - validateChartData() checks empty arrays, NaN/undefined, non-string labels, all-placeholder labels
+  - sortChronologically() sorts labels and values by year (oldest first)
+  - extractYear() handles various formats: '2024', 'FY2024', 'Q1 2024', etc.
+  - generatePlaceholderChart() creates styled SVG placeholder for invalid data
+  - generateYAxisTicks() calculates nice tick values for Y-axis scale
+  - formatYAxisLabel() formats numbers with units ($1.5M, 25%, 2.5x)
+- Created 35 tests in lib/charts/__tests__/chart-validator.test.ts
+- All tests pass, typecheck passes
 - **Learnings for future iterations:**
-  - Foundation code already implemented; always check for existing implementations first
-  - The test coverage is comprehensive - use as reference for future tests
+  - Year extraction regex needs to handle FY2024 (no word boundary between FY and digits)
+  - Placeholder charts should use design tokens for consistency
 ---
 
-## Wed, Jan 29, 2026 - US-004 (Asset Approach Fallback)
-- Verified asset-approach-calculator.ts already has 3-tier fallback chain:
-  - Tier 1: Balance sheet calculation (primary)
-  - Tier 2: Pass 7 (AI-extracted) output
-  - Tier 3: 50% of total assets as floor estimate
-- Created 18 comprehensive tests in lib/calculations/__tests__/asset-approach-calculator.test.ts
-- Tests verify: all 3 tiers, warnings on fallback, output structure, auto-generated adjustments
-- Typecheck passes
+## Wed, Jan 29, 2026 - US-005 (Benchmark Line Rendering)
+- Fixed benchmark line rendering order in kpi-page-generator.ts:
+  - Render order: grid -> benchmark -> data bars
+  - Benchmark line appears behind data for visibility
+- Enhanced generateInlineSVGChart() with:
+  - Data validation before rendering
+  - Chronological sorting of years
+  - Proper Y-axis labels with scale
+  - Consistent dimensions and spacing
 - **Learnings for future iterations:**
-  - BalanceSheetData uses specific property names (machinery_and_equipment not equipment)
-  - Asset approach logs use [AssetApproach] prefix for source selection
+  - SVG render order: elements drawn later appear on top
+  - Use <g> groups to organize rendering layers
 ---
 
-## Wed, Jan 29, 2026 - US-005 (RECONCILE Override Logic)
-- Verified reconcileWithNarratives() in lib/extraction/narrative-data-extractor.ts already has correct implementation:
-  - Accepts { hasCalculationEngine: boolean } option
-  - Protected fields defined in calculationEngineFields Set: asset_approach_value, income_approach_value, market_approach_value, annual_revenue, valuation_amount
-  - Only fills MISSING data - never overwrites existing values when hasCalcEngine=true
-  - app/api/reports/[id]/regenerate/route.ts correctly passes hasCalculationEngine flag
-- Data flow is one-directional: Calculation Engine -> DataStore -> (Narratives, PDF)
-- [DATA_FLOW] logging already in place for debugging
-- **Learnings for future iterations:**
-  - reconcileWithNarratives() uses hasCalculationEngine flag to protect calc engine values
-  - Always pass { hasCalculationEngine: true } when calculation engine results exist
----
-
-## Wed, Jan 29, 2026 - US-006 (Wire DataAccessor to PDF)
-- Verified professional-pdf-generator.ts uses accessor-first pattern:
-  - `accessor?.getX() ?? reportData.x` pattern throughout
-  - Key financial values (revenue, SDE, approaches, final value) all use accessor
-  - Remaining direct reportData accesses are for secondary fields or array data
-- Value injection wired in both routes:
-  - app/api/reports/[id]/download-pdf/route.ts:192
-  - app/api/reports/[id]/regenerate/route.ts:697
-- safeString utilities used throughout PDF generator
-- **Learnings for future iterations:**
-  - accessor-first pattern provides backwards compatibility
-  - Value injection runs AFTER reconcileWithNarratives
----
-
-## Wed, Jan 29, 2026 - US-007 (Integration Test)
-- Verified scripts/test-data-consistency.ts already exists and passes:
-  - 8 tests pass: DataStore creation, section generation, no forbidden patterns, quality gate, value consistency, SDE multiple range, asset approach logic, weights sum
-  - Run via: npx tsx scripts/test-data-consistency.ts
-- Tests use generic mock data (not K-Force specific) for portability
-- Quality gate integrated with test script
-- **Learnings for future iterations:**
-  - Integration tests should use generic mock data, not specific reports
-  - Quality gate warnings are expected for content that happens to contain numbers matching financial values
----
-
-## Wed, Jan 29, 2026 - US-008 to US-014 (PRD-I Validation Pipeline)
-- All validation components already implemented:
-  - US-008: lib/validation/consistency-validator.ts - extracts values, compares against accessor
-  - US-009: lib/validation/business-rule-validator.ts - industry ranges, rule checks, error/warning distinction
-  - US-010: lib/validation/completeness-validator.ts - required sections with minWords
-  - US-011: lib/narratives/value-injection.ts - generateAuthoritativeValuesBlock with STRICT RULES
-  - US-012: lib/validation/narrative-validator.ts - validates narratives against accessor
-  - US-013: lib/validation/quality-gate.ts - weighted scoring (35/25/25/15), blocks on critical errors
-  - US-014: Covered by test-data-consistency.ts running full pipeline
-- Typecheck passes, all tests pass
-- **Learnings for future iterations:**
-  - Validation pipeline is mature and comprehensive
-  - Quality gate uses canProceed flag to block PDF generation
-  - Categories: dataIntegrity 35%, businessRules 25%, completeness 25%, formatting 15%
----
-
-## Wed, Jan 29, 2026 - US-015 to US-024 (PRD-J Polish)
-- All visual polish components already implemented:
-  - US-015: lib/pdf/section-ordering.ts - PROFESSIONAL_SECTION_ORDER with 18 sections, getOrderedSections, generateTocEntries
-  - US-016: Dynamic TOC with generateTocEntries, professional styling (toc-item, toc-leader, toc-page)
-  - US-017: lib/pdf/design-tokens.ts - COLORS (#1E3A5F primary), TYPOGRAPHY (Merriweather/Inter/JetBrains Mono), FONT_SIZES
-  - US-018: .data-table styling with gradient headers, zebra striping, highlighted totals
-  - US-019: lib/display/calculation-table-generator.ts - generateSDETable with sources, integrated in PDF
-  - US-020: generateCapRateBuiltupTable - shows all rate components and sources
-  - US-021: Asset adjustment table with book value, adjustments, FMV, net asset calculation
-  - US-022: CHART_COLOR_PALETTE for consistent chart colors
-  - US-023: lib/content/disclaimers.ts - DisclaimerManager with 8 standard disclaimer types
-  - US-024: Visual quality verified via existing test-data-consistency.ts
-- All components integrated in professional-pdf-generator.ts
+## Wed, Jan 29, 2026 - US-006 (Valuation Range Chart)
+- Fixed Valuation Range chart in puppeteer-chart-renderer.ts:
+  - Increased container height from 400px to 480px to prevent cutoff
+  - Added smart label positioning (center/left/right based on value position)
+  - Clamped marker position to 5-95% to stay within visible range
+  - Added speech bubble arrow pointing to marker line
+  - Used design token colors (#1E3A5F navy, #DC2626 red)
+  - Styled Industry Low/High labels in cards with better spacing
 - Typecheck passes
 - **Learnings for future iterations:**
-  - Design tokens centralized in design-tokens.ts, not design-system.ts
-  - CalculationTableGenerator handles all show-your-work tables
-  - DisclaimerManager uses context interpolation for company name and dates
+  - Edge values need clamping to stay within visible chart area
+  - Dynamic label positioning prevents overlap with chart edges
 ---
 
-## Wed, Jan 29, 2026 - ALL 24 STORIES COMPLETE
-- PRD-H v2 (Data Integrity): US-001 to US-007 ✅
-- PRD-I v2 (Validation): US-008 to US-014 ✅
-- PRD-J v2 (Polish): US-015 to US-024 ✅
-- All typecheck passes, all tests pass
+## Wed, Jan 29, 2026 - US-007 (KPI Trend Chart Template)
+- Enhanced generateInlineSVGChart() in kpi-page-generator.ts serves as KPI chart template:
+  - Validates data before rendering (shows placeholder if invalid)
+  - Sorts years chronologically (oldest first, left to right)
+  - Includes Y-axis with proper scale labels
+  - Benchmark line visible with dashed style
+  - Consistent sizing (450x230px) across all KPI charts
+  - Uses design token colors from chart-validator.ts
+- Integrated with PDF generator for all KPI sections
+- Typecheck passes
+- **Learnings for future iterations:**
+  - KPI charts already had inline SVG implementation - just needed enhancement
+  - Import validation functions rather than duplicating code
+---
+
+## Wed, Jan 29, 2026 - ALL 7 STORIES COMPLETE
+- US-001: Chart Data Validator ✅
+- US-002: Chronological Year Sorting ✅
+- US-003: Placeholder Chart Component ✅
+- US-004: Y-Axis Label Generation ✅
+- US-005: Benchmark Line Rendering Order ✅
+- US-006: Valuation Range Chart Fix ✅
+- US-007: KPI Trend Chart Template ✅
+- All typecheck passes
 - Ready for push to GitHub and Vercel deployment
 ---
 
