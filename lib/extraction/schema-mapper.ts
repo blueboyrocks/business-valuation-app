@@ -30,6 +30,7 @@ import {
 import { FORM_1120S_MAPPING, FieldMapping, DocumentMapping } from './mappings/form-1120s';
 import { FORM_1120_MAPPING } from './mappings/form-1120';
 import { FORM_1065_MAPPING } from './mappings/form-1065';
+import { SCHEDULE_C_MAPPING } from './mappings/schedule-c';
 
 // Haiku model for field mapping assistance
 const HAIKU_MODEL = 'claude-3-5-haiku-20241022';
@@ -41,8 +42,10 @@ const MAPPING_REGISTRY: Map<FinancialDocumentType, DocumentMapping> = new Map([
   ['FORM_1120S', FORM_1120S_MAPPING],
   ['FORM_1120', FORM_1120_MAPPING],
   ['FORM_1065', FORM_1065_MAPPING],
+  ['SCHEDULE_C', SCHEDULE_C_MAPPING],
   // Additional mappings will be registered by other stories:
-  // ['SCHEDULE_C', SCHEDULE_C_MAPPING],
+  // ['INCOME_STATEMENT', INCOME_STATEMENT_MAPPING],
+  // ['BALANCE_SHEET', BALANCE_SHEET_MAPPING],
   // etc.
 ]);
 
