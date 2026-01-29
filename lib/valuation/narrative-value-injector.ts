@@ -313,13 +313,16 @@ export function injectValuesIntoNarrative(
     const testMatch = testPattern.exec(modifiedContent);
     console.log(`[INJECTOR] Test pattern match: ${testMatch ? testMatch[0] : 'none found'}`);
 
-    for (const rangePattern of rangePatterns) {
+    for (let i = 0; i < rangePatterns.length; i++) {
+      const rangePattern = rangePatterns[i];
       let rangeMatch: RegExpExecArray | null;
       while ((rangeMatch = rangePattern.exec(modifiedContent)) !== null) {
         foundValues += 2; // Two values in a range
         const fullMatch = rangeMatch[0];
         const lowStr = rangeMatch[1];
         const highStr = rangeMatch[2];
+        console.log(`[INJECTOR] Range pattern ${i} matched: "${fullMatch}" (low="${lowStr}", high="${highStr}")`);
+        console.log(`[INJECTOR] Authoritative range: ${valueRangeLow} - ${valueRangeHigh}`);
         const parsedLow = parseCurrency(lowStr);
         const parsedHigh = parseCurrency(highStr);
 
@@ -350,6 +353,7 @@ export function injectValuesIntoNarrative(
                 : '';
 
           const replacement = `${prefix}${formatCurrency(valueRangeLow)}${connector}${formatCurrency(valueRangeHigh)}`;
+          console.log(`[INJECTOR] REPLACING range: "${fullMatch}" → "${replacement}"`);
           modifiedContent =
             modifiedContent.slice(0, rangeMatch.index) +
             replacement +
@@ -433,6 +437,8 @@ export function injectValuesIntoAllNarratives(
   accessor: ValuationDataAccessor
 ): { reportData: Record<string, unknown>; totalReplacements: number; totalFound: number; details: string[] } {
   console.log(`[INJECTOR] Starting narrative value injection...`);
+  console.log(`[INJECTOR] Accessor values: finalValue=${accessor.getFinalValue()}, valueRangeLow=${accessor.getValueRangeLow()}, valueRangeHigh=${accessor.getValueRangeHigh()}`);
+  console.log(`[INJECTOR] reportData keys: ${Object.keys(reportData).join(', ')}`);
   const details: string[] = [];
   let totalReplacements = 0;
   let totalFound = 0;
@@ -451,7 +457,17 @@ export function injectValuesIntoAllNarratives(
 
   for (const { key, type } of narrativeFields) {
     const content = reportData[key];
+    console.log(`[INJECTOR] Checking key "${key}": type=${typeof content}, length=${typeof content === 'string' ? content.length : 'N/A'}`);
     if (typeof content === 'string' && content.length > 0) {
+      // Log a snippet for debugging
+      if (key === 'executive_summary') {
+        const snippet = content.slice(0, 200);
+        console.log(`[INJECTOR] executive_summary snippet: ${snippet}...`);
+        // Check for the problematic range
+        if (content.includes('3,800,000') || content.includes('4,600,000')) {
+          console.log(`[INJECTOR] FOUND problematic values in executive_summary`);
+        }
+      }
       const result = injectValuesIntoNarrative(content, accessor, type);
       totalFound += result.foundValues;
       if (result.hadReplacements) {
