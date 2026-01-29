@@ -161,16 +161,42 @@ export async function POST(
     }
 
     // PRD-H: Inject authoritative calculation values into narratives before PDF generation
+    let injectionResult: { totalReplacements: number; totalFound: number; details: string[] } | null = null;
+    let injectorDiagnostics: {
+      accessorValues: { finalValue: number; valueRangeLow: number; valueRangeHigh: number };
+      reportDataKeys: string[];
+      executiveSummaryLength: number;
+      hasProblematicValues: boolean;
+    } | null = null;
+
     if (accessor) {
       console.log(`[PDF] Injecting authoritative values into narratives...`);
-      const injectionResult = injectValuesIntoAllNarratives(reportData as Record<string, unknown>, accessor);
+
+      // Capture diagnostics
+      injectorDiagnostics = {
+        accessorValues: {
+          finalValue: accessor.getFinalValue(),
+          valueRangeLow: accessor.getValueRangeLow(),
+          valueRangeHigh: accessor.getValueRangeHigh(),
+        },
+        reportDataKeys: Object.keys(reportData as Record<string, unknown>),
+        executiveSummaryLength: typeof (reportData as Record<string, unknown>).executive_summary === 'string'
+          ? ((reportData as Record<string, unknown>).executive_summary as string).length
+          : 0,
+        hasProblematicValues: typeof (reportData as Record<string, unknown>).executive_summary === 'string'
+          ? ((reportData as Record<string, unknown>).executive_summary as string).includes('3,800,000')
+          : false,
+      };
+      console.log(`[PDF] Injector diagnostics:`, JSON.stringify(injectorDiagnostics));
+
+      injectionResult = injectValuesIntoAllNarratives(reportData as Record<string, unknown>, accessor);
       if (injectionResult.totalReplacements > 0) {
         console.log(`[PDF] Value injection made ${injectionResult.totalReplacements} replacement(s):`);
         for (const detail of injectionResult.details) {
           console.log(`[PDF]   ${detail}`);
         }
       } else {
-        console.log(`[PDF] Value injection: no replacements needed`);
+        console.log(`[PDF] Value injection: no replacements needed (found ${injectionResult.totalFound} values)`);
       }
     }
 
@@ -198,6 +224,13 @@ export async function POST(
             completeness: qualityResult.categories.completeness.score,
             formatting: qualityResult.categories.formatting.score,
           },
+          // Include injector diagnostics to help debug
+          injectorDiagnostics,
+          injectionResult: injectionResult ? {
+            totalReplacements: injectionResult.totalReplacements,
+            totalFound: injectionResult.totalFound,
+            details: injectionResult.details,
+          } : null,
         }, { status: 422 });
       }
 
