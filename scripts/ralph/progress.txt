@@ -147,3 +147,21 @@ C:\Users\bened\OneDrive\Documents\biz-val-test-docs
   - Entity-specific equity terms: stockholders vs members vs partners capital
 ---
 
+## Wed, Jan 29, 2026 - US-012 (Schedule K Mapper)
+- Created lib/extraction/mappings/schedule-k.ts (480+ lines)
+- Income/Loss section: ordinary business income, rental income, interest, dividends, royalties
+- Capital gains section: short-term, long-term, collectibles, unrecaptured 1250, Section 1231
+- Deductions section: Section 179 (MUST ADD BACK), charitable contributions
+- Self-employment section: guaranteed payments (services/capital/total)
+- Credits section: low-income housing, rehabilitation, other credits
+- Distributions section: cash and property distributions
+- AMT section: depreciation adjustment, depletion
+- Foreign transactions section: foreign taxes paid, foreign source income
+- **Learnings:**
+  - Schedule K appears in both 1120-S and 1065 with slight line number variations
+  - Section 179 is CRITICAL - accelerated depreciation that must be added back
+  - Capital gains are NON-RECURRING and should be normalized out
+  - Distributions useful for cash flow verification (should track net income over time)
+  - Guaranteed payments = owner compensation for partnerships
+---
+

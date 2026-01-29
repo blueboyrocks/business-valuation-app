@@ -231,8 +231,8 @@
         "Typecheck passes"
       ],
       "priority": 12,
-      "passes": false,
-      "notes": "Schedule K contains critical SDE add-backs often missed. Section 179 is accelerated depreciation that MUST be added back."
+      "passes": true,
+      "notes": "Complete: schedule-k.ts with income/loss, deductions, self-employment, credits, distributions, AMT, and foreign transactions sections."
     },
     {
       "id": "US-013",
