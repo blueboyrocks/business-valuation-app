@@ -150,6 +150,40 @@ function getContext(text: string, searchStr: string, contextChars: number = 60):
   return ctx;
 }
 
+/**
+ * Check if a keyword appears within N characters of a value position.
+ * This ensures we only flag values that are contextually related to a metric.
+ */
+function isNearKeyword(
+  text: string,
+  valuePosition: number,
+  keywords: string[],
+  maxDistance: number = 150
+): boolean {
+  const lowerText = text.toLowerCase();
+  for (const keyword of keywords) {
+    const keywordPos = lowerText.indexOf(keyword);
+    if (keywordPos !== -1) {
+      // Check if keyword is within maxDistance characters of the value
+      const distance = Math.abs(keywordPos - valuePosition);
+      if (distance <= maxDistance) {
+        return true;
+      }
+      // Also check for multiple occurrences of the keyword
+      let searchFrom = keywordPos + keyword.length;
+      while (searchFrom < lowerText.length) {
+        const nextPos = lowerText.indexOf(keyword, searchFrom);
+        if (nextPos === -1) break;
+        if (Math.abs(nextPos - valuePosition) <= maxDistance) {
+          return true;
+        }
+        searchFrom = nextPos + keyword.length;
+      }
+    }
+  }
+  return false;
+}
+
 // ============ METRIC DEFINITIONS ============
 
 interface MetricDefinition {
@@ -316,18 +350,12 @@ export function validateValueConsistency(
     const content = sectionContents.get(sectionName);
     if (!content || content.trim().length === 0) continue;
 
-    const lowerContent = content.toLowerCase();
-
     for (const metric of METRIC_DEFINITIONS) {
       const authValue = metric.getAuthoritative(accessor);
       const formattedAuth = metric.getFormattedAuthoritative(accessor);
 
       // Skip metrics with zero/invalid authoritative values
       if (authValue === 0 || isNaN(authValue)) continue;
-
-      // Check if any metric keywords appear in this section
-      const hasKeyword = metric.keywords.some(kw => lowerContent.includes(kw));
-      if (!hasKeyword) continue;
 
       // Extract values from section text based on metric type
       const extracted = metric.type === 'currency'
@@ -338,14 +366,25 @@ export function validateValueConsistency(
 
       if (extracted.length === 0) continue;
 
-      // Find values that are in the same ballpark as the authoritative value
-      // (within 5x range to filter out clearly unrelated numbers)
-      const candidates = extracted.filter(e => {
-        const ratio = e.value / authValue;
-        return ratio > 0.1 && ratio < 10;
-      });
+      // Find values that are CONTEXTUALLY related to this metric:
+      // 1. Appear near a metric keyword (within 150 chars)
+      // 2. Are in a reasonable range (within 3x) of the authoritative value
+      for (const candidate of extracted) {
+        // Find the position of this value in the text
+        const valuePosition = content.indexOf(candidate.raw);
+        if (valuePosition === -1) continue;
 
-      for (const candidate of candidates) {
+        // PRD-H: Context-aware matching - only check values that appear near a metric keyword
+        // This prevents flagging revenue ($6M) as a "Final Value mismatch" just because
+        // "fair market value" appears elsewhere in the same section
+        const nearKeyword = isNearKeyword(content, valuePosition, metric.keywords, 150);
+        if (!nearKeyword) continue;
+
+        // Also filter to values within a reasonable range (0.2x to 5x)
+        // to catch potential mismatches without being too strict
+        const ratio = candidate.value / authValue;
+        if (ratio <= 0.2 || ratio >= 5) continue;
+
         const matched = valuesMatch(candidate.value, authValue, metric.tolerance);
         const context = getContext(content, candidate.raw);
         const isCriticalSection = metric.criticalSections?.includes(sectionName);
