@@ -152,8 +152,15 @@ export function injectValuesIntoNarrative(
   };
 
   // Additional authoritative values for ranges and multiples
-  const valueRangeLow = accessor.getValueRangeLow();
-  const valueRangeHigh = accessor.getValueRangeHigh();
+  // Fallback: if value range is 0, calculate from final value using standard 15% range
+  const finalValue = accessor.getFinalValue();
+  let valueRangeLow = accessor.getValueRangeLow();
+  let valueRangeHigh = accessor.getValueRangeHigh();
+  if ((valueRangeLow === 0 || valueRangeHigh === 0) && finalValue > 0) {
+    valueRangeLow = Math.round(finalValue * 0.85 / 1000) * 1000;
+    valueRangeHigh = Math.round(finalValue * 1.15 / 1000) * 1000;
+    console.log(`[INJECTOR] Value range fallback: calculated ${valueRangeLow} - ${valueRangeHigh} from final value ${finalValue}`);
+  }
   const sdeMultiple = accessor.getSDEMultiple();
 
   // Key phrases that indicate which value is being discussed
