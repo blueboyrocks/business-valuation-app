@@ -161,6 +161,24 @@ export class ProfessionalPDFGenerator {
 
     if (accessor) {
       console.log('[PDF] Using DataAccessor for financial values');
+
+      // PRD-H US-001: Structured logging for all critical values
+      // These logs enable debugging data flow without parsing the full PDF
+      console.log('[MANIFEST] final_value=%d section=generation_start', accessor.getFinalValue());
+      console.log('[MANIFEST] revenue=%d section=generation_start', accessor.getRevenue());
+      console.log('[MANIFEST] sde_normalized=%d section=generation_start', accessor.getSDE());
+      console.log('[MANIFEST] sde_weighted=%d section=generation_start', accessor.getWeightedSDE());
+      console.log('[MANIFEST] asset_approach=%d section=generation_start', accessor.getAssetApproachValue());
+      console.log('[MANIFEST] income_approach=%d section=generation_start', accessor.getIncomeApproachValue());
+      console.log('[MANIFEST] market_approach=%d section=generation_start', accessor.getMarketApproachValue());
+      console.log('[MANIFEST] sde_multiple=%s section=generation_start', accessor.getSDEMultiple().toFixed(2));
+      console.log('[MANIFEST] cap_rate=%s section=generation_start', (accessor.getCapRate() * 100).toFixed(1) + '%');
+      console.log('[MANIFEST] dlom_percentage=%s section=generation_start', (accessor.getDLOMPercentage() * 100).toFixed(1) + '%');
+      console.log('[MANIFEST] value_range_low=%d section=generation_start', accessor.getValueRangeLow());
+      console.log('[MANIFEST] value_range_high=%d section=generation_start', accessor.getValueRangeHigh());
+      console.log('[MANIFEST] asset_weight=%s section=generation_start', (accessor.getAssetWeight() * 100).toFixed(0) + '%');
+      console.log('[MANIFEST] income_weight=%s section=generation_start', (accessor.getIncomeWeight() * 100).toFixed(0) + '%');
+      console.log('[MANIFEST] market_weight=%s section=generation_start', (accessor.getMarketWeight() * 100).toFixed(0) + '%');
     } else {
       console.log('[PDF] No DataAccessor available, using reportData directly');
     }
@@ -446,6 +464,8 @@ export class ProfessionalPDFGenerator {
 
       await browser.close();
 
+      // PRD-H US-001: Summary log at generation complete
+      console.log('[MANIFEST] GENERATION_COMPLETE values_logged=15');
       console.log(`[PDF] Generated successfully (${pdfBuffer.length} bytes)`);
       return pdfBuffer;
 
