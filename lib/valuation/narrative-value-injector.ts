@@ -293,6 +293,8 @@ export function injectValuesIntoNarrative(
   // Improved pattern to match more currency formats
   const currencyValuePattern = `\\$[\\d,]+(?:\\.\\d{2})?|\\$?[\\d.]+\\s*million(?:\\s+dollars)?|\\$[\\d.]+[MK]|[\\d.]+\\s*million\\s+dollars`;
   const rangePatterns = [
+    // SIMPLE: "$X,XXX,XXX to $X,XXX,XXX" - most direct match for K-Force format
+    /(\$[\d,]+)\s+to\s+(\$[\d,]+)/gi,
     // "$X to $Y" or "$X - $Y"
     new RegExp(`(${currencyValuePattern})\\s*(?:to|-|through)\\s*(${currencyValuePattern})`, 'gi'),
     // "between $X and $Y"
