@@ -450,7 +450,11 @@ export function injectValuesIntoAllNarratives(
     { key: 'income_approach_analysis', type: 'income_approach' },
     { key: 'market_approach_analysis', type: 'market_approach' },
     { key: 'financial_analysis', type: 'other' },
-    { key: 'company_profile', type: 'other' },
+    // PRD-H: Do NOT process company_profile through value injection.
+    // Company Profile describes business operations and should NOT contain
+    // valuation approach values. Processing it causes false replacements where
+    // words like "market position" trigger market_value pattern matching.
+    // { key: 'company_profile', type: 'other' },
     { key: 'risk_assessment', type: 'other' },
     { key: 'industry_analysis', type: 'other' },
   ];

@@ -781,9 +781,14 @@ export function buildNarrativePassPrompt(
 
     case '11b': {
       // Company Overview
+      // PRD-H: Do NOT include valuesBlock for Company Overview.
+      // This section describes the business operations, not valuation figures.
+      // Including valuation values (e.g., Market Approach $1.9M) causes the AI
+      // to incorrectly insert these figures into narrative contexts like
+      // "generating $1.9M in annual revenue" when revenue is actually $6.2M.
       return {
         systemPrompt: PASS_11B_SYSTEM_PROMPT,
-        userPrompt: valuesBlock + buildPass11bPrompt(companyProfile, incomeStatements, latestBalance || {}),
+        userPrompt: buildPass11bPrompt(companyProfile, incomeStatements, latestBalance || {}),
       };
     }
 
