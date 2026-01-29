@@ -109,3 +109,22 @@ C:\Users\bened\OneDrive\Documents\biz-val-test-docs
   - Vehicle miles help validate business use percentage claims
 ---
 
+## Wed, Jan 29, 2026 - US-010 (Income Statement Mapper)
+- Created lib/extraction/mappings/income-statement.ts (500+ lines)
+- Revenue section: gross revenue, discounts, returns, net revenue, other income
+- COGS section: COGS total, inventory, purchases, direct labor, gross profit
+- Operating expenses section: 25+ common categories including:
+  - Officer/owner compensation (PRIMARY SDE ADD-BACK)
+  - Salaries, payroll taxes, benefits
+  - Rent, utilities, insurance
+  - Depreciation, amortization
+  - Vehicle, travel, meals (discretionary add-backs)
+- Other income/expense section: interest income/expense, asset sale gains/losses
+- Bottom line section: operating income, income tax, net income, EBITDA
+- **Learnings:**
+  - P&L formats vary WIDELY by accounting software
+  - Need extensive label variations for each field
+  - Haiku critical for ambiguous field matching in P&Ls
+  - Owner comp may appear as: Officer Compensation, Owner Salary, Member Draws, etc.
+---
+

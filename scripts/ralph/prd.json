@@ -192,8 +192,8 @@
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": "P&L formats vary widely by accounting software. Use Haiku more heavily for field matching."
+      "passes": true,
+      "notes": "Complete: income-statement.ts with revenue, COGS, operating expenses (25+ categories), other income/expense, and bottom line sections."
     },
     {
       "id": "US-011",
