@@ -1,224 +1,422 @@
 {
   "project": "ValuationPro",
-  "branchName": "ralph/prd-h-data-consistency-fix",
-  "description": "PRD-H: Data Consistency Fix - Fix value inconsistencies between AI-generated narratives and calculation tables. Root cause: narratives hallucinate values, then RECONCILE logic incorrectly picks narrative values over calculations. STRATEGY: Build ALL verification tools FIRST so every fix can be verified immediately.",
+  "branchName": "ralph/data-integrity-validation-polish-v2",
+  "description": "Combined PRD: Data Integrity (PRD-H v2), Dynamic Validation (PRD-I v2), and Professional Polish (PRD-J v2). Establishes single source of truth architecture, validation pipeline, and premium visual quality for all business valuation reports.",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Add Structured Logging for Critical Values",
-      "description": "As a developer, I need immediate visibility into what values are being used during PDF generation so that I can debug issues without parsing the full PDF. This is the quickest win - gives immediate insight into the data flow.",
+      "title": "Create Centralized DataStore",
+      "description": "As a platform developer, I want a single, immutable store for all calculated values so that every part of the system reads from the same source. The DataStore holds ALL authoritative values and is frozen after creation.",
       "acceptanceCriteria": [
-        "Locate PDF generation code in lib/pdf/professional-pdf-generator.ts",
-        "Add console.log statements for all critical values at point of use in the generate() method",
-        "Log format: console.log('[MANIFEST] metric=value section=name')",
-        "Required logs: final_value, revenue, sde_normalized, sde_weighted, asset_approach, income_approach, market_approach, sde_multiple, cap_rate, dlom_percentage, value_range_low, value_range_high",
-        "Add summary log at end: console.log('[MANIFEST] GENERATION_COMPLETE values_logged=N')",
-        "Logs should use accessor methods when available (accessor?.getFinalValue(), etc.)",
+        "Create /lib/valuation/data-store.ts if it doesn't exist or enhance existing",
+        "ValuationDataStore interface holds all authoritative values (revenue, earnings, balance_sheet, approaches, valuation, risk, data_quality)",
+        "createDataStore() factory function validates all required fields present (final_value, revenue_current, sde_normalized)",
+        "DataStore is frozen after creation using Object.freeze (deep freeze)",
+        "DataIntegrityError thrown on missing required fields",
+        "Unit tests in __tests__/data-store.test.ts verify freeze and validation",
         "Typecheck passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Quick win (<30 min). The PDF generator already has an accessor parameter. Add logging at the start of generate() and/or buildHTML()."
+      "notes": "Already implemented with comprehensive tests. data-store.ts has ValuationDataStore, createValuationDataStore, DataIntegrityError, and deepFreeze."
     },
     {
       "id": "US-002",
-      "title": "Create JSON Manifest Generator with Supabase Storage",
-      "description": "As a developer, I need a JSON manifest generated with every PDF and stored in Supabase so that automated tests can verify consistency. The manifest should contain all critical values and track where each value appears.",
+      "title": "Create DataAccessor with Formatting",
+      "description": "As a developer building PDF sections, I want a consistent API to get formatted values so that I don't have to worry about formatting in each section.",
       "acceptanceCriteria": [
-        "Create /lib/valuation/manifest-generator.ts",
-        "Interface ReportManifest with: generated_at, valuation_id, critical_values (all numeric fields), value_appearances (map of metric to array of {section, value}), consistency_check ({passed, errors, warnings})",
-        "Function generateManifest(accessor: ValuationDataAccessor, valuationId: string): ReportManifest",
-        "critical_values includes: revenue_current_year, sde_normalized, sde_weighted, final_concluded_value, value_range_low, value_range_high, asset_approach_value, income_approach_value, market_approach_value, sde_multiple_used, cap_rate, dlom_percentage, approach_weights (asset/income/market)",
-        "Create Supabase migration: ALTER TABLE reports ADD COLUMN manifest_json JSONB",
-        "Update download-pdf route to save manifest to reports.manifest_json after PDF generation",
+        "Create /lib/valuation/data-accessor.ts if it doesn't exist or enhance existing",
+        "ValuationDataAccessor class wraps DataStore (read-only)",
+        "Provides getX() and getFormattedX() methods for all values (revenue, SDE, approaches, final value, etc.)",
+        "formatCurrency() handles null, undefined, NaN gracefully returning '$0'",
+        "formatPercentage() handles edge cases returning '0.0%'",
+        "Computed properties: getSDEMargin(), getCurrentRatio(), getBookValue(), getRevenueGrowthRate()",
+        "Unit tests verify formatting and edge cases",
         "Typecheck passes"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "Core testing infrastructure. Manifest stored in Supabase enables querying without regenerating PDF. Migration file goes in supabase/migrations/."
+      "notes": "Already implemented with comprehensive tests. data-accessor.ts has ValuationDataAccessor with all getX() and getFormattedX() methods."
     },
     {
       "id": "US-003",
-      "title": "Create Manifest Consistency Validator",
-      "description": "As a developer, I need an automated validator that checks manifest consistency so that fixes can be verified programmatically without manual PDF inspection.",
+      "title": "Create Safe String Utilities",
+      "description": "As a developer, I want utilities that safely convert any value to a string so that [object Object], undefined, and NaN never appear in output.",
       "acceptanceCriteria": [
-        "Create /lib/valuation/manifest-validator.ts",
-        "Function validateManifest(manifest: ReportManifest): ManifestValidationResult",
-        "Check: All appearances of same metric have identical value (within 1% tolerance for currency)",
-        "Check: Approach weights sum to 1.0 (within 0.001 tolerance)",
-        "Check: Value range valid (low < final < high)",
-        "Check: Math correct (weighted_value ≈ sum of approach × weight, within 2%)",
-        "Check: No zero values for required fields (final_value, revenue, at least one approach > 0)",
-        "Return { passed: boolean, errors: string[], warnings: string[] }",
+        "Create /lib/utils/safe-string.ts",
+        "safeString(value, fallback) handles null, undefined, NaN, objects without returning '[object Object]'",
+        "safeYear(value, fallback) extracts 4-digit year from various formats (number, string, date, object)",
+        "safeCurrency(value, fallback) formats numbers as currency",
+        "safePercentage(value, decimals, fallback) formats as percentage",
+        "safeMultiple(value, suffix, fallback) formats as '2.50x'",
+        "Unit tests verify no '[object Object]', 'undefined', 'NaN' ever returned",
         "Typecheck passes"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "This validator checks the MANIFEST for internal consistency. Different from the existing quality-gate which checks section text."
+      "notes": "Already implemented with comprehensive tests. safe-string.ts has safeString, safeYear, safeCurrency, safePercentage, safeMultiple."
     },
     {
       "id": "US-004",
-      "title": "Add Mini-Report Test Mode for Visual Verification",
-      "description": "As a developer, I need a mini-report mode that generates a 5-10 page PDF with all critical values for quick visual verification. The manifest alone cannot verify visual rendering issues like [object Object] or misplaced values.",
+      "title": "Implement Asset Approach Fallback Chain",
+      "description": "As a platform developer, I want the Asset Approach to always calculate a valid value so that no report shows $0 for a company with positive assets.",
       "acceptanceCriteria": [
-        "Add testMode parameter to PDF generation: POST /api/reports/[id]/download-pdf?testMode=true",
-        "Mini-report includes only: Cover page, Critical Values Summary Table, Executive Summary, Valuation Approaches Summary, Value Reconciliation",
-        "Critical Values Summary Table shows all authoritative values in one place (revenue, SDE, approaches, weights, final value, range)",
-        "Mini-report is < 10 pages, < 50KB",
-        "Mini-report uses same accessor/data flow as full report (not a separate code path)",
-        "All critical values appear at least once in mini-report",
+        "Update /lib/calculations/asset-approach-calculator.ts or asset-approach.ts",
+        "Fallback chain: Pass 7 output -> Balance Sheet calculation -> Estimated (50% of assets)",
+        "calculateAssetApproach() returns { value, source, book_value, adjustments, adjusted_value }",
+        "If total_assets > 0, asset approach must be > 0",
+        "Logs which source was used: console.log('[ASSET] Using <source> value: <amount>')",
+        "Unit tests verify fallback chain works correctly",
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": true,
-      "notes": "MOVED UP from priority 11. Visual verification catches issues manifest misses: [object Object] bugs, formatting issues, narrative contradicting tables. Essential for confirming fixes actually work."
+      "passes": false,
+      "notes": "Never return $0 when assets exist. Check existing implementation and add fallback logic."
     },
     {
       "id": "US-005",
-      "title": "Fix Asset Approach Showing $0",
-      "description": "As a valuation analyst, I need the Asset Approach to show the correct value when assets exist. K-Force has $2.2M assets and $1.1M liabilities, so asset approach should show ~$1.1M, not $0.",
+      "title": "Remove/Reverse RECONCILE Override Logic",
+      "description": "As a platform developer, I want to ensure calculation engine values are NEVER overridden by narrative values so that the single source of truth is maintained.",
       "acceptanceCriteria": [
-        "Search codebase for where asset_approach_value gets set to 0 or overwritten",
-        "Check lib/calculations/asset-approach-calculator.ts - verify calculation is correct",
-        "Check data flow: calculation engine -> DataStore -> DataAccessor -> PDF",
-        "Add logging: console.log('[ASSET_APPROACH] totalAssets=%d liabilities=%d calculated=%d final=%d')",
-        "If value is being overwritten downstream, find and fix the overwrite",
-        "Verify DataAccessor.getApproachValue('asset') returns non-zero for K-Force",
-        "Generate test manifest and verify asset_approach_value > 0",
+        "Search codebase for RECONCILE, reconcile, 'narrative value', override patterns",
+        "Document each location found and its purpose",
+        "Remove or reverse any logic that overwrites calculation values with AI-generated values",
+        "Data flows one direction: Calculation Engine -> DataStore -> (Narratives, PDF)",
+        "Add safeguard: DataStore modification attempts logged as errors in development",
+        "Verify no code path allows narrative -> calculation override",
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": true,
-      "notes": "Fixed: mapBalanceSheet() in pass-data-mapper.ts was looking for balance sheet data at wrong nested paths. Pass 3 output has flat structure (total_assets) not nested (assets.total_assets). Updated to check both paths."
+      "passes": false,
+      "notes": "Critical fix. Previous work may have addressed this - verify and document."
     },
     {
       "id": "US-006",
-      "title": "Find and Remove RECONCILE Override Logic",
-      "description": "As a system, calculations must ALWAYS win over AI-generated narrative values. Session handoff documented '[RECONCILE] Using narrative value for asset_approach_value: $8,512,000' in logs - this is backwards and must be fixed.",
+      "title": "Wire DataAccessor into All PDF Sections",
+      "description": "As a platform developer, I want all PDF sections to get values from DataAccessor so that values are consistent across the entire report.",
       "acceptanceCriteria": [
-        "Search entire codebase for: RECONCILE, reconcile, 'narrative value', 'Using narrative', override patterns",
-        "Check lib/extraction/narrative-data-extractor.ts - the reconcileWithNarratives() function",
-        "Check app/api/reports/[id]/regenerate/route.ts for any narrative-to-calculation override",
-        "Identify any code path where AI-extracted values overwrite calculation engine values",
-        "Ensure hasCalculationEngine flag is being passed and respected (added in previous PRD)",
-        "Data flow must be one-directional: Tax Data → Calculations → DataStore → Narratives (narratives receive, never modify)",
-        "Add logging: console.log('[DATA_FLOW] Source for %s: %s (calc=%d, narrative=%d)')",
-        "Typecheck passes"
-      ],
-      "priority": 6,
-      "passes": true,
-      "notes": "Critical fix. Previous PRD added hasCalculationEngine guard but the RECONCILE log suggests it's not working or there's another code path. Need to trace the full data flow."
-    },
-    {
-      "id": "US-007",
-      "title": "Enhance Narrative Value Injector",
-      "description": "As a system, the existing narrative-value-injector.ts should replace ALL hallucinated values in AI narratives with authoritative calculation values. Currently it's not catching the K-Force inconsistencies.",
-      "acceptanceCriteria": [
-        "Read lib/valuation/narrative-value-injector.ts to understand current patterns",
-        "Add logging: console.log('[INJECTOR] Section: %s, Found: %d values, Replaced: %d')",
-        "Ensure it handles ALL currency formats: $1,234,567, $1.2M, $1.2 million, 1.2 million dollars",
-        "Ensure it covers Executive Summary section (where K-Force issues appear)",
-        "Add patterns for value ranges (e.g., '$3.8M to $4.6M' should be replaced with correct range)",
-        "Add patterns for SDE multiples (e.g., '4.9x' should be replaced with correct multiple)",
-        "Verify injector runs AFTER narrative generation but BEFORE any RECONCILE logic",
-        "Run on K-Force and verify executive summary values get corrected",
-        "Typecheck passes"
-      ],
-      "priority": 7,
-      "passes": true,
-      "notes": "Enhanced with: [INJECTOR] logging, value range replacement ($X to $Y), SDE multiple replacement (4.9x), improved currency patterns (million dollars, $XK), foundValues tracking. Pipeline verified: runs after narrative generation and RECONCILE."
-    },
-    {
-      "id": "US-008",
-      "title": "Verify DataAccessor Wiring in All PDF Sections",
-      "description": "As a system, every financial value in the PDF must come from the DataAccessor. Previous PRD wired many sections but there may be gaps where raw reportData values are still used.",
-      "acceptanceCriteria": [
-        "Audit lib/pdf/professional-pdf-generator.ts for any direct reportData.* access for financial values",
-        "Search for patterns like: reportData.final_value, reportData.revenue, reportData.sde, reportData.asset_approach",
-        "Replace any remaining direct reportData financial value access with accessor methods",
-        "Ensure ALL narrative sections that mention financial values go through the value injector",
-        "Verify no section calculates its own values (e.g., computing SDE multiple inline)",
+        "Audit lib/pdf/professional-pdf-generator.ts for direct reportData.* access",
+        "Replace remaining direct reportData financial value access with accessor methods",
+        "All narrative sections that mention financial values go through value injector",
+        "No section calculates its own values inline",
+        "Use safeString utilities for all string conversions",
         "Document which sections are accessor-wired vs narrative-injected",
         "Typecheck passes"
       ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Previous work partially completed this. Verify all sections are wired."
+    },
+    {
+      "id": "US-007",
+      "title": "Integration Test - Data Consistency",
+      "description": "As a platform developer, I want to verify data consistency across a complete report so that I know the architecture is working correctly.",
+      "acceptanceCriteria": [
+        "Create or update scripts/test-data-consistency.ts",
+        "Script creates DataStore with known values",
+        "Script generates test content and runs consistency checks",
+        "Verifies: final_value consistent, no [object Object], no undefined, no NaN",
+        "Verifies: Asset Approach > $0 when assets exist",
+        "Script outputs clear PASS/FAIL with details",
+        "Can run via: npx tsx scripts/test-data-consistency.ts",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "Integration test for PRD-H. May build on existing test-manifest-consistency.ts."
+    },
+    {
+      "id": "US-008",
+      "title": "Create Value Consistency Validator",
+      "description": "As a platform developer, I want to validate that values are consistent across all report sections so that no report has contradictory figures.",
+      "acceptanceCriteria": [
+        "Create or enhance /lib/validation/consistency-validator.ts",
+        "validateValueConsistency(accessor, sectionContents) extracts values from sections",
+        "Compares all mentions of same metric against authoritative DataAccessor value",
+        "Tolerance: 1% for currency values",
+        "Returns { passed, checks[], errors[], warnings[] }",
+        "Works for ANY report (not hardcoded values)",
+        "Unit tests verify detection of inconsistent values",
+        "Typecheck passes"
+      ],
       "priority": 8,
-      "passes": true,
-      "notes": "Fixed: generateCharts() now accepts accessor and uses it for approach values, value ranges, risk scores. Documented accessor-wired vs narrative-injected sections. Narrative injector exists but is not yet wired (US-007)."
+      "passes": false,
+      "notes": "Check if consistency-validator.ts exists and enhance per PRD-I v2 spec."
     },
     {
       "id": "US-009",
-      "title": "Debug and Fix Quality Gate",
-      "description": "As a system, the quality gate should BLOCK PDF generation when values are inconsistent. The K-Force report with 3 different SDE values should never have passed. Find out why it didn't block and fix it.",
+      "title": "Create Business Rule Validator",
+      "description": "As a platform developer, I want to validate that values follow business rules so that reports don't contain logically impossible results.",
       "acceptanceCriteria": [
-        "Check app/api/reports/[id]/download-pdf/route.ts - is quality gate actually running?",
-        "Check if quality gate errors are being caught and swallowed silently",
-        "Add logging: console.log('[QUALITY_GATE] Score: %d, CanProceed: %s, Errors: %j')",
-        "Verify quality gate receives correct sectionContents (including executive summary narrative)",
-        "Verify consistency-validator is checking executive summary values against authoritative values",
-        "If K-Force has inconsistent values, quality gate MUST return canProceed: false",
-        "Test by generating K-Force PDF and checking quality gate output in logs",
+        "Create or enhance /lib/validation/business-rule-validator.ts",
+        "validateBusinessRules(accessor) checks: SDE multiple in industry range, Asset > $0 when assets exist, weights sum to 100%, value range reasonable, cap rate sane",
+        "Industry-specific multiple ranges defined (Engineering 1.5-4x, Restaurant 1-2.5x, etc.)",
+        "Returns { passed, results[], errors[], warnings[] }",
+        "Distinguishes errors (blocking) from warnings (advisory)",
+        "Unit tests verify all rules",
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": true,
-      "notes": "Fixed: criticalSections used camelCase ('executiveSummary') but buildSectionContents() uses snake_case ('executive_summary'). This caused isCriticalSection check to always fail, putting mismatches in warnings instead of errors. Fixed all criticalSections to use snake_case. Added criticalSections for Normalized SDE and Revenue. Updated logging to [QUALITY_GATE] prefix format."
+      "passes": false,
+      "notes": "Check existing implementation and enhance with industry-specific ranges."
     },
     {
       "id": "US-010",
-      "title": "Wire Value Injection into Narrative Generation",
-      "description": "As a system, AI narrative prompts should receive authoritative values so the AI is less likely to hallucinate. The value-injection.ts system exists but may not be wired into all narrative passes.",
+      "title": "Create Content Completeness Validator",
+      "description": "As a platform developer, I want to validate that all required content is present so that no report is missing critical sections.",
       "acceptanceCriteria": [
-        "Check lib/claude/orchestrator.ts (or orchestrator-v2.ts) for where narrative passes run",
-        "Verify generateAuthoritativeValuesBlock() from lib/narratives/value-injection.ts is prepended to narrative prompts",
-        "Ensure Executive Summary pass (pass 11a or similar) receives the values block",
-        "Add logging: console.log('[NARRATIVE_PROMPT] Section: %s, Values block length: %d chars')",
-        "Verify the values block contains accurate values from DataAccessor",
+        "Create or enhance /lib/validation/completeness-validator.ts",
+        "SECTION_REQUIREMENTS defines required sections with minWords and requiredElements",
+        "validateCompleteness(sectionContents) checks each section present with minimum word count",
+        "Checks for required elements within sections (e.g., exec summary needs 'value', 'multiple')",
+        "Returns { passed, sections[], errors[], warnings[], totalWordCount }",
+        "Unit tests verify missing section detection",
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": true,
-      "notes": "Wired: Added convertToCalcResultsForNarrative() helper in pass-configs.ts to convert CalculationEngineOutput. Updated run-single-pass and rerun-passes routes to fetch calculation_results and pass to narrative passes. Added [NARRATIVE_PROMPT] logging. All narrative passes (11a-11k) now receive authoritative values from calculation engine."
+      "passes": false,
+      "notes": "May already exist in quality-gate. Refactor to separate module if needed."
     },
     {
       "id": "US-011",
-      "title": "Integration Test: Manifest Validation",
-      "description": "As a developer, I need to run the full pipeline on test data and verify the manifest shows consistent values, confirming all fixes work together.",
+      "title": "Create Narrative Value Injection System",
+      "description": "As a platform developer, I want to inject authoritative values into narrative prompts so that AI-generated narratives use correct values.",
       "acceptanceCriteria": [
-        "Create test script at scripts/test-manifest-consistency.ts",
-        "Script creates a mock DataStore with known values (use realistic generic business data)",
-        "Script generates a manifest using generateManifest()",
-        "Script runs validateManifest() and logs results",
-        "Script verifies: final_value consistent, approach values match weights calculation, no zero required values",
-        "Script can be run via: npx ts-node scripts/test-manifest-consistency.ts",
-        "Script outputs clear PASS/FAIL with details",
+        "Create or enhance /lib/narratives/value-injection.ts",
+        "generateAuthoritativeValuesBlock(accessor) creates values block with EXACT figures",
+        "Block includes: final value, range, SDE multiple, revenue, approaches, balance sheet, risk",
+        "Block includes STRICT RULES warning about using exact values",
+        "buildNarrativePrompt(section, accessor, context) combines values block with section instructions",
+        "Works for any company/industry (no hardcoded values)",
         "Typecheck passes"
       ],
       "priority": 11,
-      "passes": true,
-      "notes": "Completed: scripts/test-manifest-consistency.ts creates mock ABC Manufacturing LLC ($2.5M revenue, Asset $1.2M, Income $2.0M, Market $1.6M). Run via: npx tsx scripts/test-manifest-consistency.ts. All 8 tests pass: DataStore creation, manifest generation, manifest validation, final value consistency, weighted calculation, no zero values, value range validity, serialization."
+      "passes": false,
+      "notes": "Check existing value-injection.ts and enhance per PRD-I v2 spec."
     },
     {
       "id": "US-012",
-      "title": "K-Force Test Report: Verify All Fixes",
-      "description": "As a QA engineer, I need to generate a K-Force report and verify all values are consistent to confirm the complete fix. This is the final gate - if this passes, PRD-H is complete.",
+      "title": "Create Post-Generation Narrative Validator",
+      "description": "As a platform developer, I want to validate generated narratives for correct values so that AI hallucinations are caught before reaching the PDF.",
       "acceptanceCriteria": [
-        "Trigger K-Force PDF generation (via UI or API)",
-        "Check logs for [MANIFEST], [INJECTOR], [QUALITY_GATE], [DATA_FLOW] entries",
-        "Query Supabase for the generated manifest_json",
-        "Run validateManifest() on the stored manifest - must return passed: true",
-        "Verify: final_value same in ALL sections (exec summary, conclusion, reconciliation)",
-        "Verify: revenue same in ALL mentions",
-        "Verify: SDE values clearly distinguished (normalized vs weighted) or consistent",
-        "Verify: asset_approach_value > 0 (should be ~$1.1M)",
-        "Verify: value_range is $1.9M-$2.6M (not $3.8M-$4.6M)",
-        "Verify: sde_multiple is ~2.5x (not 4.9x)",
-        "No '[object Object]' or 'undefined' anywhere in manifest or logs",
-        "If using mini-report mode, visually confirm values look correct",
+        "Create or enhance /lib/validation/narrative-validator.ts",
+        "validateNarrative(section, text, accessor) checks for expected values",
+        "Detects values that differ from authoritative source",
+        "Critical sections (Exec Summary, Conclusion) block on mismatch; others warn",
+        "validateNarrativeOrThrow() throws on critical errors",
+        "Returns { valid, section, errors[], warnings[], valueMentions[] }",
         "Typecheck passes"
       ],
       "priority": 12,
-      "passes": true,
-      "notes": "VERIFICATION STORY: Created comprehensive verification checklist at scripts/k-force-verification-checklist.md. All underlying fixes (US-001 through US-011) are complete. Manual K-Force verification to be performed after deployment."
+      "passes": false,
+      "notes": "Check existing narrative-validator.ts and enhance per PRD-I v2 spec."
+    },
+    {
+      "id": "US-013",
+      "title": "Create Pre-PDF Quality Gate",
+      "description": "As a platform developer, I want a final quality gate before PDF generation so that bad reports are blocked from being generated.",
+      "acceptanceCriteria": [
+        "Create or enhance /lib/validation/quality-gate.ts",
+        "runQualityGate(accessor, sections, rawData) runs ALL validators (consistency, business rules, completeness)",
+        "Score calculated: dataIntegrity 35%, businessRules 25%, completeness 25%, formatting 15%",
+        "BLOCKS PDF generation if any critical check fails (canProceed: false)",
+        "Returns { passed, score, categories{}, blockingErrors[], warnings[], canProceed }",
+        "runQualityGateOrThrow() throws with detailed errors if gate fails",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "Check existing quality-gate.ts and enhance per PRD-I v2 spec."
+    },
+    {
+      "id": "US-014",
+      "title": "Integration Test - Validation Pipeline",
+      "description": "As a platform developer, I want to test the entire validation pipeline so that I know it catches errors correctly.",
+      "acceptanceCriteria": [
+        "Create or update tests/validation-pipeline.test.ts or scripts/test-validation-pipeline.ts",
+        "Test with valid report data - should pass",
+        "Test with inconsistent values - should fail",
+        "Test with [object Object] present - should fail",
+        "Test with missing required section - should fail",
+        "Test with Asset Approach $0 when assets exist - should fail",
+        "Tests are platform-agnostic (not hardcoded values)",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "Integration test for PRD-I validation pipeline."
+    },
+    {
+      "id": "US-015",
+      "title": "Implement Professional Section Ordering",
+      "description": "As a reader receiving a valuation report, I want the Executive Summary at the beginning so that I can immediately understand the key findings.",
+      "acceptanceCriteria": [
+        "Create PROFESSIONAL_SECTION_ORDER constant in lib/pdf/section-ordering.ts or similar",
+        "Order: cover, TOC, execSummary, conclusion, companyProfile, industryAnalysis, financialAnalysis, approaches, reconciliation, risk, KPIs, insights, assumptions, sources",
+        "Executive Summary appears on pages 3-5",
+        "Update PDF generator to use ordering function",
+        "Industry Analysis section included (data from Pass 4)",
+        "Works for any report",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": "Check current section ordering and refactor to match professional standard."
+    },
+    {
+      "id": "US-016",
+      "title": "Create Dynamic Table of Contents",
+      "description": "As a reader, I want an accurate Table of Contents so that I can navigate the document easily.",
+      "acceptanceCriteria": [
+        "TOC generated dynamically from actual sections present",
+        "Page numbers calculated based on content (approximate)",
+        "All present sections listed; no sections listed that don't exist",
+        "Professional styling: dotted leaders, right-aligned page numbers",
+        "Works for any report",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": "Check existing TOC generation and enhance for accuracy."
+    },
+    {
+      "id": "US-017",
+      "title": "Implement Design System",
+      "description": "As a developer, I want a centralized design system so that all reports have consistent, professional styling.",
+      "acceptanceCriteria": [
+        "Create lib/pdf/design-system.ts or design-tokens.ts",
+        "DESIGN_TOKENS constant with colors (primary #1E3A5F, accent #C9A962, positive #059669, negative #DC2626)",
+        "Typography: Merriweather for headings, Inter for body, JetBrains Mono for numbers",
+        "Font sizes: h1 28pt, h2 18pt, h3 14pt, body 11pt",
+        "generateDesignSystemCSS() function returns CSS string using tokens",
+        "All colors use tokens (no hardcoded values in PDF generator)",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": "Centralize design tokens to ensure consistency."
+    },
+    {
+      "id": "US-018",
+      "title": "Implement Professional Table Styling",
+      "description": "As a reader, I want tables to look professional and be easy to scan so that I can quickly understand the data.",
+      "acceptanceCriteria": [
+        "Table CSS in design system: gradient headers, zebra striping, currency right-aligned, total rows highlighted",
+        "Header gradient: linear-gradient(135deg, primary 0%, primaryLight 100%)",
+        "Total rows: yellow background #FEF3C7",
+        ".data-table class consistently applied to all tables",
+        "Update PDF generator tables to use new styling",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": "Apply consistent professional table styling across all tables."
+    },
+    {
+      "id": "US-019",
+      "title": "Create SDE Calculation Detail Table",
+      "description": "As a business owner, I want to see exactly how SDE was calculated so that I understand and can verify the earnings figure.",
+      "acceptanceCriteria": [
+        "Create generateSDECalculationTable(accessor) function in PDF generator or separate module",
+        "Shows net income as starting point",
+        "Lists all add-backs with amounts (officer compensation, depreciation, interest, etc.)",
+        "Shows source for each line item",
+        "Total row highlighted with calculated SDE",
+        "Uses DataAccessor for all values",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": "Show-your-work table for SDE calculation transparency."
+    },
+    {
+      "id": "US-020",
+      "title": "Create Cap Rate Buildup Table",
+      "description": "As a reader, I want to see how the capitalization rate was determined so that I understand the Income Approach.",
+      "acceptanceCriteria": [
+        "Create generateCapRateBuildupTable(accessor) function",
+        "Shows all rate components: risk-free rate, equity risk premium, size premium, industry risk, company-specific risk",
+        "Shows discount rate subtotal",
+        "Shows growth rate deduction",
+        "Shows final cap rate",
+        "Includes sources for each component",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": "Show-your-work table for cap rate transparency."
+    },
+    {
+      "id": "US-021",
+      "title": "Create Asset Adjustment Table",
+      "description": "As a reader, I want to see how assets were adjusted so that I understand the Asset Approach.",
+      "acceptanceCriteria": [
+        "Create generateAssetAdjustmentTable(accessor) function",
+        "Shows book value for each asset category (current assets, fixed assets, other)",
+        "Shows adjustment amounts and reasons",
+        "Shows fair market value for each category",
+        "Shows net asset value calculation: total FMV assets - total liabilities",
+        "Uses DataAccessor for all values",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": "Show-your-work table for asset approach transparency."
+    },
+    {
+      "id": "US-022",
+      "title": "Implement Chart Design Standards",
+      "description": "As a reader, I want charts to be visually appealing and informative so that I can quickly understand trends.",
+      "acceptanceCriteria": [
+        "Charts use design token colors (chart array: #1E3A5F, #059669, #C9A962, etc.)",
+        "Value labels displayed on bars/points",
+        "Subtle grid lines (color #E5E7EB)",
+        "Consistent font family and sizes",
+        "Update generateCharts() to use centralized chart config",
+        "Works for any business data",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": "Standardize chart styling across all charts."
+    },
+    {
+      "id": "US-023",
+      "title": "Add Professional Disclaimers Section",
+      "description": "As a valuation professional, I want appropriate disclaimers in the report so that the report is legally compliant.",
+      "acceptanceCriteria": [
+        "Create generateDisclaimersSection(accessor) function",
+        "Includes: Intended Use and Users, Standard of Value (IRS 59-60), Valuation Date significance, Limiting Conditions, Data Sources and Reliability, Certification statement",
+        "Company name and valuation date injected dynamically",
+        "Professional formatting with numbered sections",
+        "Section appears near end of report per section ordering",
+        "Typecheck passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": "Standard legal disclaimers required for professional reports."
+    },
+    {
+      "id": "US-024",
+      "title": "Integration Test - Visual Quality",
+      "description": "As a developer, I want to verify visual quality improvements so that reports meet premium standards.",
+      "acceptanceCriteria": [
+        "Create scripts/test-visual-quality.ts or add to existing test script",
+        "Checks: Navy color scheme present (#1E3A5F), professional fonts referenced, table gradient headers present, SDE table present, cap rate table present, asset table present, disclaimers section present, exec summary in first 5 pages",
+        "Script outputs checklist with PASS/FAIL for each item",
+        "Can run via: npx tsx scripts/test-visual-quality.ts",
+        "Works for any generated report",
+        "Typecheck passes"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": "Final integration test for PRD-J visual quality."
     }
   ]
 }
