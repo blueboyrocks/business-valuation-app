@@ -476,6 +476,527 @@ export class ProfessionalPDFGenerator {
   }
 
   /**
+   * PRD-H US-004: Generate Mini-Report for Visual Verification
+   *
+   * Generates a compact 5-10 page PDF containing:
+   * - Cover page
+   * - Critical Values Summary Table
+   * - Executive Summary
+   * - Valuation Approaches Summary
+   * - Value Reconciliation
+   *
+   * Uses the SAME accessor/data flow as the full report to ensure consistency.
+   * Target size: < 10 pages, < 50KB
+   */
+  async generateMiniReport(
+    companyName: string,
+    reportData: ReportData,
+    generatedDate: string,
+    accessor: ValuationDataAccessor
+  ): Promise<Buffer> {
+    console.log('[PDF] Generating mini-report (test mode)...');
+    console.log('[MANIFEST] MINI_REPORT_START');
+
+    // Log all critical values at generation start (same as full report)
+    console.log('[MANIFEST] final_value=%d section=mini_report', accessor.getFinalValue());
+    console.log('[MANIFEST] revenue=%d section=mini_report', accessor.getRevenue());
+    console.log('[MANIFEST] sde_normalized=%d section=mini_report', accessor.getSDE());
+    console.log('[MANIFEST] sde_weighted=%d section=mini_report', accessor.getWeightedSDE());
+    console.log('[MANIFEST] asset_approach=%d section=mini_report', accessor.getAssetApproachValue());
+    console.log('[MANIFEST] income_approach=%d section=mini_report', accessor.getIncomeApproachValue());
+    console.log('[MANIFEST] market_approach=%d section=mini_report', accessor.getMarketApproachValue());
+    console.log('[MANIFEST] sde_multiple=%s section=mini_report', accessor.getSDEMultiple().toFixed(2));
+    console.log('[MANIFEST] cap_rate=%s section=mini_report', (accessor.getCapRate() * 100).toFixed(1) + '%');
+    console.log('[MANIFEST] dlom_percentage=%s section=mini_report', (accessor.getDLOMPercentage() * 100).toFixed(1) + '%');
+    console.log('[MANIFEST] value_range_low=%d section=mini_report', accessor.getValueRangeLow());
+    console.log('[MANIFEST] value_range_high=%d section=mini_report', accessor.getValueRangeHigh());
+    console.log('[MANIFEST] asset_weight=%s section=mini_report', (accessor.getAssetWeight() * 100).toFixed(0) + '%');
+    console.log('[MANIFEST] income_weight=%s section=mini_report', (accessor.getIncomeWeight() * 100).toFixed(0) + '%');
+    console.log('[MANIFEST] market_weight=%s section=mini_report', (accessor.getMarketWeight() * 100).toFixed(0) + '%');
+
+    try {
+      // Build minimal HTML for mini-report
+      const html = this.buildMiniReportHTML(companyName, reportData, generatedDate, accessor);
+
+      // Generate PDF with Puppeteer
+      const browser = await puppeteer.launch({
+        args: chromium.args,
+        executablePath: await chromium.executablePath(),
+        headless: true,
+      });
+
+      const page = await browser.newPage();
+      await page.setContent(html, { waitUntil: 'networkidle0' });
+
+      // Wait for Google Fonts to load
+      await page.evaluateHandle('document.fonts.ready');
+
+      const pdfBuffer = Buffer.from(await page.pdf({
+        format: 'Letter',
+        printBackground: true,
+        displayHeaderFooter: true,
+        headerTemplate: `<div style="font-size:8pt;font-family:'Inter',Arial,sans-serif;width:100%;padding:0 0.75in;display:flex;justify-content:space-between;color:#6B7280;">
+          <span>Mini-Report (Test Mode)</span>
+          <span>${companyName.replace(/'/g, '&#39;')} | Visual Verification</span>
+        </div>`,
+        footerTemplate: `<div style="font-size:8pt;font-family:'Inter',Arial,sans-serif;width:100%;padding:0 0.75in;display:flex;justify-content:space-between;color:#6B7280;">
+          <span>&copy; ${new Date().getFullYear()} Valuation App - TEST MODE</span>
+          <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
+        </div>`,
+        margin: {
+          top: '1in',
+          right: '0.75in',
+          bottom: '0.85in',
+          left: '0.75in',
+        },
+      }));
+
+      await browser.close();
+
+      console.log('[MANIFEST] MINI_REPORT_COMPLETE values_logged=15');
+      console.log(`[PDF] Mini-report generated successfully (${pdfBuffer.length} bytes)`);
+      return pdfBuffer;
+
+    } catch (error) {
+      console.error('[PDF] Mini-report generation error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Build HTML for mini-report - compact version with only critical sections
+   */
+  private buildMiniReportHTML(
+    companyName: string,
+    reportData: ReportData,
+    generatedDate: string,
+    accessor: ValuationDataAccessor
+  ): string {
+    // Get executive summary content
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = reportData as any;
+    const narratives = data.narratives || {};
+
+    const getContent = (value: unknown): string => {
+      if (!value) return '';
+      if (typeof value === 'string') return value;
+      if (typeof value === 'object' && value !== null && 'content' in value) {
+        return (value as { content: string }).content || '';
+      }
+      return '';
+    };
+
+    const execContent = getContent(data.executive_summary) || getContent(narratives.executive_summary);
+    const reconContent = getContent(data.valuation_reconciliation) || getContent(narratives.valuation_synthesis) || getContent(narratives.valuation_synthesis_narrative);
+
+    return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Merriweather:wght@400;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-size: 11pt;
+      line-height: 1.6;
+      color: #1F2937;
+    }
+    .cover-page {
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      background: linear-gradient(135deg, #1E3A5F 0%, #0F2440 100%);
+      color: white;
+      padding: 60px;
+      page-break-after: always;
+      position: relative;
+      margin: -1in -0.75in -0.85in -0.75in;
+      padding: 1.5in 1.25in 1.35in 1.25in;
+    }
+    .cover-page::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 6px;
+      background: linear-gradient(90deg, #C9A962 0%, #E8D5A0 50%, #C9A962 100%);
+    }
+    .cover-title {
+      font-family: 'Merriweather', Georgia, serif;
+      font-size: 36pt;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .cover-subtitle {
+      font-size: 18pt;
+      font-weight: 400;
+      margin-bottom: 40px;
+      opacity: 0.9;
+    }
+    .cover-company {
+      font-family: 'Merriweather', Georgia, serif;
+      font-size: 28pt;
+      font-weight: 700;
+      margin-bottom: 10px;
+    }
+    .cover-date {
+      font-size: 12pt;
+      opacity: 0.85;
+      margin-bottom: 5px;
+    }
+    .cover-footer {
+      font-size: 9pt;
+      opacity: 0.7;
+      line-height: 1.5;
+    }
+    .test-banner {
+      background: #FEF3C7;
+      border: 2px solid #F59E0B;
+      padding: 12px 20px;
+      margin: 20px 0;
+      border-radius: 8px;
+      font-weight: 600;
+      color: #92400E;
+    }
+    .section {
+      page-break-before: always;
+      padding: 40px 0;
+    }
+    .section-title {
+      font-family: 'Merriweather', Georgia, serif;
+      font-size: 22pt;
+      color: white;
+      background: linear-gradient(135deg, #1E3A5F 0%, #2E5A8F 100%);
+      padding: 18px 28px;
+      margin: -40px 0 25px 0;
+    }
+    h2 {
+      font-family: 'Merriweather', Georgia, serif;
+      font-size: 15pt;
+      color: #1E3A5F;
+      margin: 25px 0 12px 0;
+      padding-bottom: 6px;
+      border-bottom: 2px solid #C9A962;
+    }
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 15px 0;
+      font-size: 10pt;
+    }
+    .data-table th, .data-table td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid #E5E7EB;
+    }
+    .data-table th {
+      background: #F3F4F6;
+      font-weight: 600;
+      color: #1E3A5F;
+    }
+    .data-table .currency {
+      font-family: 'JetBrains Mono', monospace;
+      text-align: right;
+    }
+    .data-table .percentage {
+      font-family: 'JetBrains Mono', monospace;
+      text-align: right;
+    }
+    .data-table .total-row {
+      background: #EEF2FF;
+      font-weight: 700;
+    }
+    .data-table .total-row td {
+      border-top: 2px solid #1E3A5F;
+    }
+    .value-card {
+      background: #F8FAFC;
+      border-left: 4px solid #1E3A5F;
+      padding: 18px;
+      margin: 18px 0;
+      border-radius: 0 8px 8px 0;
+    }
+    .value-label {
+      font-size: 9pt;
+      color: #6B7280;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+    .value-amount {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 28pt;
+      font-weight: 700;
+      color: #1E3A5F;
+    }
+    .value-subtitle {
+      font-size: 10pt;
+      color: #6B7280;
+      margin-top: 4px;
+    }
+    .narrative {
+      font-size: 10pt;
+      line-height: 1.7;
+    }
+    .narrative p {
+      margin-bottom: 12px;
+      text-align: justify;
+    }
+    @media print {
+      * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Cover Page -->
+  <div class="cover-page">
+    <div>
+      <div class="cover-title">Mini-Report</div>
+      <div class="cover-subtitle">Visual Verification (Test Mode)</div>
+    </div>
+    <div>
+      <div class="cover-company">${safeString(accessor.getCompanyName(), companyName)}</div>
+      <div class="cover-date">Valuation Date: ${safeString(accessor.getValuationDate(), generatedDate)}</div>
+      <div class="cover-date">Report Generated: ${generatedDate}</div>
+      <div class="cover-date" style="margin-top: 15px; font-size: 16pt; font-weight: 600;">
+        Concluded Value: ${accessor.getFormattedFinalValue()}
+      </div>
+    </div>
+    <div class="cover-footer">
+      TEST MODE: This mini-report is for visual verification only. Use ?testMode=true to generate.
+      All values flow through the same DataAccessor as the full report.
+    </div>
+  </div>
+
+  <!-- Critical Values Summary -->
+  <div class="section">
+    <h1 class="section-title">Critical Values Summary</h1>
+
+    <div class="test-banner">
+      TEST MODE: This table shows all authoritative values from the DataAccessor.
+      Verify these values appear consistently throughout the report.
+    </div>
+
+    <h2>Concluded Value</h2>
+    <div class="value-card">
+      <div class="value-label">Fair Market Value</div>
+      <div class="value-amount">${accessor.getFormattedFinalValue()}</div>
+      <div class="value-subtitle">Value Range: ${accessor.getFormattedValueRange().display}</div>
+    </div>
+
+    <h2>Revenue & Earnings</h2>
+    <table class="data-table">
+      <tbody>
+        <tr>
+          <td>Annual Revenue (Current Year)</td>
+          <td class="currency">${accessor.getFormattedRevenue()}</td>
+        </tr>
+        <tr>
+          <td>Seller's Discretionary Earnings (Normalized)</td>
+          <td class="currency">${accessor.getFormattedSDE('normalized')}</td>
+        </tr>
+        <tr>
+          <td>Weighted Average SDE</td>
+          <td class="currency">${accessor.getFormattedSDE('weighted')}</td>
+        </tr>
+        <tr>
+          <td>EBITDA</td>
+          <td class="currency">${accessor.getFormattedEBITDA()}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Valuation Approaches</h2>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Approach</th>
+          <th>Value</th>
+          <th>Weight</th>
+          <th>Weighted Value</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Asset Approach</td>
+          <td class="currency">${accessor.getFormattedApproachValue('asset')}</td>
+          <td class="percentage">${accessor.getFormattedApproachWeight('asset')}</td>
+          <td class="currency">$${Math.round(accessor.getAssetApproachValue() * accessor.getAssetWeight()).toLocaleString()}</td>
+        </tr>
+        <tr>
+          <td>Income Approach</td>
+          <td class="currency">${accessor.getFormattedApproachValue('income')}</td>
+          <td class="percentage">${accessor.getFormattedApproachWeight('income')}</td>
+          <td class="currency">$${Math.round(accessor.getIncomeApproachValue() * accessor.getIncomeWeight()).toLocaleString()}</td>
+        </tr>
+        <tr>
+          <td>Market Approach</td>
+          <td class="currency">${accessor.getFormattedApproachValue('market')}</td>
+          <td class="percentage">${accessor.getFormattedApproachWeight('market')}</td>
+          <td class="currency">$${Math.round(accessor.getMarketApproachValue() * accessor.getMarketWeight()).toLocaleString()}</td>
+        </tr>
+        <tr class="total-row">
+          <td>Weighted Total</td>
+          <td></td>
+          <td class="percentage">${((accessor.getAssetWeight() + accessor.getIncomeWeight() + accessor.getMarketWeight()) * 100).toFixed(0)}%</td>
+          <td class="currency">${accessor.getFormattedFinalValue()}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Key Multiples & Rates</h2>
+    <table class="data-table">
+      <tbody>
+        <tr>
+          <td>SDE Multiple Applied</td>
+          <td class="currency">${accessor.getFormattedSDEMultiple()}</td>
+        </tr>
+        <tr>
+          <td>Capitalization Rate</td>
+          <td class="percentage">${accessor.getFormattedCapRate()}</td>
+        </tr>
+        <tr>
+          <td>Discount for Lack of Marketability (DLOM)</td>
+          <td class="percentage">${(accessor.getDLOMPercentage() * 100).toFixed(1)}%</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>Value Range</h2>
+    <table class="data-table">
+      <tbody>
+        <tr>
+          <td>Low Estimate</td>
+          <td class="currency">$${accessor.getValueRangeLow().toLocaleString()}</td>
+        </tr>
+        <tr class="total-row">
+          <td>Concluded Value</td>
+          <td class="currency">${accessor.getFormattedFinalValue()}</td>
+        </tr>
+        <tr>
+          <td>High Estimate</td>
+          <td class="currency">$${accessor.getValueRangeHigh().toLocaleString()}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Executive Summary -->
+  <div class="section">
+    <h1 class="section-title">Executive Summary</h1>
+
+    <div class="test-banner">
+      Verify: All financial values in this narrative should match the Critical Values Summary above.
+    </div>
+
+    <div class="narrative">
+      ${execContent ? execContent : '<p>No executive summary available.</p>'}
+    </div>
+
+    <h2>Key Highlights (from DataAccessor)</h2>
+    <table class="data-table">
+      <tbody>
+        <tr>
+          <td>Company</td>
+          <td>${safeString(accessor.getCompanyName())}</td>
+        </tr>
+        <tr>
+          <td>Industry</td>
+          <td>${safeString(accessor.getIndustryName())}</td>
+        </tr>
+        <tr>
+          <td>Annual Revenue</td>
+          <td class="currency">${accessor.getFormattedRevenue()}</td>
+        </tr>
+        <tr>
+          <td>SDE</td>
+          <td class="currency">${accessor.getFormattedSDE()}</td>
+        </tr>
+        <tr class="total-row">
+          <td>Concluded Value</td>
+          <td class="currency">${accessor.getFormattedFinalValue()}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Valuation Reconciliation -->
+  <div class="section">
+    <h1 class="section-title">Value Reconciliation</h1>
+
+    <div class="test-banner">
+      Verify: Final value and approach weights should match exactly across all sections.
+    </div>
+
+    <div class="value-card">
+      <div class="value-label">Final Concluded Value</div>
+      <div class="value-amount">${accessor.getFormattedFinalValue()}</div>
+      <div class="value-subtitle">
+        Asset (${accessor.getFormattedApproachWeight('asset')}) +
+        Income (${accessor.getFormattedApproachWeight('income')}) +
+        Market (${accessor.getFormattedApproachWeight('market')})
+      </div>
+    </div>
+
+    ${reconContent ? `
+    <h2>Reconciliation Narrative</h2>
+    <div class="narrative">
+      ${reconContent}
+    </div>
+    ` : ''}
+
+    <h2>Verification Checklist</h2>
+    <table class="data-table">
+      <thead>
+        <tr>
+          <th>Metric</th>
+          <th>Expected Value</th>
+          <th>Check</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Final Value</td>
+          <td class="currency">${accessor.getFormattedFinalValue()}</td>
+          <td>Compare with all sections</td>
+        </tr>
+        <tr>
+          <td>Revenue</td>
+          <td class="currency">${accessor.getFormattedRevenue()}</td>
+          <td>Compare with narratives</td>
+        </tr>
+        <tr>
+          <td>SDE Multiple</td>
+          <td class="currency">${accessor.getFormattedSDEMultiple()}</td>
+          <td>Compare with market approach</td>
+        </tr>
+        <tr>
+          <td>Value Range</td>
+          <td class="currency">${accessor.getFormattedValueRange().display}</td>
+          <td>Compare with executive summary</td>
+        </tr>
+        <tr>
+          <td>Asset Approach</td>
+          <td class="currency">${accessor.getFormattedApproachValue('asset')}</td>
+          <td>Verify non-zero if assets exist</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+</body>
+</html>
+    `;
+  }
+
+  /**
    * Generate charts using Puppeteer + Chart.js
    */
   private async generateCharts(

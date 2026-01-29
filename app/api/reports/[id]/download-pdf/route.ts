@@ -83,9 +83,15 @@ export async function POST(
 ) {
   const { id: reportId } = await params;
   const startTime = Date.now();
+
+  // PRD-H US-004: Check for test mode (mini-report)
+  const { searchParams } = new URL(request.url);
+  const testMode = searchParams.get('testMode') === 'true';
+
   console.log(`[PDF] ========================================`);
   console.log(`[PDF] PDF Generation Request Started`);
   console.log(`[PDF] Report ID: ${reportId}`);
+  console.log(`[PDF] Test Mode (Mini-Report): ${testMode}`);
   console.log(`[PDF] Timestamp: ${new Date().toISOString()}`);
 
   try {
@@ -212,11 +218,19 @@ export async function POST(
 
     console.log(`[PDF] Starting Puppeteer PDF generation...`);
     const generator = new ProfessionalPDFGenerator();
-    const pdfBuffer = await generator.generate(report.company_name, reportData, generatedDate, accessor);
+
+    // PRD-H US-004: Use mini-report mode for test/visual verification
+    let pdfBuffer: Buffer;
+    if (testMode && accessor) {
+      console.log(`[PDF] Generating MINI-REPORT (test mode)...`);
+      pdfBuffer = await generator.generateMiniReport(report.company_name, reportData, generatedDate, accessor);
+    } else {
+      pdfBuffer = await generator.generate(report.company_name, reportData, generatedDate, accessor);
+    }
 
     const duration = Date.now() - startTime;
     console.log(`[PDF] ✓ PDF generated successfully`);
-    console.log(`[PDF] PDF size: ${pdfBuffer.length} bytes`);
+    console.log(`[PDF] PDF size: ${pdfBuffer.length} bytes (${testMode ? 'mini-report' : 'full report'})`);
     console.log(`[PDF] Generation time: ${duration}ms`);
 
     // PRD-H US-002: Generate and save manifest to Supabase
@@ -253,7 +267,10 @@ export async function POST(
     console.log(`[PDF] ========================================`);
 
     // Return PDF as response
-    const filename = `${report.company_name.replace(/[^a-z0-9]/gi, '_')}_Valuation_Report.pdf`;
+    // PRD-H US-004: Different filename for mini-report
+    const filename = testMode
+      ? `${report.company_name.replace(/[^a-z0-9]/gi, '_')}_Mini_Report.pdf`
+      : `${report.company_name.replace(/[^a-z0-9]/gi, '_')}_Valuation_Report.pdf`;
     
     return new NextResponse(pdfBuffer, {
       headers: {
