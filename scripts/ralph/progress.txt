@@ -413,3 +413,26 @@ C:\Users\bened\OneDrive\Documents\biz-val-test-docs
   - Create child loggers with withReportId for correlation
 ---
 
+## Wed, Jan 29, 2026 - US-024 (Extraction Test Suite)
+- Created test fixtures in lib/extraction/__tests__/fixtures/:
+  - mock-stage1-output.ts: Mock Stage1Output for Form 1120-S, Form 1065, Schedule C, P&L, and scanned PDF
+  - mock-stage2-output.ts: createMockStage2Output factory function with proper types
+- Created test files (58 tests total):
+  - classifier.test.ts: 14 tests for classifyByKeywords, extractTaxYear, extractEntityName, classifyDocument
+  - validator.test.ts: 10 tests for validateExtraction, isDataUsable, getValidationStatus
+  - confidence-scorer.test.ts: 11 tests for calculateConfidence, quickConfidenceCheck
+  - covid-detector.test.ts: 12 tests for detectCovidAdjustments, isLikelyCovidRelief, getCovidSdeAdjustment
+  - related-party-detector.test.ts: 11 tests for detectRelatedPartyIndicators, getRelatedPartySdeAdjustments
+- **Learnings:**
+  - Stage1Output requires: filename, extraction_timestamp, text_by_region as Record<string, PageTextRegions>
+  - Stage1Metadata requires: extraction_method, no has_tables field
+  - PageTextRegions has: header, body_left, body_right, footer, full_text
+  - IncomeStatementData uses net_gain_form_4797 (not net_gain_loss_form_4797)
+  - ExpenseData uses pension_profit_sharing (not pension_plans), no insurance/travel/meals_entertainment/utilities/office_expense/legal_professional
+  - BalanceSheetData uses boy_buildings_depreciable (not boy_buildings/boy_machinery_equipment), no boy_total_current_assets/boy_total_fixed_assets
+  - OwnerInfo has officer_compensation, guaranteed_payments_total, distributions_cash, etc. (not owners/total_ownership_percent)
+  - ScheduleKData uses other_rental_income (not other_net_rental_income)
+  - Use shared mock factory to avoid type mismatches across test files
+  - Keyword classifier: document type is determined by match count, so ensure mock text has dominant keywords for intended type
+---
+

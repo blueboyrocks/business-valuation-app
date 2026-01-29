@@ -459,8 +459,8 @@
         "Typecheck passes"
       ],
       "priority": 24,
-      "passes": false,
-      "notes": "Comprehensive test suite. Use mock data since Modal calls require live service."
+      "passes": true,
+      "notes": "Complete: 5 test files with 58 tests covering classifier, validator, confidence-scorer, covid-detector, and related-party-detector. Mock fixtures for Stage1Output and Stage2Output."
     }
   ]
 }
