@@ -213,7 +213,8 @@ export class ProfessionalPDFGenerator {
       const kpis = calculateKPIs(currentYearData);
 
       // Generate Puppeteer-based charts (existing)
-      const charts = await this.generateCharts(reportData, kpis);
+      // PRD-H US-008: Pass accessor to use authoritative values for charts
+      const charts = await this.generateCharts(reportData, kpis, accessor);
 
       // PRD-D: Generate inline SVG charts if accessor is available
       let inlineSvgCharts: {
@@ -998,10 +999,12 @@ export class ProfessionalPDFGenerator {
 
   /**
    * Generate charts using Puppeteer + Chart.js
+   * PRD-H US-008: Use accessor for authoritative financial values when available
    */
   private async generateCharts(
     reportData: ReportData,
-    kpis: any
+    kpis: any,
+    accessor?: ValuationDataAccessor
   ): Promise<{
     valuation?: string;
     financialMetrics?: string;
@@ -1022,13 +1025,23 @@ export class ProfessionalPDFGenerator {
     try {
       console.log('[PDF] Generating charts...');
 
+      // PRD-H US-008: Use accessor values when available, fallback to reportData
+      const assetValue = accessor?.getAssetApproachValue() ?? reportData.asset_approach_value;
+      const incomeValue = accessor?.getIncomeApproachValue() ?? reportData.income_approach_value;
+      const marketValue = accessor?.getMarketApproachValue() ?? reportData.market_approach_value;
+      const finalValue = accessor?.getFinalValue() ?? reportData.valuation_amount;
+      const rangeLow = accessor?.getValueRangeLow() ?? reportData.valuation_range_low;
+      const rangeHigh = accessor?.getValueRangeHigh() ?? reportData.valuation_range_high;
+      const riskScore = accessor?.getRiskScore() ?? reportData.risk_score;
+      const riskLabel = accessor?.getRiskRating() ?? reportData.risk_level;
+
       // Valuation approaches chart
-      if (reportData.asset_approach_value && reportData.income_approach_value && reportData.market_approach_value) {
+      if (assetValue && incomeValue && marketValue) {
         console.log('[PDF] Generating valuation chart...');
         const valuationData: ValuationChartData = {
-          asset: reportData.asset_approach_value,
-          income: reportData.income_approach_value,
-          market: reportData.market_approach_value,
+          asset: assetValue,
+          income: incomeValue,
+          market: marketValue,
         };
         charts.valuation = await generateValuationChart(valuationData);
         console.log('[PDF] Valuation chart generated:', charts.valuation ? 'success' : 'failed');
@@ -1073,26 +1086,26 @@ export class ProfessionalPDFGenerator {
       }
 
       // Risk gauge chart
-      if (reportData.risk_score !== undefined) {
+      if (riskScore !== undefined) {
         console.log('[PDF] Generating risk gauge...');
         const riskData: RiskGaugeData = {
-          score: reportData.risk_score,
-          label: reportData.risk_level || this.getRiskLabel(reportData.risk_score),
+          score: riskScore,
+          label: riskLabel || this.getRiskLabel(riskScore),
         };
         charts.riskGauge = await generateRiskGauge(riskData);
         console.log('[PDF] Risk gauge generated:', charts.riskGauge ? 'success' : 'failed');
       }
 
       // Value map chart
-      if (reportData.valuation_amount && reportData.valuation_range_low && reportData.valuation_range_high) {
+      if (finalValue && rangeLow && rangeHigh) {
         console.log('[PDF] Generating value map...');
         const valueMapData: ValueMapData = {
-          lowValue: reportData.valuation_range_low,
-          midValue: reportData.valuation_amount,
-          highValue: reportData.valuation_range_high,
-          companyValue: reportData.valuation_amount,
-          industryLow: reportData.valuation_range_low * 0.85,
-          industryHigh: reportData.valuation_range_high * 1.15,
+          lowValue: rangeLow,
+          midValue: finalValue,
+          highValue: rangeHigh,
+          companyValue: finalValue,
+          industryLow: rangeLow * 0.85,
+          industryHigh: rangeHigh * 1.15,
         };
         charts.valueMap = await generateValueMap(valueMapData);
         console.log('[PDF] Value map generated:', charts.valueMap ? 'success' : 'failed');

@@ -15,8 +15,9 @@ export interface NarrativeValueInjectionResult {
   replacements: {
     original: string;
     replacement: string;
-    type: 'concluded_value' | 'sde' | 'ebitda' | 'revenue' | 'asset_value' | 'income_value' | 'market_value' | 'cap_rate' | 'value_range';
+    type: 'concluded_value' | 'sde' | 'ebitda' | 'revenue' | 'asset_value' | 'income_value' | 'market_value' | 'cap_rate' | 'value_range' | 'sde_multiple';
   }[];
+  foundValues: number;
   hadReplacements: boolean;
 }
 
@@ -58,27 +59,71 @@ function generateCurrencyPatterns(value: number): RegExp[] {
 
 /**
  * Parse a currency string to a number
+ * Handles formats: $1,234,567, $1.2M, $1.2 million, 1.2 million dollars
  */
 function parseCurrency(str: string): number | null {
   // Remove currency symbols, commas, and whitespace
   let cleaned = str.replace(/[$,\s]/g, '').toLowerCase();
 
-  // Handle "million" suffix
-  if (cleaned.includes('million')) {
-    cleaned = cleaned.replace(/million(?:\s*dollars)?/i, '');
+  // Handle "million dollars" suffix first (before "million")
+  if (cleaned.includes('milliondollars')) {
+    cleaned = cleaned.replace(/milliondollars/i, '');
     const num = parseFloat(cleaned);
     return isNaN(num) ? null : num * 1_000_000;
   }
 
-  // Handle "M" suffix
+  // Handle "million" suffix
+  if (cleaned.includes('million')) {
+    cleaned = cleaned.replace(/million/i, '');
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? null : num * 1_000_000;
+  }
+
+  // Handle "M" suffix (e.g., $4.2M)
   if (cleaned.endsWith('m')) {
     cleaned = cleaned.slice(0, -1);
     const num = parseFloat(cleaned);
     return isNaN(num) ? null : num * 1_000_000;
   }
 
+  // Handle "K" suffix (e.g., $500K)
+  if (cleaned.endsWith('k')) {
+    cleaned = cleaned.slice(0, -1);
+    const num = parseFloat(cleaned);
+    return isNaN(num) ? null : num * 1_000;
+  }
+
   const num = parseFloat(cleaned);
   return isNaN(num) ? null : num;
+}
+
+/**
+ * Parse a multiple string to a number (e.g., "4.9x" -> 4.9, "4.9 times" -> 4.9)
+ */
+function parseMultiple(str: string): number | null {
+  // Remove whitespace and lowercase
+  const cleaned = str.replace(/\s/g, '').toLowerCase();
+
+  // Handle "Xx" format (e.g., "4.9x", "2.5X")
+  if (cleaned.endsWith('x')) {
+    const num = parseFloat(cleaned.slice(0, -1));
+    return isNaN(num) ? null : num;
+  }
+
+  // Handle "X times" format
+  if (cleaned.includes('times')) {
+    const num = parseFloat(cleaned.replace('times', ''));
+    return isNaN(num) ? null : num;
+  }
+
+  return null;
+}
+
+/**
+ * Format a multiple as "X.Xx" string
+ */
+function formatMultiple(value: number): string {
+  return `${value.toFixed(1)}x`;
 }
 
 /**
@@ -108,14 +153,19 @@ export function injectValuesIntoNarrative(
   sectionType: 'executive_summary' | 'valuation_synthesis' | 'asset_approach' | 'income_approach' | 'market_approach' | 'other'
 ): NarrativeValueInjectionResult {
   if (!content || content.length === 0) {
-    return { content, replacements: [], hadReplacements: false };
+    console.log(`[INJECTOR] Section: ${sectionType}, Found: 0 values, Replaced: 0`);
+    return { content, replacements: [], foundValues: 0, hadReplacements: false };
   }
 
   const replacements: NarrativeValueInjectionResult['replacements'] = [];
   let modifiedContent = content;
+  let foundValues = 0;
 
-  // Get authoritative values from accessor
-  const authValues = {
+  // Type for currency values that can be looked up and used in replacements
+  type CurrencyValueType = 'concluded_value' | 'sde' | 'ebitda' | 'revenue' | 'asset_value' | 'income_value' | 'market_value';
+
+  // Get authoritative currency values from accessor
+  const authValues: Record<CurrencyValueType, number> = {
     concluded_value: accessor.getFinalValue(),
     sde: accessor.getWeightedSDE(),
     ebitda: accessor.getWeightedEBITDA(),
@@ -125,8 +175,13 @@ export function injectValuesIntoNarrative(
     market_value: accessor.getApproachValue('market'),
   };
 
+  // Additional authoritative values for ranges and multiples
+  const valueRangeLow = accessor.getValueRangeLow();
+  const valueRangeHigh = accessor.getValueRangeHigh();
+  const sdeMultiple = accessor.getSDEMultiple();
+
   // Key phrases that indicate which value is being discussed
-  const valueContexts: { pattern: RegExp; type: keyof typeof authValues }[] = [
+  const valueContexts: { pattern: RegExp; type: CurrencyValueType }[] = [
     // Concluded/Fair Market Value patterns
     { pattern: /(?:fair\s+market\s+value|concluded\s+value|valuation|worth|valued\s+at|business\s+value)[^.]*?(\$[\d,]+(?:\.\d{2})?|\$?[\d.]+\s*million|\$[\d.]+M)/gi, type: 'concluded_value' },
     { pattern: /(\$[\d,]+(?:\.\d{2})?|\$?[\d.]+\s*million|\$[\d.]+M)[^.]*?(?:fair\s+market\s+value|concluded\s+value)/gi, type: 'concluded_value' },
@@ -154,7 +209,7 @@ export function injectValuesIntoNarrative(
   // For executive summary, specifically look for concluded value and approach value mentions
   if (sectionType === 'executive_summary') {
     // Define context patterns for different value types
-    const execSummaryContexts: { keywords: string[]; type: keyof typeof authValues }[] = [
+    const execSummaryContexts: { keywords: string[]; type: CurrencyValueType }[] = [
       {
         keywords: ['fair market value', 'concluded value', 'valuation of', 'valued at', 'worth', 'business value', 'opinion of value'],
         type: 'concluded_value',
@@ -174,7 +229,8 @@ export function injectValuesIntoNarrative(
     ];
 
     // Find all currency values and replace ones that don't match the expected value
-    const currencyPattern = /\$[\d,]+(?:\.\d{2})?|\$?[\d.]+\s*million(?:\s+dollars)?|\$[\d.]+M/gi;
+    // Enhanced pattern to match all currency formats: $1,234,567, $1.2M, $1.2 million, 1.2 million dollars
+    const currencyPattern = /\$[\d,]+(?:\.\d{2})?|\$?[\d.]+\s*million(?:\s+dollars)?|[\d.]+\s*million\s+dollars|\$[\d.]+[MK]/gi;
     let match: RegExpExecArray | null;
 
     while ((match = currencyPattern.exec(modifiedContent)) !== null) {
@@ -182,6 +238,7 @@ export function injectValuesIntoNarrative(
       const parsed = parseCurrency(original);
 
       if (parsed !== null && parsed > 100000) { // Only consider values > $100k
+        foundValues++;
         // Check context - what type of value is this near?
         const contextStart = Math.max(0, match.index - 100);
         const contextEnd = Math.min(modifiedContent.length, match.index + original.length + 100);
@@ -213,17 +270,18 @@ export function injectValuesIntoNarrative(
     }
   }
 
-  // For valuation synthesis, check all three approach values
-  if (sectionType === 'valuation_synthesis') {
+  // For valuation synthesis and other sections, check all three approach values
+  if (sectionType === 'valuation_synthesis' || sectionType === 'other') {
     for (const ctx of valueContexts) {
       let match: RegExpExecArray | null;
       const pattern = new RegExp(ctx.pattern.source, ctx.pattern.flags);
 
       while ((match = pattern.exec(modifiedContent)) !== null) {
         // Find the currency value in the match
-        const currencyMatch = match[0].match(/\$[\d,]+(?:\.\d{2})?|\$?[\d.]+\s*million|\$[\d.]+M/i);
+        const currencyMatch = match[0].match(/\$[\d,]+(?:\.\d{2})?|\$?[\d.]+\s*million(?:\s+dollars)?|\$[\d.]+[MK]/i);
         if (!currencyMatch) continue;
 
+        foundValues++;
         const original = currencyMatch[0];
         const parsed = parseCurrency(original);
         const authValue = authValues[ctx.type];
@@ -247,9 +305,131 @@ export function injectValuesIntoNarrative(
     }
   }
 
+  // ======= VALUE RANGE REPLACEMENT =======
+  // Patterns like "$3.8M to $4.6M", "$3.8 million to $4.6 million", "between $X and $Y"
+  // Improved pattern to match more currency formats
+  const currencyValuePattern = `\\$[\\d,]+(?:\\.\\d{2})?|\\$?[\\d.]+\\s*million(?:\\s+dollars)?|\\$[\\d.]+[MK]|[\\d.]+\\s*million\\s+dollars`;
+  const rangePatterns = [
+    // "$X to $Y" or "$X - $Y"
+    new RegExp(`(${currencyValuePattern})\\s*(?:to|-|through)\\s*(${currencyValuePattern})`, 'gi'),
+    // "between $X and $Y"
+    new RegExp(`between\\s+(${currencyValuePattern})\\s+and\\s+(${currencyValuePattern})`, 'gi'),
+    // "from $X to $Y"
+    new RegExp(`from\\s+(${currencyValuePattern})\\s+to\\s+(${currencyValuePattern})`, 'gi'),
+    // "range of $X to $Y"
+    new RegExp(`range\\s+of\\s+(${currencyValuePattern})\\s*(?:to|-|through)\\s*(${currencyValuePattern})`, 'gi'),
+  ];
+
+  // Only process value ranges if we have authoritative low/high values
+  if (valueRangeLow > 0 && valueRangeHigh > 0) {
+    for (const rangePattern of rangePatterns) {
+      let rangeMatch: RegExpExecArray | null;
+      while ((rangeMatch = rangePattern.exec(modifiedContent)) !== null) {
+        foundValues += 2; // Two values in a range
+        const fullMatch = rangeMatch[0];
+        const lowStr = rangeMatch[1];
+        const highStr = rangeMatch[2];
+        const parsedLow = parseCurrency(lowStr);
+        const parsedHigh = parseCurrency(highStr);
+
+        // Check if range values are significantly different from authoritative values
+        if (
+          parsedLow !== null &&
+          parsedHigh !== null &&
+          (isSignificantlyDifferent(parsedLow, valueRangeLow) ||
+            isSignificantlyDifferent(parsedHigh, valueRangeHigh))
+        ) {
+          // Construct replacement preserving the format/connector
+          const connector = fullMatch.includes('between')
+            ? ` and `
+            : fullMatch.match(/\s+to\s+/)
+              ? ' to '
+              : fullMatch.match(/\s*-\s*/)
+                ? ' - '
+                : fullMatch.match(/\s+through\s+/)
+                  ? ' through '
+                  : ' to ';
+
+          const prefix = fullMatch.toLowerCase().startsWith('between')
+            ? 'between '
+            : fullMatch.toLowerCase().startsWith('from')
+              ? 'from '
+              : fullMatch.toLowerCase().match(/^range\s+of/)
+                ? 'range of '
+                : '';
+
+          const replacement = `${prefix}${formatCurrency(valueRangeLow)}${connector}${formatCurrency(valueRangeHigh)}`;
+          modifiedContent =
+            modifiedContent.slice(0, rangeMatch.index) +
+            replacement +
+            modifiedContent.slice(rangeMatch.index + fullMatch.length);
+
+          replacements.push({
+            original: fullMatch,
+            replacement,
+            type: 'value_range',
+          });
+
+          // Reset pattern after modification
+          rangePattern.lastIndex = rangeMatch.index + replacement.length;
+        }
+      }
+    }
+  }
+
+  // ======= SDE MULTIPLE REPLACEMENT =======
+  // Patterns like "4.9x", "4.9 times", "multiple of 4.9x", "SDE multiple of 4.9x"
+  if (sdeMultiple > 0) {
+    const multiplePatterns = [
+      // "X.Xx" or "X times" near SDE context
+      /(?:SDE|seller['']?s?\s+discretionary\s+earnings?)\s+(?:multiple\s+(?:of\s+)?)?(\d+\.?\d*)\s*(?:x|times)/gi,
+      // "multiple of X.Xx" or "X.Xx multiple"
+      /multiple\s+of\s+(\d+\.?\d*)\s*(?:x|times)/gi,
+      /(\d+\.?\d*)\s*(?:x|times)\s+(?:SDE\s+)?multiple/gi,
+      // Stand-alone multiples near valuation context
+      /(?:trading|valued|value)\s+at\s+(\d+\.?\d*)\s*(?:x|times)/gi,
+    ];
+
+    for (const multiplePattern of multiplePatterns) {
+      let multipleMatch: RegExpExecArray | null;
+      while ((multipleMatch = multiplePattern.exec(modifiedContent)) !== null) {
+        foundValues++;
+        const fullMatch = multipleMatch[0];
+        const multipleStr = multipleMatch[1];
+        const parsed = parseMultiple(`${multipleStr}x`);
+
+        if (parsed !== null && isSignificantlyDifferent(parsed, sdeMultiple)) {
+          // Preserve the original format (x vs times)
+          const useTimes = fullMatch.toLowerCase().includes('times');
+          const replacement = fullMatch.replace(
+            new RegExp(`${multipleStr}\\s*(?:x|times)`, 'i'),
+            useTimes ? `${sdeMultiple.toFixed(1)} times` : formatMultiple(sdeMultiple)
+          );
+
+          modifiedContent =
+            modifiedContent.slice(0, multipleMatch.index) +
+            replacement +
+            modifiedContent.slice(multipleMatch.index + fullMatch.length);
+
+          replacements.push({
+            original: fullMatch,
+            replacement,
+            type: 'sde_multiple',
+          });
+
+          // Reset pattern after modification
+          multiplePattern.lastIndex = multipleMatch.index + replacement.length;
+        }
+      }
+    }
+  }
+
+  console.log(`[INJECTOR] Section: ${sectionType}, Found: ${foundValues} values, Replaced: ${replacements.length}`);
+
   return {
     content: modifiedContent,
     replacements,
+    foundValues,
     hadReplacements: replacements.length > 0,
   };
 }
@@ -260,9 +440,11 @@ export function injectValuesIntoNarrative(
 export function injectValuesIntoAllNarratives(
   reportData: Record<string, unknown>,
   accessor: ValuationDataAccessor
-): { reportData: Record<string, unknown>; totalReplacements: number; details: string[] } {
+): { reportData: Record<string, unknown>; totalReplacements: number; totalFound: number; details: string[] } {
+  console.log(`[INJECTOR] Starting narrative value injection...`);
   const details: string[] = [];
   let totalReplacements = 0;
+  let totalFound = 0;
 
   const narrativeFields: { key: string; type: Parameters<typeof injectValuesIntoNarrative>[2] }[] = [
     { key: 'executive_summary', type: 'executive_summary' },
@@ -280,6 +462,7 @@ export function injectValuesIntoAllNarratives(
     const content = reportData[key];
     if (typeof content === 'string' && content.length > 0) {
       const result = injectValuesIntoNarrative(content, accessor, type);
+      totalFound += result.foundValues;
       if (result.hadReplacements) {
         reportData[key] = result.content;
         totalReplacements += result.replacements.length;
@@ -305,6 +488,7 @@ export function injectValuesIntoAllNarratives(
       const content = narratives[nestedKey];
       if (typeof content === 'string' && content.length > 0) {
         const result = injectValuesIntoNarrative(content, accessor, type);
+        totalFound += result.foundValues;
         if (result.hadReplacements) {
           narratives[nestedKey] = result.content;
           totalReplacements += result.replacements.length;
@@ -316,5 +500,6 @@ export function injectValuesIntoAllNarratives(
     }
   }
 
-  return { reportData, totalReplacements, details };
+  console.log(`[INJECTOR] Complete: Found ${totalFound} values, Replaced ${totalReplacements}`);
+  return { reportData, totalReplacements, totalFound, details };
 }
