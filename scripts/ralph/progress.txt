@@ -8,6 +8,7 @@ Started: Wed, Jan 28, 2026  9:00:32 PM
 - Structured logs use format: console.log('[PREFIX] key=value section=name')
 - Pass 3 output (BalanceSheetYear) uses flat structure: bs.total_assets, not bs.assets.total_assets
 - When mapping between types, use multi-path lookup helper for forward/backward compatibility
+- Section names in buildSectionContents() use snake_case: executive_summary, financial_analysis, valuation_reconciliation, etc.
 
 ---
 
@@ -244,4 +245,25 @@ Started: Wed, Jan 28, 2026  9:00:32 PM
   - Pattern matching uses regex with global flag, must reset lastIndex after modifying content
   - 5% tolerance threshold for "significantly different" values prevents over-correction of rounding differences
   - The injector is already wired into download-pdf (line 166) and regenerate (line 697) routes
+---
+
+## 2026-01-29 12:30 AM - US-009: Debug and Fix Quality Gate
+- What was implemented:
+  - Root cause found: criticalSections in consistency-validator.ts used camelCase names (e.g., 'executiveSummary') but buildSectionContents() in download-pdf route uses snake_case (e.g., 'executive_summary')
+  - This caused isCriticalSection check to always return false, so all value mismatches were downgraded to warnings instead of blocking errors
+  - Fixed all criticalSections arrays in METRIC_DEFINITIONS to use snake_case matching actual section keys
+  - Added criticalSections for Normalized SDE and Revenue metrics (previously undefined, so mismatches were never errors)
+  - Updated logging in quality-gate.ts to use [QUALITY_GATE] prefix format per acceptance criteria
+  - Verified quality gate is actually running (it was, but was never producing errors due to the naming mismatch)
+
+- Files changed:
+  - lib/validation/consistency-validator.ts (modified, changed criticalSections to snake_case)
+  - lib/validation/quality-gate.ts (modified, updated logging format)
+
+- **Learnings for future iterations:**
+  - CRITICAL: Section names in buildSectionContents() use snake_case (executive_summary, financial_analysis, etc.)
+  - When adding new validators or metrics, always verify field names match the actual keys in the Map
+  - The quality gate pattern: errors block (canProceed=false), warnings don't block
+  - Mismatches in critical sections become errors; mismatches in non-critical sections become warnings
+  - A value mismatch only triggers a check if: (1) authoritative value > 0, (2) metric keywords found in section, (3) extracted value is within 0.1x-10x of authoritative
 ---

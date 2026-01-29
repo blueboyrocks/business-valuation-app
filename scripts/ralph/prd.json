@@ -160,8 +160,8 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": "The quality gate exists (lib/validation/quality-gate.ts) and is wired (from US-027 previous PRD). But it's not blocking K-Force. Either it's not running, errors are swallowed, or the checks aren't matching the actual inconsistencies."
+      "passes": true,
+      "notes": "Fixed: criticalSections used camelCase ('executiveSummary') but buildSectionContents() uses snake_case ('executive_summary'). This caused isCriticalSection check to always fail, putting mismatches in warnings instead of errors. Fixed all criticalSections to use snake_case. Added criticalSections for Normalized SDE and Revenue. Updated logging to [QUALITY_GATE] prefix format."
     },
     {
       "id": "US-010",
