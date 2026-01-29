@@ -310,19 +310,21 @@ def extract_with_pdfplumber(pdf_bytes: bytes) -> dict:
 
 @app.function(image=image, timeout=120)
 @modal.fastapi_endpoint(method="POST")
-def extract_pdf(pdf_base64: str = "", document_id: str = "", filename: str = "") -> dict:
+def extract_pdf(request: dict) -> dict:
     """
     Extract tables and text from a PDF.
 
     Args:
-        pdf_base64: Base64-encoded PDF bytes
-        document_id: Unique identifier for the document
-        filename: Original filename
+        request: ExtractionRequest with pdf_base64, document_id, filename
 
     Returns:
         Stage1Output JSON structure
     """
     import base64
+
+    pdf_base64 = request.get("pdf_base64", "")
+    document_id = request.get("document_id", "")
+    filename = request.get("filename", "")
 
     if not pdf_base64:
         return {
