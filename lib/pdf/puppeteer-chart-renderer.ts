@@ -770,6 +770,13 @@ export function generatePerformanceBadge(
 
 /**
  * Generate value map/mountain visualization
+ *
+ * PRD-J US-006 fixes:
+ * - Increased container height to prevent cutoff
+ * - Marker label positioned to not overlap data
+ * - Industry Low/High labels properly positioned with connecting lines
+ * - Value marker clamped to range scale
+ * - Design token colors used consistently
  */
 export async function generateValueMap(data: ValueMapData): Promise<string> {
   const formatValue = (v: number): string => {
@@ -779,8 +786,16 @@ export async function generateValueMap(data: ValueMapData): Promise<string> {
   };
 
   // Calculate position for company value marker (0-100 scale)
+  // Clamp to 5-95% to ensure marker stays within visible area
   const range = data.highValue - data.lowValue;
-  const companyPosition = ((data.companyValue - data.lowValue) / range) * 100;
+  const rawPosition = range > 0 ? ((data.companyValue - data.lowValue) / range) * 100 : 50;
+  const companyPosition = Math.max(5, Math.min(95, rawPosition));
+
+  // Determine marker label position - flip to left/right if near edges
+  const labelPosition = companyPosition > 70 ? 'right' : companyPosition < 30 ? 'left' : 'center';
+  const labelOffset = labelPosition === 'right' ? 'right: 0; transform: translateX(0);' :
+                      labelPosition === 'left' ? 'left: 0; transform: translateX(0);' :
+                      'left: 50%; transform: translateX(-50%);';
 
   const html = `
 <!DOCTYPE html>
@@ -788,33 +803,38 @@ export async function generateValueMap(data: ValueMapData): Promise<string> {
 <head>
   <meta charset="UTF-8">
   <style>
-    body { margin: 0; padding: 30px; background: white; font-family: 'Helvetica Neue', Arial, sans-serif; }
-    #chart-container { width: 600px; height: 350px; }
+    body { margin: 0; padding: 30px; background: white; font-family: 'Inter', 'Helvetica Neue', Arial, sans-serif; }
+    #chart-container { width: 600px; min-height: 420px; }
     .title {
       font-size: 20px;
       font-weight: bold;
-      color: #333;
+      color: #1E3A5F;
       text-align: center;
       margin-bottom: 30px;
     }
+    .chart-area {
+      position: relative;
+      padding-top: 50px; /* Space for marker label */
+    }
     .value-range {
       position: relative;
-      height: 200px;
-      margin: 0 40px;
+      height: 180px;
+      margin: 0 50px;
     }
     .mountain {
       position: absolute;
       bottom: 0;
       left: 0;
       right: 0;
-      height: 180px;
+      height: 160px;
       background: linear-gradient(180deg,
-        #E3F2FD 0%,
-        #90CAF9 30%,
-        #42A5F5 60%,
-        #1E88E5 100%
+        #E8F4FC 0%,
+        #B3D9F2 30%,
+        #5BA3D9 60%,
+        #1E3A5F 100%
       );
-      clip-path: polygon(0% 100%, 25% 40%, 50% 0%, 75% 40%, 100% 100%);
+      clip-path: polygon(0% 100%, 25% 45%, 50% 5%, 75% 45%, 100% 100%);
+      border-radius: 0 0 8px 8px;
     }
     .value-marker {
       position: absolute;
@@ -824,37 +844,53 @@ export async function generateValueMap(data: ValueMapData): Promise<string> {
       display: flex;
       flex-direction: column;
       align-items: center;
+      z-index: 10;
     }
     .marker-line {
       width: 3px;
-      height: 200px;
-      background: #F44336;
+      height: 180px;
+      background: linear-gradient(180deg, #DC2626 0%, #B91C1C 100%);
+      border-radius: 2px;
     }
     .marker-dot {
-      width: 16px;
-      height: 16px;
-      background: #F44336;
+      width: 18px;
+      height: 18px;
+      background: #DC2626;
       border-radius: 50%;
       border: 3px solid white;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-      margin-bottom: -8px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+      margin-bottom: -9px;
+      z-index: 11;
     }
     .marker-label {
       position: absolute;
-      top: -40px;
-      background: #F44336;
+      top: -45px;
+      ${labelOffset}
+      background: #DC2626;
       color: white;
-      padding: 6px 12px;
-      border-radius: 4px;
+      padding: 8px 14px;
+      border-radius: 6px;
       font-weight: bold;
       font-size: 14px;
       white-space: nowrap;
+      box-shadow: 0 2px 8px rgba(220, 38, 38, 0.3);
+    }
+    .marker-label::after {
+      content: '';
+      position: absolute;
+      bottom: -8px;
+      ${labelPosition === 'center' ? 'left: 50%; transform: translateX(-50%);' :
+        labelPosition === 'right' ? 'right: 20px;' : 'left: 20px;'}
+      border: 8px solid transparent;
+      border-top-color: #DC2626;
+      border-bottom: none;
     }
     .range-labels {
       display: flex;
       justify-content: space-between;
-      margin: 0 40px;
-      padding-top: 15px;
+      margin: 0 50px;
+      padding-top: 20px;
+      border-top: 1px solid #E5E7EB;
     }
     .range-label {
       text-align: center;
@@ -862,42 +898,55 @@ export async function generateValueMap(data: ValueMapData): Promise<string> {
     .range-value {
       font-size: 16px;
       font-weight: bold;
-      color: #333;
+      color: #1E3A5F;
     }
     .range-type {
       font-size: 11px;
-      color: #666;
+      color: #6B7280;
       margin-top: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
     }
     .industry-range {
       display: flex;
       justify-content: center;
       margin-top: 25px;
-      gap: 40px;
+      padding-top: 20px;
+      border-top: 1px solid #E5E7EB;
+      gap: 60px;
     }
     .industry-item {
       text-align: center;
+      padding: 10px 20px;
+      background: #F9FAFB;
+      border-radius: 8px;
+      border: 1px solid #E5E7EB;
     }
     .industry-label {
-      font-size: 12px;
-      color: #666;
+      font-size: 11px;
+      color: #6B7280;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
     }
     .industry-value {
-      font-size: 14px;
+      font-size: 16px;
       font-weight: 600;
-      color: #1565C0;
+      color: #1E3A5F;
     }
   </style>
 </head>
 <body>
   <div id="chart-container">
-    <div class="title">Valuation Range</div>
-    <div class="value-range">
-      <div class="mountain"></div>
-      <div class="value-marker">
-        <div class="marker-label">Your Value: ${formatValue(data.companyValue)}</div>
-        <div class="marker-dot"></div>
-        <div class="marker-line"></div>
+    <div class="title">Valuation Range Overview</div>
+    <div class="chart-area">
+      <div class="value-range">
+        <div class="mountain"></div>
+        <div class="value-marker">
+          <div class="marker-label">Your Value: ${formatValue(data.companyValue)}</div>
+          <div class="marker-dot"></div>
+          <div class="marker-line"></div>
+        </div>
       </div>
     </div>
     <div class="range-labels">
@@ -929,7 +978,7 @@ export async function generateValueMap(data: ValueMapData): Promise<string> {
 </html>
   `;
 
-  return await renderChartToBase64(html, 660, 400);
+  return await renderChartToBase64(html, 660, 480);
 }
 
 /**
