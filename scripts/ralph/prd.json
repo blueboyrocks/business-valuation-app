@@ -264,8 +264,8 @@
         "Typecheck passes"
       ],
       "priority": 14,
-      "passes": false,
-      "notes": "COGS detail critical for manufacturing/retail businesses to verify cost structure."
+      "passes": true,
+      "notes": "Complete: form-1125a.ts with inventory method, purchases/costs, COGS calculation, identification method, valuation method, and LIFO sections."
     },
     {
       "id": "US-015",

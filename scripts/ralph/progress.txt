@@ -181,3 +181,18 @@ C:\Users\bened\OneDrive\Documents\biz-val-test-docs
   - Travel and entertainment 50% disallowance appears in Line 5a
 ---
 
+## Wed, Jan 29, 2026 - US-014 (Form 1125-A COGS Detail)
+- Created lib/extraction/mappings/form-1125a.ts (350+ lines)
+- Inventory method section: beginning/ending inventory
+- Purchases and costs section: purchases, labor, Section 263A, other costs
+- COGS calculation section: total costs available, final COGS
+- Inventory identification section: FIFO, LIFO, specific identification, average cost
+- Valuation method section: cost, lower of cost or market, other
+- LIFO details section: adoption year, reserve beginning/ending, recapture
+- **Learnings:**
+  - COGS validation: Beginning + Purchases + Labor + Other - Ending = COGS
+  - LIFO vs FIFO significantly affects COGS comparability
+  - Section 263A (UNICAP) defers overhead costs - affects cash flow timing
+  - LIFO recapture triggered by S-Corp election is non-recurring
+---
+
