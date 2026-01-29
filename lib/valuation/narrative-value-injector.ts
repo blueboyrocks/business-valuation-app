@@ -297,6 +297,7 @@ export function injectValuesIntoNarrative(
   ];
 
   // Only process value ranges if we have authoritative low/high values
+  console.log(`[INJECTOR] Value range check: low=${valueRangeLow}, high=${valueRangeHigh}, will process=${valueRangeLow > 0 && valueRangeHigh > 0}`);
   if (valueRangeLow > 0 && valueRangeHigh > 0) {
     for (const rangePattern of rangePatterns) {
       let rangeMatch: RegExpExecArray | null;
