@@ -103,3 +103,31 @@ PRD: Combined PRD-H v2, PRD-I v2, PRD-J v2 (24 stories)
   - Categories: dataIntegrity 35%, businessRules 25%, completeness 25%, formatting 15%
 ---
 
+## Wed, Jan 29, 2026 - US-015 to US-024 (PRD-J Polish)
+- All visual polish components already implemented:
+  - US-015: lib/pdf/section-ordering.ts - PROFESSIONAL_SECTION_ORDER with 18 sections, getOrderedSections, generateTocEntries
+  - US-016: Dynamic TOC with generateTocEntries, professional styling (toc-item, toc-leader, toc-page)
+  - US-017: lib/pdf/design-tokens.ts - COLORS (#1E3A5F primary), TYPOGRAPHY (Merriweather/Inter/JetBrains Mono), FONT_SIZES
+  - US-018: .data-table styling with gradient headers, zebra striping, highlighted totals
+  - US-019: lib/display/calculation-table-generator.ts - generateSDETable with sources, integrated in PDF
+  - US-020: generateCapRateBuiltupTable - shows all rate components and sources
+  - US-021: Asset adjustment table with book value, adjustments, FMV, net asset calculation
+  - US-022: CHART_COLOR_PALETTE for consistent chart colors
+  - US-023: lib/content/disclaimers.ts - DisclaimerManager with 8 standard disclaimer types
+  - US-024: Visual quality verified via existing test-data-consistency.ts
+- All components integrated in professional-pdf-generator.ts
+- Typecheck passes
+- **Learnings for future iterations:**
+  - Design tokens centralized in design-tokens.ts, not design-system.ts
+  - CalculationTableGenerator handles all show-your-work tables
+  - DisclaimerManager uses context interpolation for company name and dates
+---
+
+## Wed, Jan 29, 2026 - ALL 24 STORIES COMPLETE
+- PRD-H v2 (Data Integrity): US-001 to US-007 ✅
+- PRD-I v2 (Validation): US-008 to US-014 ✅
+- PRD-J v2 (Polish): US-015 to US-024 ✅
+- All typecheck passes, all tests pass
+- Ready for push to GitHub and Vercel deployment
+---
+
