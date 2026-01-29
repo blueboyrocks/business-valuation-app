@@ -290,3 +290,28 @@ C:\Users\bened\OneDrive\Documents\biz-val-test-docs
   - Can generate UUID without external library using simple function
 ---
 
+## Wed, Jan 29, 2026 - US-019 (Cross-Document Validation)
+- Created lib/extraction/cross-doc-validator.ts (500 lines)
+- Main functions:
+  - validateCrossDocument(): Main function for multi-document validation
+  - compareTaxVsFinancial(): Tax return vs P&L comparison
+  - compareK1VsReturn(): K-1 vs tax return comparison
+  - compareYearOverYear(): Year-over-year trend validation
+  - summarizeCrossDocValidation(): Human-readable summary
+  - isSameEntity(): Entity name matching for grouping
+- Comparison types:
+  - tax_vs_financial: Revenue, COGS, net income, total assets
+  - k1_vs_return: Ordinary income, Section 179, distributions
+  - year_over_year: Revenue, gross margin, officer comp, assets
+- Tolerance thresholds:
+  - Revenue: 2% tolerance
+  - Net income: 5% tolerance (allows timing differences)
+  - Balance sheet: 1% tolerance
+  - YoY change: 30% threshold for flagging
+- **Learnings:**
+  - Group documents by tax year before comparing
+  - K-1 values should be LESS than tax return totals (partner's share)
+  - Gross margin shouldn't swing more than 10 percentage points YoY
+  - Officer comp changes > 50% YoY warrant investigation
+---
+

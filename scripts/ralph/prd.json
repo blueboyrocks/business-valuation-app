@@ -367,8 +367,8 @@
         "Typecheck passes"
       ],
       "priority": 19,
-      "passes": false,
-      "notes": "Catches cases where tax return and P&L show different revenues."
+      "passes": true,
+      "notes": "Complete: cross-doc-validator.ts with tax vs financial, K-1 vs return, and YoY comparisons. Configurable tolerances (2% revenue, 5% net income, 1% balance sheet)."
     },
     {
       "id": "US-020",
