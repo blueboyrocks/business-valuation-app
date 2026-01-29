@@ -315,3 +315,29 @@ C:\Users\bened\OneDrive\Documents\biz-val-test-docs
   - Officer comp changes > 50% YoY warrant investigation
 ---
 
+## Wed, Jan 29, 2026 - US-020 (Confidence Scoring System)
+- Created lib/extraction/confidence-scorer.ts (515 lines)
+- Main functions:
+  - calculateConfidence(): Main scoring function (weighted 0-100)
+  - quickConfidenceCheck(): Lightweight early pipeline check
+  - formatConfidenceScore(): Human-readable display
+- Score weights (sum to 100):
+  - Classification: 20%
+  - Data Completeness: 30%
+  - Validation: 30%
+  - Consistency: 20%
+- Escalation thresholds:
+  - Score >= 70: Ready for valuation
+  - Score 50-69: Opus escalation recommended
+  - Score < 50: Human review recommended
+- Component calculations:
+  - Classification: Based on confidence level, document type, tax year, entity name
+  - Data Completeness: Critical fields populated (revenue, COGS, officer comp, etc.)
+  - Validation: Errors (-15 each), Warnings (-5 each), Infos (-1 each)
+  - Consistency: Balance sheet equation, gross profit calc, COGS reconciliation
+- **Learnings:**
+  - CrossDocValidationResult is in types.ts, not cross-doc-validator.ts
+  - Officer comp can legitimately be 0 - check guaranteed_payments as alternative
+  - Balance sheet optional for Schedule C (sole proprietors)
+---
+

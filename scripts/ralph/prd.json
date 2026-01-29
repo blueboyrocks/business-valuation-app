@@ -383,8 +383,8 @@
         "Typecheck passes"
       ],
       "priority": 20,
-      "passes": false,
-      "notes": "Drives escalation logic. Weights should be tuned over time."
+      "passes": true,
+      "notes": "Complete: confidence-scorer.ts with weighted scoring (classification 20%, completeness 30%, validation 30%, consistency 20%). Thresholds: >=70 ready, 50-69 Opus, <50 human review."
     },
     {
       "id": "US-021",
