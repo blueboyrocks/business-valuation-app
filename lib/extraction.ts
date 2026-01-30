@@ -3,10 +3,18 @@
  *
  * This module contains the core extraction logic that can be called
  * from both the API route and directly from the orchestrator.
+ *
+ * Supports document types:
+ * - Federal tax forms (1120, 1120-S, 1065, Schedule C)
+ * - Balance sheets (standalone or Schedule L)
+ * - Virginia Form 500 (state tax returns)
+ * - Income statements
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
+import { extractWithModal, ModalExtractionResult } from './extraction/modal-client';
+import { DocumentType, DocumentTypeInternal, FinalExtractionOutput } from './extraction/types';
 
 // Lazy-initialize clients to avoid build-time errors
 let supabase: SupabaseClient | null = null;
@@ -140,13 +148,283 @@ export interface ExtractDocumentsResult {
     total: number;
     success: number;
     failed: number;
+    partial: number;
   };
   results?: Array<{
     documentId: string;
     file_name: string;
     success: boolean;
     error?: string;
+    document_type?: DocumentType;
+    extraction_status?: 'complete' | 'partial' | 'failed';
   }>;
+  /** Combined extraction output from all documents */
+  extraction?: FinalExtractionOutput;
+}
+
+/**
+ * Map internal document type codes to display names.
+ */
+const DOCUMENT_TYPE_DISPLAY: Record<DocumentTypeInternal, DocumentType> = {
+  form_1120: 'Form 1120',
+  form_1120s: 'Form 1120-S',
+  form_1065: 'Form 1065',
+  schedule_c: 'Schedule C',
+  balance_sheet: 'Balance Sheet',
+  va_form_500: 'Virginia Form 500',
+  income_statement: 'Income Statement',
+  other: 'Other',
+};
+
+/**
+ * Handle balance sheet specific extraction logic.
+ * Balance sheets have special priority for asset values.
+ */
+function handleBalanceSheetExtraction(
+  modalResult: ModalExtractionResult,
+  documentId: string,
+  fileName: string
+): ExtractionResult {
+  if (!modalResult.success || !modalResult.extraction) {
+    return {
+      documentId,
+      file_name: fileName,
+      success: false,
+      error: modalResult.error?.message || 'Balance sheet extraction failed',
+    };
+  }
+
+  const extraction = modalResult.extraction;
+  const notes: string[] = [];
+
+  // Check for COVID loan balances
+  const years = extraction.available_years;
+  for (const year of years) {
+    const yearData = extraction.financial_data[year];
+    if (yearData?.covid_adjustments) {
+      const covid = yearData.covid_adjustments;
+      if (covid.eidl_loan_balance > 0) {
+        notes.push(`EIDL loan balance detected: $${covid.eidl_loan_balance.toLocaleString()}`);
+      }
+      if (covid.ppp_loan_balance > 0) {
+        notes.push(`PPP loan balance detected: $${covid.ppp_loan_balance.toLocaleString()}`);
+      }
+    }
+  }
+
+  // Check for shareholder loans (red flag)
+  if (extraction.red_flags?.loans_to_shareholders) {
+    notes.push(`Loans to shareholders: $${extraction.red_flags.loans_to_shareholders_amount.toLocaleString()}`);
+  }
+
+  // Check for negative retained earnings (red flag)
+  if (extraction.red_flags?.negative_retained_earnings) {
+    notes.push(`Negative retained earnings: $${extraction.red_flags.retained_earnings_value.toLocaleString()}`);
+  }
+
+  console.log(`[EXTRACT] Balance sheet extracted with ${notes.length} notes: ${notes.join(', ')}`);
+
+  return {
+    documentId,
+    file_name: fileName,
+    success: true,
+    extractedData: {
+      ...extraction,
+      document_type: 'Balance Sheet',
+      extraction_notes: notes,
+    },
+  };
+}
+
+/**
+ * Handle Virginia Form 500 state tax extraction.
+ * State returns provide Virginia-specific adjustments.
+ */
+function handleStateTaxExtraction(
+  modalResult: ModalExtractionResult,
+  documentId: string,
+  fileName: string
+): ExtractionResult {
+  if (!modalResult.success || !modalResult.extraction) {
+    return {
+      documentId,
+      file_name: fileName,
+      success: false,
+      error: modalResult.error?.message || 'State tax extraction failed',
+    };
+  }
+
+  const extraction = modalResult.extraction;
+  const notes: string[] = [];
+
+  // Note Virginia-specific data
+  notes.push('Virginia Form 500 processed');
+  notes.push('State adjustments available for reconciliation');
+
+  console.log(`[EXTRACT] Virginia Form 500 extracted: ${notes.join(', ')}`);
+
+  return {
+    documentId,
+    file_name: fileName,
+    success: true,
+    extractedData: {
+      ...extraction,
+      document_type: 'Virginia Form 500',
+      jurisdiction: 'VA',
+      extraction_notes: notes,
+    },
+  };
+}
+
+/**
+ * Handle standard federal tax form extraction.
+ */
+function handleFederalTaxExtraction(
+  modalResult: ModalExtractionResult,
+  documentId: string,
+  fileName: string,
+  documentType: DocumentType
+): ExtractionResult {
+  if (!modalResult.success || !modalResult.extraction) {
+    return {
+      documentId,
+      file_name: fileName,
+      success: false,
+      error: modalResult.error?.message || 'Federal tax extraction failed',
+    };
+  }
+
+  const extraction = modalResult.extraction;
+  const notes: string[] = [];
+
+  // Check for COVID adjustments in federal forms
+  const years = extraction.available_years;
+  for (const year of years) {
+    const yearData = extraction.financial_data[year];
+    if (yearData?.covid_adjustments) {
+      const covid = yearData.covid_adjustments;
+      if (covid.ppp_forgiveness > 0) {
+        notes.push(`PPP forgiveness in ${year}: $${covid.ppp_forgiveness.toLocaleString()}`);
+      }
+      if (covid.erc_credit > 0) {
+        notes.push(`Employee Retention Credit in ${year}: $${covid.erc_credit.toLocaleString()}`);
+      }
+      if (covid.eidl_grant > 0) {
+        notes.push(`EIDL grant in ${year}: $${covid.eidl_grant.toLocaleString()}`);
+      }
+    }
+  }
+
+  console.log(`[EXTRACT] Federal form ${documentType} extracted with ${notes.length} COVID notes`);
+
+  return {
+    documentId,
+    file_name: fileName,
+    success: true,
+    extractedData: {
+      ...extraction,
+      document_type: documentType,
+      extraction_notes: notes,
+    },
+  };
+}
+
+/**
+ * Determine document type from filename or extracted content.
+ */
+function inferDocumentType(fileName: string, extractedData?: FinalExtractionOutput): DocumentTypeInternal {
+  const lowerName = fileName.toLowerCase();
+
+  // Check filename patterns first
+  if (lowerName.includes('balance') || lowerName.includes('bs') || lowerName.includes('statement of financial')) {
+    return 'balance_sheet';
+  }
+  if (lowerName.includes('virginia') || lowerName.includes('va-500') || lowerName.includes('form500')) {
+    return 'va_form_500';
+  }
+  if (lowerName.includes('1120-s') || lowerName.includes('1120s')) {
+    return 'form_1120s';
+  }
+  if (lowerName.includes('1120')) {
+    return 'form_1120';
+  }
+  if (lowerName.includes('1065')) {
+    return 'form_1065';
+  }
+  if (lowerName.includes('schedule-c') || lowerName.includes('schedulec')) {
+    return 'schedule_c';
+  }
+  if (lowerName.includes('income') && lowerName.includes('statement')) {
+    return 'income_statement';
+  }
+
+  // Fallback to extracted data if available
+  if (extractedData?.company_info?.entity_type) {
+    switch (extractedData.company_info.entity_type) {
+      case 'S-Corporation':
+        return 'form_1120s';
+      case 'C-Corporation':
+        return 'form_1120';
+      case 'Partnership':
+        return 'form_1065';
+      case 'Sole Proprietorship':
+        return 'schedule_c';
+    }
+  }
+
+  return 'other';
+}
+
+/**
+ * Route extraction to appropriate handler based on document type.
+ */
+function routeExtraction(
+  modalResult: ModalExtractionResult,
+  documentId: string,
+  fileName: string
+): ExtractionResult {
+  // Determine document type
+  const docTypeInternal = inferDocumentType(fileName, modalResult.extraction);
+  const docTypeDisplay = DOCUMENT_TYPE_DISPLAY[docTypeInternal];
+
+  console.log(`[EXTRACT] Routing document ${documentId} as ${docTypeDisplay} (${docTypeInternal})`);
+
+  switch (docTypeInternal) {
+    case 'balance_sheet':
+      return handleBalanceSheetExtraction(modalResult, documentId, fileName);
+
+    case 'va_form_500':
+      return handleStateTaxExtraction(modalResult, documentId, fileName);
+
+    case 'form_1120':
+    case 'form_1120s':
+    case 'form_1065':
+    case 'schedule_c':
+      return handleFederalTaxExtraction(modalResult, documentId, fileName, docTypeDisplay);
+
+    case 'income_statement':
+      return handleFederalTaxExtraction(modalResult, documentId, fileName, 'Income Statement');
+
+    default:
+      // Fallback for unknown document types
+      if (!modalResult.success || !modalResult.extraction) {
+        return {
+          documentId,
+          file_name: fileName,
+          success: false,
+          error: modalResult.error?.message || 'Extraction failed',
+        };
+      }
+      return {
+        documentId,
+        file_name: fileName,
+        success: true,
+        extractedData: {
+          ...modalResult.extraction,
+          document_type: 'Other',
+        },
+      };
+  }
 }
 
 /**
@@ -264,22 +542,37 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
           });
       }
 
-      // Extract data with retry logic
+      // Extract data with retry logic using Modal extraction
       const result = await extractDocumentWithRetry(doc, reportId);
       results.push(result);
 
       if (result.success) {
         successCount++;
-        // Update extraction record with data
+
+        // Get document type from extracted data for metadata
+        const extractedData = result.extractedData as Record<string, unknown> | undefined;
+        const documentType = (extractedData?.document_type as string) || 'other';
+        const isPartial = !!result.error;
+        const extractionStatus = isPartial ? 'partial' : 'completed';
+
+        // Update extraction record with data and document type metadata
         await getSupabaseClient()
           .from('document_extractions')
           .update({
             extracted_data: result.extractedData,
-            extraction_status: 'completed',
-            error_message: null,
+            extraction_status: extractionStatus,
+            error_message: isPartial ? result.error : null,
+            // Store document type in metadata for filtering/display
+            metadata: {
+              document_type: documentType,
+              extraction_source: 'modal',
+              extracted_at: new Date().toISOString(),
+            },
           })
           .eq('document_id', doc.id)
           .eq('report_id', reportId);
+
+        console.log(`[EXTRACT] Stored ${documentType} extraction for doc ${doc.id} (${extractionStatus})`);
       } else {
         failCount++;
         // Update extraction record with error
@@ -288,6 +581,10 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
           .update({
             extraction_status: 'failed',
             error_message: result.error,
+            metadata: {
+              extraction_source: 'modal',
+              failed_at: new Date().toISOString(),
+            },
           })
           .eq('document_id', doc.id)
           .eq('report_id', reportId);
@@ -309,13 +606,29 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
     }
 
     // ========================================================================
-    // 5. Update final status
+    // 5. Count partial extractions and determine final status
     // ========================================================================
-    const allSuccess = failCount === 0;
-    const finalStatus = allSuccess ? 'extraction_complete' : 'extraction_partial';
-    const finalMessage = allSuccess
-      ? `Successfully extracted ${successCount} document(s)`
-      : `Extracted ${successCount} of ${documents.length} documents (${failCount} failed)`;
+    const partialCount = results.filter(r => r.success && r.error).length;
+    const allSuccess = failCount === 0 && partialCount === 0;
+    const hasPartial = partialCount > 0 || (successCount > 0 && failCount > 0);
+
+    let finalStatus: string;
+    let finalMessage: string;
+
+    if (allSuccess) {
+      finalStatus = 'extraction_complete';
+      finalMessage = `Successfully extracted ${successCount} document(s)`;
+    } else if (successCount === 0) {
+      finalStatus = 'extraction_failed';
+      finalMessage = `All ${failCount} document(s) failed extraction`;
+    } else {
+      finalStatus = 'extraction_partial';
+      const parts = [];
+      if (successCount > 0) parts.push(`${successCount} complete`);
+      if (partialCount > 0) parts.push(`${partialCount} partial`);
+      if (failCount > 0) parts.push(`${failCount} failed`);
+      finalMessage = `Extraction: ${parts.join(', ')}`;
+    }
 
     await getSupabaseClient()
       .from('reports')
@@ -326,26 +639,52 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
       })
       .eq('id', reportId);
 
-    console.log(`[EXTRACT] Extraction complete: ${successCount} success, ${failCount} failed`);
+    console.log(`[EXTRACT] Extraction complete: ${successCount} success, ${partialCount} partial, ${failCount} failed`);
 
     // ========================================================================
-    // 6. Return results
+    // 6. Collect document types from extracted data
+    // ========================================================================
+    const documentTypes = results
+      .filter(r => r.success && r.extractedData)
+      .map(r => {
+        const data = r.extractedData as Record<string, unknown>;
+        return {
+          documentId: r.documentId,
+          document_type: (data.document_type as DocumentType) || 'Other',
+        };
+      });
+
+    console.log(`[EXTRACT] Document types extracted: ${documentTypes.map(d => d.document_type).join(', ')}`);
+
+    // ========================================================================
+    // 7. Return results with document type information
     // ========================================================================
     return {
-      success: true,
+      success: successCount > 0,
       status: finalStatus,
       message: finalMessage,
       summary: {
         total: documents.length,
-        success: successCount,
+        success: successCount - partialCount,
+        partial: partialCount,
         failed: failCount,
       },
-      results: results.map(r => ({
-        documentId: r.documentId,
-        file_name: r.file_name,
-        success: r.success,
-        error: r.error,
-      })),
+      results: results.map(r => {
+        const data = r.extractedData as Record<string, unknown> | undefined;
+        const docType = data?.document_type as DocumentType | undefined;
+        const extractionStatus: 'complete' | 'partial' | 'failed' = r.success
+          ? (r.error ? 'partial' : 'complete')
+          : 'failed';
+
+        return {
+          documentId: r.documentId,
+          file_name: r.file_name,
+          success: r.success,
+          error: r.error,
+          document_type: docType,
+          extraction_status: extractionStatus,
+        };
+      }),
     };
 
   } catch (error: unknown) {
@@ -370,13 +709,15 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
 }
 
 /**
- * Extract data from a single document with retry logic
+ * Extract data from a single document using Modal extraction with document type routing.
+ * Falls back to Claude Vision only for scanned PDFs that require OCR.
  */
 async function extractDocumentWithRetry(
   doc: DocumentRecord,
   reportId: string
 ): Promise<ExtractionResult> {
   let lastError: string = '';
+  const fileName = doc.file_name || doc.file_path;
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
@@ -384,65 +725,52 @@ async function extractDocumentWithRetry(
 
       // Download PDF from Supabase Storage
       const pdfBuffer = await downloadDocument(doc.file_path);
-      const pdfBase64 = pdfBuffer.toString('base64');
-
       console.log(`[EXTRACT] Loaded PDF: ${pdfBuffer.length} bytes`);
 
-      // Call Claude API
-      const response = await getAnthropicClient().messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 4096,
-        system: EXTRACTION_SYSTEM_PROMPT,
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'document',
-                source: {
-                  type: 'base64',
-                  media_type: 'application/pdf',
-                  data: pdfBase64,
-                },
-              } as any,
-              {
-                type: 'text',
-                text: EXTRACTION_USER_PROMPT,
-              },
-            ],
-          },
-        ],
+      // Try Modal extraction first (primary extraction method)
+      const modalResult = await extractWithModal(pdfBuffer, {
+        documentId: doc.id,
+        filename: fileName,
+        timeout: 60000,
       });
 
-      // Extract text content from response
-      let textContent = '';
-      for (const block of response.content) {
-        if (block.type === 'text') {
-          textContent += block.text;
+      // If Modal extraction succeeded, route to appropriate handler
+      if (modalResult.success && modalResult.extraction) {
+        console.log(`[EXTRACT] Modal extraction succeeded for ${doc.id}`);
+        return routeExtraction(modalResult, doc.id, fileName);
+      }
+
+      // If Modal detected a scanned PDF, fail loud (no silent fallback per requirements)
+      if (modalResult.scannedPdfResult?.recommendation === 'require_premium') {
+        console.log(`[EXTRACT] Scanned PDF detected for ${doc.id}, requires user decision`);
+        return {
+          documentId: doc.id,
+          file_name: fileName,
+          success: false,
+          error: `Scanned PDF detected. ${modalResult.scannedPdfResult.explanation}. Please upload a text-based PDF or use premium extraction.`,
+        };
+      }
+
+      // If Modal failed for other reasons, log error but don't fall back silently
+      if (modalResult.error) {
+        console.error(`[EXTRACT] Modal extraction failed: ${modalResult.error.code} - ${modalResult.error.message}`);
+
+        // For partial extractions, return what we have
+        if (modalResult.extraction) {
+          console.log(`[EXTRACT] Returning partial extraction for ${doc.id}`);
+          const result = routeExtraction(modalResult, doc.id, fileName);
+          return {
+            ...result,
+            error: `Partial extraction: ${modalResult.error.message}`,
+          };
         }
+
+        throw new Error(`Modal extraction failed: ${modalResult.error.message}`);
       }
 
-      // Parse JSON from response
-      const extractedData = parseJsonResponse(textContent);
-
-      if (!extractedData) {
-        throw new Error('Failed to parse JSON from Claude response');
-      }
-
-      // Validate required fields
-      if (!extractedData.document_type) {
-        throw new Error('Missing document_type in extracted data');
-      }
-
-      console.log(`[EXTRACT] Successfully extracted data from ${doc.file_name || doc.file_path}`);
-      console.log(`[EXTRACT] Document type: ${extractedData.document_type}, Tax year: ${extractedData.tax_year}`);
-
-      return {
-        documentId: doc.id,
-        file_name: doc.file_name || doc.file_path,
-        success: true,
-        extractedData,
-      };
+      // Fallback to Claude Vision for OCR (only if Modal URL is not configured)
+      console.log(`[EXTRACT] Falling back to Claude Vision for ${doc.id}`);
+      return await extractWithClaudeVision(doc, pdfBuffer);
 
     } catch (error: unknown) {
       lastError = error instanceof Error ? error.message : 'Unknown error';
@@ -460,9 +788,78 @@ async function extractDocumentWithRetry(
   // All retries failed
   return {
     documentId: doc.id,
-    file_name: doc.file_name || doc.file_path,
+    file_name: fileName,
     success: false,
     error: `Failed after ${MAX_RETRIES} attempts: ${lastError}`,
+  };
+}
+
+/**
+ * Extract using Claude Vision API (legacy fallback for scanned PDFs).
+ * This is expensive (~$3-15/document) and should only be used when Modal fails.
+ */
+async function extractWithClaudeVision(
+  doc: DocumentRecord,
+  pdfBuffer: Buffer
+): Promise<ExtractionResult> {
+  const pdfBase64 = pdfBuffer.toString('base64');
+  const fileName = doc.file_name || doc.file_path;
+
+  console.log(`[EXTRACT] Using Claude Vision for ${doc.id} (expensive fallback)`);
+
+  const response = await getAnthropicClient().messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 4096,
+    system: EXTRACTION_SYSTEM_PROMPT,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          {
+            type: 'document',
+            source: {
+              type: 'base64',
+              media_type: 'application/pdf',
+              data: pdfBase64,
+            },
+          } as any,
+          {
+            type: 'text',
+            text: EXTRACTION_USER_PROMPT,
+          },
+        ],
+      },
+    ],
+  });
+
+  // Extract text content from response
+  let textContent = '';
+  for (const block of response.content) {
+    if (block.type === 'text') {
+      textContent += block.text;
+    }
+  }
+
+  // Parse JSON from response
+  const extractedData = parseJsonResponse(textContent);
+
+  if (!extractedData) {
+    throw new Error('Failed to parse JSON from Claude response');
+  }
+
+  // Validate required fields
+  if (!extractedData.document_type) {
+    throw new Error('Missing document_type in extracted data');
+  }
+
+  console.log(`[EXTRACT] Claude Vision extracted from ${fileName}`);
+  console.log(`[EXTRACT] Document type: ${extractedData.document_type}, Tax year: ${extractedData.tax_year}`);
+
+  return {
+    documentId: doc.id,
+    file_name: fileName,
+    success: true,
+    extractedData,
   };
 }
 

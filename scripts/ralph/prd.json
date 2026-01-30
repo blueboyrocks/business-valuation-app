@@ -1,384 +1,394 @@
 {
   "project": "ValuationPro",
-  "branchName": "ralph/modal-extraction-integration",
-  "description": "Modal Extraction Integration - Replace expensive Claude Vision PDF extraction with Modal/pdfplumber pipeline",
+  "branchName": "ralph/modal-extraction-enhancement",
+  "description": "Modal PDF Extraction Enhancement - Universal document support for balance sheets, Virginia state taxes, and enhanced federal form extraction",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Create centralized feature flags module",
-      "description": "As a developer, I need a feature flags system to safely toggle between Modal and Claude Vision extraction paths.",
+      "title": "Implement DocumentClassifier with balance sheet detection",
+      "description": "As a valuation system, I need to classify uploaded documents by type so the correct extractor is used. Start with balance sheet detection since that's the most common gap.",
       "acceptanceCriteria": [
-        "Create lib/feature-flags.ts with typed feature flags interface",
-        "Implement getFeatureFlags() function that reads from environment variables",
-        "Include flags: useModalExtraction, allowClaudeVisionFallback, showExtractionDebugPanel",
-        "Add environment variables documentation to README or .env.example",
+        "Add DocumentClassifier class to modal/extract_pdf.py with classify() method",
+        "Returns ClassificationResult with document_type, entity_type, tax_year, confidence_score",
+        "Add balance_sheet detection patterns: 'Balance Sheet', 'Statement of Financial Position', 'ASSETS', 'LIABILITIES', 'EQUITY'",
+        "Detect balance date format: 'As of [date]' to extract tax_year",
+        "Add 'balance_sheet' to DocumentType enum in lib/extraction/types.ts",
         "Typecheck passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Implemented lib/feature-flags.ts with getFeatureFlags(), isModalExtractionEnabled(), isClaudeVisionFallbackAllowed(), logFeatureFlags()"
+      "notes": "Implemented DocumentClassifier with balance_sheet, va_form_500, income_statement patterns. Added types to lib/extraction/types.ts."
     },
     {
       "id": "US-002",
-      "title": "Create extraction error types and handlers",
-      "description": "As a developer, I need standardized error types for extraction failures so errors are actionable.",
+      "title": "Add Virginia Form 500 classification",
+      "description": "As a valuation system, I need to detect Virginia state tax returns so state-specific adjustments can be extracted.",
       "acceptanceCriteria": [
-        "Create lib/extraction/errors.ts with ExtractionErrorCode enum",
-        "Include codes: MODAL_CONNECTION_FAILED, MODAL_TIMEOUT, PDF_ENCRYPTED, PDF_CORRUPTED, PDF_SCANNED, MISSING_REQUIRED_DATA",
-        "Create ExtractionError interface with code, message, suggestedRemediation, isRetryable",
-        "Create handleExtractionError() function with appropriate responses per error type",
+        "Add va_form_500 patterns to DocumentClassifier: 'Virginia', 'Form 500', 'Department of Taxation'",
+        "Detect sub-forms: 500ADJ, 500FED, 500A patterns",
+        "Set jurisdiction = 'VA' in classification result",
+        "Extract tax year from form header",
+        "Add 'va_form_500' to DocumentType enum in lib/extraction/types.ts",
         "Typecheck passes"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "Implemented lib/extraction/errors.ts with ExtractionErrorCode enum, handleExtractionError(), ExtractionException class"
+      "notes": "VA Form 500 patterns added including sub-forms 500ADJ, 500FED, 500A. jurisdiction='VA' set in classification."
     },
     {
       "id": "US-003",
-      "title": "Create scanned PDF detector",
-      "description": "As a developer, I need to detect scanned PDFs before Modal processing to route them appropriately.",
+      "title": "Implement BalanceSheetExtractor base class",
+      "description": "As a valuation system, I need to extract standard balance sheet fields so asset and liability data feeds into valuation.",
       "acceptanceCriteria": [
-        "Create lib/extraction/scanned-pdf-detector.ts",
-        "Implement detectScannedPdf(pdfBuffer) that returns ScannedPdfDetectionResult",
-        "Detection based on text density: <50 chars/page = scanned, <500 = warn, >500 = proceed",
-        "Return recommendation: 'proceed' | 'warn_user' | 'require_premium'",
-        "Add unit tests for detection logic",
+        "Add BalanceSheetExtractor class to modal/extract_pdf.py inheriting from BaseExtractor",
+        "Extract total_assets, total_liabilities, total_equity from both text and table formats",
+        "Extract cash, accounts_receivable, inventory, retained_earnings, shareholder_distributions",
+        "Handle negative numbers in parentheses format: (1,234.56) = -1234.56",
+        "Return ExtractionResult with document_type='balance_sheet'",
         "Typecheck passes"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "Implemented with analyzeTextDensity(), detectFromModalResponse(), detectScannedPdf(). 17 unit tests."
+      "notes": "Implemented BalanceSheetExtractor with BaseExtractor base class. Handles QuickBooks format with hierarchical parsing."
     },
     {
       "id": "US-004",
-      "title": "Create typed data accessor functions",
-      "description": "As a developer, I need helper functions to access FinalExtractionOutput data safely with entity-type awareness.",
+      "title": "Extract hierarchical asset structure from balance sheets",
+      "description": "As a valuation system, I need to parse nested asset categories in QuickBooks-style balance sheets.",
       "acceptanceCriteria": [
-        "Create lib/extraction/data-accessors.ts",
-        "Implement getLatestYearData(extraction) - returns most recent year's data",
-        "Implement getYearsSorted(extraction) - returns years array sorted descending",
-        "Implement getOwnerCompensation(extraction, year) - entity-type-aware (S-Corp: officer comp, Partnership: guaranteed payments, Sole Prop: net income)",
-        "Implement getDepreciationAddBack(extraction, year) - includes both depreciation AND Section 179",
-        "Implement getCovidAdjustments(extraction, year) - returns PPP/EIDL/ERC amounts",
-        "All functions handle null/undefined gracefully with ?? 0 defaults",
+        "Parse hierarchy: Current Assets > Bank Accounts > individual accounts",
+        "Parse hierarchy: Fixed Assets > Vehicles, Equipment, Furniture with subtotals",
+        "Extract accumulated_depreciation as negative value",
+        "Handle 'Total [Category]' rollup lines",
+        "Calculate net_fixed_assets = fixed_assets_gross - accumulated_depreciation",
         "Typecheck passes"
       ],
       "priority": 4,
       "passes": true,
-      "notes": "Implemented types.ts and data-accessors.ts with entity-type-aware functions"
+      "notes": "Implemented in US-003 BalanceSheetExtractor with _extract_assets_section() for hierarchical parsing"
     },
     {
       "id": "US-005",
-      "title": "Create SDE calculation accessors",
-      "description": "As a developer, I need functions to calculate SDE add-backs from extraction data.",
+      "title": "Detect COVID loans in balance sheet liabilities",
+      "description": "As a valuation analyst, I need to identify EIDL and PPP loans in balance sheets for COVID normalization.",
       "acceptanceCriteria": [
-        "Add getAllSdeAddBacks(extraction, year) to data-accessors.ts",
-        "Returns { total: number, items: SdeAddBackItem[] } with categorized add-backs",
-        "Categories: owner_compensation, depreciation, section_179, amortization, interest, capital_gains, covid_adjustments",
-        "Implement getNormalizedNetIncome(extraction, year) that subtracts COVID adjustments",
-        "Add unit tests with mock extraction data",
+        "Detect EIDL patterns: 'EIDL LOAN', 'EIDL-', 'Economic Injury'",
+        "Detect PPP patterns: 'PPP', 'Paycheck Protection', 'PPP-Loan'",
+        "Extract loan balances from Long-Term Liabilities section",
+        "Add eidl_loan_balance and ppp_loan_balance to covid_adjustments in extraction output",
+        "Add extraction_note when COVID loan detected",
+        "Update FinalExtractionOutput.covid_adjustments type to include loan balances in lib/extraction/types.ts",
         "Typecheck passes"
       ],
       "priority": 5,
       "passes": true,
-      "notes": "Implemented getAllSdeAddBacks(), getNormalizedNetIncome(), calculateSDE() with 20 unit tests"
+      "notes": "Implemented in US-003 BalanceSheetExtractor._extract_liabilities_section(). Updated types.ts CovidAdjustments interface."
     },
     {
       "id": "US-006",
-      "title": "Validate FinalExtractionOutput type completeness",
-      "description": "As a developer, I need to ensure the FinalExtractionOutput type in lib/extraction/types.ts has all fields needed by the valuation pipeline.",
+      "title": "Detect balance sheet red flags",
+      "description": "As a valuation analyst, I need to identify balance sheet anomalies for investigation before finalizing valuation.",
       "acceptanceCriteria": [
-        "Review lib/extraction/types.ts against implementation guide requirements",
-        "Ensure schedule_k has section_179_deduction, capital gains fields",
-        "Ensure guaranteed_payments structure exists for partnerships",
-        "Ensure covid_adjustments structure exists (ppp, eidl, erc)",
-        "Ensure red_flags structure is complete",
-        "Add any missing fields to the type definition",
+        "Flag loans_to_shareholders > 0 with amount",
+        "Flag negative_retained_earnings with value",
+        "Flag shareholder_distributions > annual net income",
+        "Flag large 'Due from' related party balances",
+        "Add flags to red_flags dict in extraction output",
+        "Ensure lib/extraction/types.ts red_flags interface has loans_to_shareholders, negative_retained_earnings fields",
         "Typecheck passes"
       ],
       "priority": 6,
       "passes": true,
-      "notes": "Completed in US-004. types.ts has: schedule_k.section_179_deduction, owner_info.guaranteed_payments, covid_adjustments, red_flags"
+      "notes": "Implemented in US-003 BalanceSheetExtractor with add_red_flag(). Updated RedFlags interface in types.ts."
     },
     {
       "id": "US-007",
-      "title": "Add extraction phase to document processing entry point",
-      "description": "As a developer, I need the main processing flow to check for/run extraction before valuation.",
+      "title": "Implement VirginiaForm500Extractor base",
+      "description": "As a valuation system, I need to extract Virginia corporate income tax data for state-level adjustments.",
       "acceptanceCriteria": [
-        "Identify main entry point in app/api/ routes",
-        "Add extraction check: getExistingExtraction(reportId) from document_extractions table",
-        "If no extraction exists AND feature flag enabled, call Modal extraction",
-        "Handle extraction result states: success, scanned_pdf_detected, error",
-        "Only proceed to valuation if extraction succeeds",
+        "Add VirginiaForm500Extractor class to modal/extract_pdf.py",
+        "Extract federal_taxable_income, virginia_taxable_income from Page 2",
+        "Extract virginia_additions, virginia_subtractions",
+        "Extract FEIN, business_name, NAICS code from header",
+        "Set entity_type = 'Corporation' and jurisdiction = 'VA'",
+        "Return ExtractionResult with document_type='va_form_500'",
         "Typecheck passes"
       ],
       "priority": 7,
       "passes": true,
-      "notes": "Implemented lib/extraction/loader.ts with checkExistingExtraction(), loadExtractionData(), storeExtractionData()"
+      "notes": "Implemented VirginiaForm500Extractor with full extraction capabilities"
     },
     {
       "id": "US-008",
-      "title": "Wire Modal extraction into extraction phase",
-      "description": "As a developer, I need the extraction phase to actually call Modal when triggered.",
+      "title": "Extract Schedule 500FED federal crosswalk data",
+      "description": "As a valuation system, I need to capture federal line item crosswalk from VA returns for depreciation and NOL data.",
       "acceptanceCriteria": [
-        "In extraction phase, call extractDocumentPipeline() from lib/extraction/pipeline.ts",
-        "Pass PDF buffer, document ID, filename to pipeline",
-        "Store successful extraction result in document_extractions table",
-        "Return appropriate status based on pipeline result",
-        "Add logging: [EXTRACTION] Using Modal pipeline for document ${id}",
+        "Extract Federal Taxable Income before NOL from Schedule 500FED",
+        "Extract Net Operating Loss deduction",
+        "Extract Other depreciation (Line 11)",
+        "Add extraction_note linking to federal form fields",
         "Typecheck passes"
       ],
       "priority": 8,
       "passes": true,
-      "notes": "Implemented lib/extraction/modal-client.ts with extractWithModal() function"
+      "notes": "Implemented in VirginiaForm500Extractor._extract_schedule_500fed()"
     },
     {
       "id": "US-009",
-      "title": "Implement scanned PDF user opt-in flow",
-      "description": "As a user, I want to be prompted when my PDF is scanned so I can choose premium extraction.",
+      "title": "Extract Schedule 500A apportionment percentage",
+      "description": "As a valuation system, I need multi-state apportionment percentage to calculate Virginia-only income.",
       "acceptanceCriteria": [
-        "Before Modal extraction, run scanned PDF detection",
-        "If recommendation === 'require_premium', return status scanned_pdf_detected",
-        "Response includes: message, options (use_premium, reupload), affected documents",
-        "Update report status to awaiting_user_decision",
-        "Create API endpoint to handle user's opt-in decision",
-        "If user opts in, route to Claude Vision extraction",
+        "Detect multi-factor formula checkbox on Schedule 500A",
+        "Extract Property factor, Payroll factor, Sales factor percentages",
+        "Extract Multi-Factor Percentage (double-weighted sales)",
+        "Add extraction_note if apportionment < 100%",
+        "Add apportionment_percentage to state_tax_data in extraction output",
         "Typecheck passes"
       ],
       "priority": 9,
       "passes": true,
-      "notes": "Implemented app/api/reports/[id]/extraction-decision/route.ts with POST and GET handlers"
+      "notes": "Implemented in VirginiaForm500Extractor._extract_apportionment(). Defaults to 100% for single-state."
     },
     {
       "id": "US-010",
-      "title": "Add feature flag check to orchestrator",
-      "description": "As a developer, I need the orchestrator to check feature flags and route to appropriate path.",
+      "title": "Enhance Form 1120-S extractor with Schedule K",
+      "description": "As a valuation system, I need all Schedule K line items for Section 179, capital gains, and distributions.",
       "acceptanceCriteria": [
-        "In lib/claude/orchestrator-v2.ts, import and use getFeatureFlags()",
-        "At start of executeSinglePass, check useModalExtraction flag",
-        "If true AND passNumber <= 3, skip to pass 4 (extraction already done)",
-        "Log clearly: [ORCHESTRATOR] Modal extraction enabled, skipping passes 1-3",
-        "If false, use existing Claude Vision path (legacy mode)",
+        "Extract Section 179 deduction (Line 11/12a) into schedule_k.section_179_deduction",
+        "Extract net short-term + long-term capital gain (Lines 7, 8a) into schedule_k.capital_gains",
+        "Extract distributions - cash (Line 16a) and property (Line 16b)",
+        "Verify ordinary income matches Page 1 Line 21",
+        "Ensure lib/extraction/types.ts schedule_k interface has section_179_deduction, capital_gains, distributions",
         "Typecheck passes"
       ],
       "priority": 10,
       "passes": true,
-      "notes": "Added feature flag check and Modal path to orchestrator. Created pass-converters.ts."
+      "notes": "Added Schedule K patterns for Section 179, capital gains, distributions. Updated ScheduleK interface."
     },
     {
       "id": "US-011",
-      "title": "Load extraction data for Modal path",
-      "description": "As a developer, I need the orchestrator to load extraction data when using Modal path.",
+      "title": "Enhance Form 1120-S extractor with Schedule L balance sheet",
+      "description": "As a valuation system, I need embedded balance sheet from Schedule L for BOY and EOY balances.",
       "acceptanceCriteria": [
-        "Create function loadExtractionData(reportId) that fetches from document_extractions",
-        "Return typed FinalExtractionOutput or throw if not found",
-        "Validate extraction has required data before proceeding",
-        "Store extraction data in context for use by passes 4+",
+        "Extract BOY (beginning of year) column values for all asset lines (1-14)",
+        "Extract EOY (end of year) column values for all asset lines",
+        "Extract BOY and EOY for liability lines (15-26)",
+        "Populate balance_sheet.boy_* and balance_sheet.eoy_* fields",
+        "Verify total_assets = total_liabilities + equity",
+        "Update lib/extraction/types.ts balance_sheet interface with boy_* and eoy_* fields",
         "Typecheck passes"
       ],
       "priority": 11,
       "passes": true,
-      "notes": "Implemented in US-010 - loadExtractionData() is called in orchestrator's Modal path"
+      "notes": "Added BOY/EOY patterns to extract_amounts_from_text. Updated BalanceSheet interface with boy_*/eoy_* fields."
     },
     {
       "id": "US-012",
-      "title": "Update Pass 4 (Industry Analysis) to use FinalExtractionOutput",
-      "description": "As a developer, I need Pass 4 to work with Modal extraction output instead of Pass1-3 outputs.",
+      "title": "Add COVID adjustment extraction from federal forms",
+      "description": "As a valuation analyst, I need to identify COVID-related items in tax returns for proper normalization of 2020-2021 valuations.",
       "acceptanceCriteria": [
-        "Modify buildPass4Request() to accept FinalExtractionOutput instead of Pass1/2/3 outputs",
-        "Use data accessors to get: company name, entity type, revenue, expense breakdown",
-        "Extract NAICS code from extraction if available, or prompt Claude to classify",
-        "Update prompt to reference extraction data fields",
+        "Detect PPP loan forgiveness patterns (shows as income or equity adjustment)",
+        "Detect EIDL advance grants in other income",
+        "Detect Employee Retention Credit (shows as reduction to wages expense)",
+        "Add extraction_note explaining each COVID adjustment found",
+        "Populate covid_adjustments dict with ppp_loan_forgiveness, eidl_advances, employee_retention_credit",
         "Typecheck passes"
       ],
       "priority": 12,
       "passes": true,
-      "notes": "Handled by pass-converters.ts - Pass 4 receives converted Pass1/2/3Output types"
+      "notes": "Added COVID patterns for PPP forgiveness, EIDL advance, ERC. Added covid_adjustments to parse_financial_data output."
     },
     {
       "id": "US-013",
-      "title": "Update Pass 5 (Risk Assessment) to use FinalExtractionOutput",
-      "description": "As a developer, I need Pass 5 to work with Modal extraction output.",
+      "title": "Implement ExtractorFactory for document routing",
+      "description": "As a developer, I need a factory to create the appropriate extractor based on document classification.",
       "acceptanceCriteria": [
-        "Modify buildPass5Request() to accept FinalExtractionOutput",
-        "Use data accessors for: red_flags, financial ratios, balance sheet data",
-        "Include loans_to_shareholders flag in risk factors",
-        "Update prompt to reference extraction data fields",
+        "Add ExtractorFactory class to modal/extract_pdf.py",
+        "Map document_type to extractor class: form_1120s->Form1120SExtractor, balance_sheet->BalanceSheetExtractor, va_form_500->VirginiaForm500Extractor",
+        "create() method returns appropriate extractor instance",
+        "Fall back to GenericExtractor for unknown document types",
+        "Wire factory into main extract_pdf() function",
         "Typecheck passes"
       ],
       "priority": 13,
       "passes": true,
-      "notes": "Handled by pass-converters.ts - converted outputs contain red flags data"
+      "notes": "Implemented ExtractorFactory with EXTRACTOR_MAP. Wired into main extract_pdf() function."
     },
     {
       "id": "US-014",
-      "title": "Update Pass 6 (Earnings Normalization) to use FinalExtractionOutput",
-      "description": "As a developer, I need Pass 6 to work with Modal extraction output.",
+      "title": "Implement MultiYearAggregator for combining documents",
+      "description": "As a valuation system, I need to combine data from multiple documents into a unified FinalExtractionOutput.",
       "acceptanceCriteria": [
-        "Modify buildPass6Request() to accept FinalExtractionOutput",
-        "Use getAllSdeAddBacks() accessor for add-back data",
-        "Use getNormalizedNetIncome() for COVID-adjusted earnings",
-        "Use getOwnerCompensation() for entity-type-aware owner comp",
-        "Update prompt to reference extraction data fields",
+        "Add MultiYearAggregator class to modal/extract_pdf.py",
+        "Accept list of ExtractionResult from multiple extractors",
+        "Group financial data by tax_year in financial_data dict",
+        "Merge company_info (prefer federal over state over balance sheet)",
+        "Combine balance_sheet data from standalone + Schedule L",
+        "Return single unified extraction response",
         "Typecheck passes"
       ],
       "priority": 14,
       "passes": true,
-      "notes": "Handled by pass-converters.ts - earnings data in converted outputs"
+      "notes": "Implemented MultiYearAggregator with aggregate() method, groups by year, merges company_info."
     },
     {
       "id": "US-015",
-      "title": "Update Passes 7-9 (Valuation Approaches) to use FinalExtractionOutput",
-      "description": "As a developer, I need the valuation approach passes to work with Modal extraction output.",
+      "title": "Implement conflict resolution for multi-document data",
+      "description": "As a valuation system, I need to handle conflicts when multiple sources provide different values for the same field.",
       "acceptanceCriteria": [
-        "Modify buildPass7Request() (Asset Approach) - use balance sheet from extraction",
-        "Modify buildPass8Request() (Income Approach) - use normalized earnings",
-        "Modify buildPass9Request() (Market Approach) - use revenue/SDE for multiples",
-        "All passes use data accessors, not direct field access",
+        "Priority order: Federal Tax Return > State Return > Standalone Balance Sheet > Income Statement",
+        "Track data_source for each field in extraction output",
+        "Flag conflicts with >5% difference as extraction_notes",
+        "Use highest confidence_score source when priority is equal",
+        "Standalone balance sheet takes precedence over Schedule L for asset values (per user requirement)",
         "Typecheck passes"
       ],
       "priority": 15,
       "passes": true,
-      "notes": "Handled by pass-converters.ts - valuation passes receive converted outputs"
+      "notes": "Implemented in MultiYearAggregator._merge_year_data() with SOURCE_PRIORITY dict and conflict logging."
     },
     {
       "id": "US-016",
-      "title": "Update Passes 10-12 (Synthesis) to use FinalExtractionOutput",
-      "description": "As a developer, I need the synthesis passes to work with Modal extraction output.",
+      "title": "Implement ExtractionValidator for quality checks",
+      "description": "As a valuation system, I need to validate extraction completeness and accuracy before passing to downstream systems.",
       "acceptanceCriteria": [
-        "Modify buildPass10Request() (Value Reconciliation) - use extraction data",
-        "Modify buildPass11Request() (Report Narrative) - use company_info, financial_data",
-        "Modify buildPass12Request() (Quality Review) - verify against extraction",
-        "All passes use data accessors consistently",
+        "Add ExtractionValidator class to modal/extract_pdf.py",
+        "Check required fields present: revenue, net_income for tax forms; total_assets, total_liabilities for balance sheets",
+        "Check balance sheet balances: total_assets = total_liabilities + total_equity (within 1% tolerance)",
+        "Calculate overall confidence_score (0.0-1.0)",
+        "Set validation.status: 'complete' (>85% confidence), 'partial' (50-85%), 'failed' (<50%)",
+        "Add validation.issues array with specific problems found",
         "Typecheck passes"
       ],
       "priority": 16,
       "passes": true,
-      "notes": "Handled by pass-converters.ts - synthesis passes receive converted outputs"
+      "notes": "Implemented ExtractionValidator with required field checks, balance sheet validation, income statement ties."
     },
     {
       "id": "US-017",
-      "title": "Update calculation engine to use FinalExtractionOutput",
-      "description": "As a developer, I need the calculation engine to accept extraction data directly.",
+      "title": "Update API route to handle new document types",
+      "description": "As a developer, I need the extraction API route to handle balance_sheet and va_form_500 document types from Modal.",
       "acceptanceCriteria": [
-        "Update lib/calculations/calculation-engine.ts input types",
-        "Create mapExtractionToCalculationInput(extraction) function",
-        "Use data accessors for all financial values",
-        "Ensure multi-year support (iterate over extraction.financial_data years)",
+        "Update app/api/reports/[id]/extract/route.ts to handle new document_type values",
+        "Add routing logic: balance_sheet -> handleBalanceSheetExtraction(), va_form_500 -> handleStateTaxExtraction()",
+        "Store new document types in document_extractions table with appropriate metadata",
+        "Return appropriate status codes and messages for partial extractions",
         "Typecheck passes"
       ],
       "priority": 17,
       "passes": true,
-      "notes": "No changes needed - mapPassOutputsToEngineInputs() works with converted Pass outputs"
+      "notes": "Updated lib/extraction.ts with document type routing. Added handleBalanceSheetExtraction(), handleStateTaxExtraction(), handleFederalTaxExtraction(). Stores document_type in metadata. Returns partial status for incomplete extractions."
     },
     {
       "id": "US-018",
-      "title": "Update PDF report builder to use FinalExtractionOutput",
-      "description": "As a developer, I need the PDF builder to access data from extraction output.",
+      "title": "Update valuation engine to use balance sheet data",
+      "description": "As a developer, I need the calculation engine to incorporate balance sheet data for asset-based valuation approach.",
       "acceptanceCriteria": [
-        "Update lib/pdf/professional-pdf-generator.ts or equivalent",
-        "Replace Pass1/2/3 data references with extraction data accessors",
-        "Ensure all financial tables pull from extraction.financial_data",
-        "Ensure company info section uses extraction.company_info",
+        "Update lib/calculations/types.ts ValuationInputs interface with balance_sheet fields",
+        "Add fields: total_assets, total_liabilities, net_fixed_assets, working_capital, shareholder_loans",
+        "Update mapPassOutputsToEngineInputs() or equivalent to include balance sheet data",
+        "Ensure asset approach calculation uses standalone balance sheet when available",
         "Typecheck passes"
       ],
       "priority": 18,
-      "passes": true,
-      "notes": "No changes needed - PDF builder works with ValuationDataAccessor from calculation results"
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-019",
-      "title": "Implement hard fail with detailed errors (testing mode)",
-      "description": "As a developer during testing, I need Modal failures to surface immediately with actionable error messages.",
+      "title": "Update valuation engine for COVID normalization",
+      "description": "As a developer, I need the SDE calculation to subtract COVID one-time items for proper earnings normalization.",
       "acceptanceCriteria": [
-        "When FEATURE_MODAL_EXTRACTION=true and Modal fails, throw with detailed error",
-        "Error includes: error code, message, suggested remediation, timestamp",
-        "Error is logged to console AND stored in database for debugging",
-        "User sees specific error message, not generic 'something went wrong'",
+        "Update lib/calculations/types.ts with covid_adjustments interface",
+        "Add fields: ppp_loan_forgiveness, eidl_advances, employee_retention_credit",
+        "Update calculateNormalizedSDE() to subtract COVID adjustments from earnings",
+        "Add extraction_note explaining COVID normalization",
         "Typecheck passes"
       ],
       "priority": 19,
-      "passes": true,
-      "notes": "Added ExtractionException with detailed error info to Modal path"
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-020",
-      "title": "Implement queue for manual review (production mode)",
-      "description": "As a developer in production, I need non-scanned-PDF failures to queue for review instead of hard failing.",
+      "title": "Update orchestrator prompts for new document types",
+      "description": "As a developer, I need the AI pass prompts to reference balance sheet and state tax data when available.",
       "acceptanceCriteria": [
-        "Add environment variable MODAL_FAIL_MODE=hard|queue",
-        "When queue mode and Modal fails (non-scanned), create review queue entry",
-        "Notify user: 'Your report is queued for processing. We'll notify you when ready.'",
-        "Admin can view queue and manually process or retry",
+        "Update Pass 2 (Financial Analysis) prompt to handle balance sheets separately from tax returns",
+        "Add instructions: 'IF BALANCE SHEET PRESENT: Use for asset values, note EIDL/PPP loans, flag shareholder loans'",
+        "Update Pass 5 (SDE Calculation) prompt with COVID adjustment rules",
+        "Add instructions: 'PPP loan forgiveness: SUBTRACT, EIDL grants: SUBTRACT, ERC: SUBTRACT'",
+        "Add balance sheet red flags section to Pass 5 prompt",
         "Typecheck passes"
       ],
       "priority": 20,
-      "passes": true,
-      "notes": "Added MODAL_FAIL_MODE check - queue mode placeholder implemented"
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-021",
-      "title": "Create integration test for Modal extraction path",
-      "description": "As a developer, I need integration tests to verify the Modal path produces correct results.",
+      "title": "Update PDF generator for source document display",
+      "description": "As a user, I need the PDF report to show which documents were analyzed for transparency.",
       "acceptanceCriteria": [
-        "Create test file lib/extraction/__tests__/modal-integration.test.ts",
-        "Test with sample document data (mock if needed)",
-        "Verify extraction extracts: revenue, officer comp, depreciation, Section 179",
-        "Verify extraction handles multi-year documents",
-        "Verify scanned PDF detection triggers appropriate flow",
-        "Tests pass",
+        "Add generateSourceDocuments() function to lib/pdf/professional-pdf-generator.ts",
+        "Display table with columns: Document, Type, Year for each analyzed document",
+        "Format document_type for display (balance_sheet -> 'Balance Sheet', va_form_500 -> 'Virginia Form 500')",
+        "Add section after Executive Summary or in Appendix",
         "Typecheck passes"
       ],
       "priority": 21,
       "passes": false,
-      "notes": "Use vitest. Mock Modal responses for CI."
+      "notes": ""
     },
     {
       "id": "US-022",
-      "title": "Create comparison test between Modal and Claude Vision paths",
-      "description": "As a developer, I need to verify Modal path produces equivalent results to Claude Vision.",
+      "title": "Update PDF generator for COVID adjustment disclosure",
+      "description": "As a user, I need the PDF report to disclose any COVID-related adjustments made to the valuation.",
       "acceptanceCriteria": [
-        "Create test that runs same document through both paths",
-        "Compare key values: SDE, normalized earnings, valuation result",
-        "Values should match within 5% tolerance",
-        "Document any discrepancies and their causes",
-        "Tests pass",
+        "Add generateCOVIDdisclosure() function to lib/pdf/professional-pdf-generator.ts",
+        "Display section only if covid_adjustments has non-zero values",
+        "List each adjustment type with amount formatted as currency",
+        "Add explanatory text: 'The following pandemic-related items were adjusted in the SDE calculation'",
+        "Place in Financial Analysis section or as standalone disclosure",
         "Typecheck passes"
       ],
       "priority": 22,
       "passes": false,
-      "notes": "This proves Modal is production-ready"
+      "notes": ""
     },
     {
       "id": "US-023",
-      "title": "Deprecate Pass 1-3 configurations",
-      "description": "As a developer, I need to mark Pass 1-3 configs as deprecated once Modal is stable.",
+      "title": "Create integration test for balance sheet extraction",
+      "description": "As a developer, I need integration tests to verify balance sheet extraction produces correct results.",
       "acceptanceCriteria": [
-        "Add deprecation comments to lib/claude/prompts-v2/ pass 1-3 files",
-        "Add console.warn if legacy path is used: 'Claude Vision extraction is deprecated'",
-        "Update CLAUDE.md with new architecture documentation",
-        "Do NOT delete files yet - keep for rollback capability",
+        "Create test file lib/extraction/__tests__/balance-sheet-extraction.test.ts",
+        "Test with mock balance sheet data matching kfactor6.pdf structure",
+        "Verify total_assets, total_liabilities, total_equity extracted correctly",
+        "Verify EIDL/PPP loan detection in covid_adjustments",
+        "Verify red_flags populated for loans_to_shareholders, negative_retained_earnings",
+        "Tests pass",
         "Typecheck passes"
       ],
       "priority": 23,
-      "passes": true,
-      "notes": "Added @deprecated JSDoc and console.warn to pass-01/02/03 and orchestrator"
+      "passes": false,
+      "notes": ""
     },
     {
       "id": "US-024",
-      "title": "Add admin UI extraction debug panel",
-      "description": "As an admin, I want to see extraction details for debugging purposes.",
+      "title": "Create integration test for Virginia Form 500 extraction",
+      "description": "As a developer, I need integration tests to verify VA Form 500 extraction produces correct results.",
       "acceptanceCriteria": [
-        "When showExtractionDebugPanel flag is true, show debug panel",
-        "Panel shows: extraction status, confidence score, validation issues",
-        "Panel shows: raw extraction data (collapsible JSON)",
-        "Panel shows: which path was used (Modal vs Claude Vision)",
-        "Typecheck passes",
-        "Verify in browser using dev-browser skill"
+        "Create test file lib/extraction/__tests__/va-form-500-extraction.test.ts",
+        "Test with mock VA Form 500 data matching 2021_VA_Tax_Return.pdf structure",
+        "Verify federal_taxable_income, virginia_taxable_income extracted",
+        "Verify apportionment_percentage extracted from Schedule 500A",
+        "Verify company_info.state = 'VA'",
+        "Tests pass",
+        "Typecheck passes"
       ],
       "priority": 24,
       "passes": false,
-      "notes": "UI component for debugging. Only visible when flag enabled."
+      "notes": ""
     }
   ]
 }
