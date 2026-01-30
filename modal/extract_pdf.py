@@ -936,6 +936,111 @@ class VirginiaForm500Extractor(BaseExtractor):
         return data
 
 
+# ============================================================================
+# Generic Extractor (Fallback)
+# ============================================================================
+
+class GenericExtractor(BaseExtractor):
+    """
+    Generic fallback extractor for unknown document types.
+    Attempts to extract common financial data patterns.
+    """
+
+    def extract(self) -> ExtractionResult:
+        """Extract generic financial data."""
+        # Try to detect any year reference
+        tax_year = self._extract_year()
+
+        # Extract any amounts we can find
+        amounts = extract_amounts(self.text, self.tables)
+
+        return ExtractionResult(
+            document_type="other",
+            tax_year=tax_year,
+            entity_type=None,
+            company_info={"business_name": "Unknown Business"},
+            income_data={
+                "gross_receipts": amounts.get("gross_receipts", 0),
+                "net_income": amounts.get("net_income", 0),
+            },
+            expense_data={
+                "depreciation": amounts.get("depreciation", 0),
+            },
+            balance_sheet_data={
+                "total_assets": amounts.get("total_assets", 0),
+                "total_liabilities": amounts.get("total_liabilities", 0),
+            },
+            schedule_k_data={},
+            owner_info={},
+            covid_adjustments={},
+            red_flags=self.red_flags,
+            extraction_notes=["Generic extraction - document type not recognized"],
+            confidence_scores={"overall": 0.30}
+        )
+
+    def _extract_year(self) -> Optional[int]:
+        """Try to extract a year from the document."""
+        year_match = re.search(r'20\d{2}', self.text)
+        if year_match:
+            year = int(year_match.group())
+            if 2015 <= year <= 2030:
+                return year
+        return None
+
+
+# ============================================================================
+# Extractor Factory
+# ============================================================================
+
+class ExtractorFactory:
+    """Factory to create appropriate extractor based on document classification."""
+
+    # Map document types to extractor classes
+    EXTRACTOR_MAP = {
+        "form_1120s": None,  # Uses default parse_financial_data for now
+        "form_1120": None,
+        "form_1065": None,
+        "schedule_c": None,
+        "va_form_500": VirginiaForm500Extractor,
+        "balance_sheet": BalanceSheetExtractor,
+        "income_statement": None,  # Future implementation
+    }
+
+    @classmethod
+    def create(cls, document_type: str, text: str, tables: List[Dict[str, Any]], filename: str) -> Optional[BaseExtractor]:
+        """
+        Create extractor for the given document type.
+
+        Args:
+            document_type: Internal document type code
+            text: Extracted text from PDF
+            tables: Extracted tables from PDF
+            filename: Original filename
+
+        Returns:
+            Extractor instance or None if no specialized extractor exists
+        """
+        extractor_class = cls.EXTRACTOR_MAP.get(document_type)
+        if extractor_class:
+            return extractor_class(text, tables, filename)
+        return None
+
+    @classmethod
+    def create_or_generic(cls, document_type: str, text: str, tables: List[Dict[str, Any]], filename: str) -> BaseExtractor:
+        """
+        Create extractor for the given document type, falling back to GenericExtractor.
+        """
+        extractor = cls.create(document_type, text, tables, filename)
+        if extractor:
+            return extractor
+        return GenericExtractor(text, tables, filename)
+
+    @classmethod
+    def has_specialized_extractor(cls, document_type: str) -> bool:
+        """Check if a specialized extractor exists for this document type."""
+        return cls.EXTRACTOR_MAP.get(document_type) is not None
+
+
 # Define the Modal app
 app = modal.App("pdf-extraction-service")
 
@@ -1141,8 +1246,42 @@ def extract_pdf(request: dict) -> dict:
         except Exception as table_error:
             print(f"[EXTRACT] Table extraction warning: {table_error}")
 
-        # Parse financial data from text and tables
-        parsed_data = parse_financial_data(full_text, tables, filename)
+        # Classify document first
+        classifier = DocumentClassifier(full_text, filename, tables)
+        classification = classifier.classify()
+
+        print(f"[EXTRACT] Classified as: {classification.document_type} (confidence: {classification.confidence_score:.2f})")
+
+        # Try specialized extractor first, fall back to generic parsing
+        if ExtractorFactory.has_specialized_extractor(classification.document_type):
+            extractor = ExtractorFactory.create(classification.document_type, full_text, tables, filename)
+            extraction_result = extractor.extract()
+            print(f"[EXTRACT] Used specialized extractor: {type(extractor).__name__}")
+
+            # Convert ExtractionResult to parsed_data format for backward compatibility
+            parsed_data = {
+                "document_type": extraction_result.document_type,
+                "entity_type": extraction_result.entity_type or "Other",
+                "tax_year": extraction_result.tax_year,
+                "company_info": extraction_result.company_info,
+                "income_statement": extraction_result.income_data,
+                "expenses": extraction_result.expense_data,
+                "balance_sheet": extraction_result.balance_sheet_data,
+                "schedule_k": extraction_result.schedule_k_data,
+                "owner_info": extraction_result.owner_info,
+                "covid_adjustments": extraction_result.covid_adjustments,
+                "red_flags": extraction_result.red_flags,
+                "extraction_notes": extraction_result.extraction_notes,
+                "classification": {
+                    "document_type_internal": classification.document_type,
+                    "jurisdiction": classification.jurisdiction,
+                    "confidence_score": classification.confidence_score,
+                    "classification_reasons": classification.classification_reasons,
+                },
+            }
+        else:
+            # Use generic parsing for federal tax forms and other documents
+            parsed_data = parse_financial_data(full_text, tables, filename)
 
         # Build response matching TypeScript ModalExtractionResponse type
         response_data = {
