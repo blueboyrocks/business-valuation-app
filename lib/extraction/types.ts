@@ -87,7 +87,28 @@ export type DocumentType =
   | 'Form 1065'
   | 'Schedule C'
   | 'Financial Statement'
+  | 'Balance Sheet'
+  | 'Virginia Form 500'
+  | 'Income Statement'
   | 'Other';
+
+/**
+ * Internal document type codes used by Modal extraction.
+ */
+export type DocumentTypeInternal =
+  | 'form_1120'
+  | 'form_1120s'
+  | 'form_1065'
+  | 'schedule_c'
+  | 'balance_sheet'
+  | 'va_form_500'
+  | 'income_statement'
+  | 'other';
+
+/**
+ * Jurisdiction for document (Federal, state code, or N/A).
+ */
+export type Jurisdiction = 'Federal' | 'VA' | 'N/A' | 'Unknown';
 
 /**
  * Company/entity information extracted from document.
