@@ -297,6 +297,19 @@ function convertModalToFinalOutput(
           other_liabilities: pyBalance.other_liabilities ?? 0,
           retained_earnings: pyBalance.retained_earnings ?? 0,
           total_equity: pyBalance.total_equity ?? 0,
+          // BOY (Beginning of Year) values from Schedule L
+          boy_cash: pyBalance.boy_cash ?? 0,
+          boy_accounts_receivable: pyBalance.boy_accounts_receivable ?? 0,
+          boy_inventory: pyBalance.boy_inventory ?? 0,
+          boy_total_assets: pyBalance.boy_total_assets ?? 0,
+          boy_total_liabilities: pyBalance.boy_total_liabilities ?? 0,
+          // EOY (End of Year) values from Schedule L
+          eoy_cash: pyBalance.eoy_cash ?? 0,
+          eoy_accounts_receivable: pyBalance.eoy_accounts_receivable ?? 0,
+          eoy_inventory: pyBalance.eoy_inventory ?? 0,
+          eoy_total_assets: pyBalance.eoy_total_assets ?? 0,
+          eoy_total_liabilities: pyBalance.eoy_total_liabilities ?? 0,
+          eoy_retained_earnings: pyBalance.eoy_retained_earnings ?? 0,
         },
         schedule_k: {
           section_179_deduction: pyScheduleK.section_179_deduction ?? 0,
@@ -306,6 +319,11 @@ function convertModalToFinalOutput(
           other_net_gain_loss: 0,
           total_foreign_taxes: 0,
           total_distributions: pyScheduleK.total_distributions ?? 0,
+          capital_gains: pyScheduleK.capital_gains ?? 0,
+          capital_gains_short: pyScheduleK.capital_gains_short ?? 0,
+          capital_gains_long: pyScheduleK.capital_gains_long ?? 0,
+          distributions_cash: pyScheduleK.distributions_cash ?? 0,
+          distributions_property: pyScheduleK.distributions_property ?? 0,
         },
         owner_info: {
           owner_compensation: pyOwnerInfo.owner_compensation ?? 0,
@@ -317,6 +335,8 @@ function convertModalToFinalOutput(
         covid_adjustments: {
           ppp_loan: 0,
           ppp_forgiveness: 0,
+          ppp_loan_balance: pyBalance.ppp_loan_balance ?? 0,
+          eidl_loan_balance: pyBalance.eidl_loan_balance ?? 0,
           eidl_grant: 0,
           erc_credit: 0,
         },
@@ -534,6 +554,17 @@ function parseFinancialData(
           other_liabilities: 0,
           retained_earnings: 0,
           total_equity: totalAssets - totalLiabilities,
+          boy_cash: 0,
+          boy_accounts_receivable: 0,
+          boy_inventory: 0,
+          boy_total_assets: 0,
+          boy_total_liabilities: 0,
+          eoy_cash: cash,
+          eoy_accounts_receivable: 0,
+          eoy_inventory: 0,
+          eoy_total_assets: totalAssets,
+          eoy_total_liabilities: totalLiabilities,
+          eoy_retained_earnings: 0,
         },
         scheduleK: {
           section_179_deduction: section179,
@@ -543,6 +574,11 @@ function parseFinancialData(
           other_net_gain_loss: 0,
           total_foreign_taxes: 0,
           total_distributions: distributions,
+          capital_gains: 0,
+          capital_gains_short: 0,
+          capital_gains_long: 0,
+          distributions_cash: distributions,
+          distributions_property: 0,
         },
         ownerInfo: {
           owner_compensation: officerComp,
@@ -554,6 +590,8 @@ function parseFinancialData(
         covidAdjustments: {
           ppp_loan: 0,
           ppp_forgiveness: 0,
+          ppp_loan_balance: 0,
+          eidl_loan_balance: 0,
           eidl_grant: 0,
           erc_credit: 0,
         },
@@ -683,10 +721,19 @@ function detectRedFlags(
     }
   }
 
+  // Get retained earnings for the latest year
+  const latestYear = Math.max(...Object.keys(financialData).map(Number));
+  const latestData = financialData[latestYear];
+  const retainedEarnings = latestData?.balance_sheet?.retained_earnings ?? 0;
+  const loansToShareholdersAmount = latestData?.owner_info?.loans_to_shareholders ?? 0;
+
   return {
     loans_to_shareholders: loansToShareholders,
+    loans_to_shareholders_amount: loansToShareholdersAmount,
     declining_revenue: decliningRevenue,
     negative_equity: negativeEquity,
+    negative_retained_earnings: retainedEarnings < 0,
+    retained_earnings_value: retainedEarnings,
     high_owner_compensation: highOwnerCompensation,
     related_party_transactions: false,
     unusual_expenses: false,

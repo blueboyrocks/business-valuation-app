@@ -87,7 +87,28 @@ export type DocumentType =
   | 'Form 1065'
   | 'Schedule C'
   | 'Financial Statement'
+  | 'Balance Sheet'
+  | 'Virginia Form 500'
+  | 'Income Statement'
   | 'Other';
+
+/**
+ * Internal document type codes used by Modal extraction.
+ */
+export type DocumentTypeInternal =
+  | 'form_1120'
+  | 'form_1120s'
+  | 'form_1065'
+  | 'schedule_c'
+  | 'balance_sheet'
+  | 'va_form_500'
+  | 'income_statement'
+  | 'other';
+
+/**
+ * Jurisdiction for document (Federal, state code, or N/A).
+ */
+export type Jurisdiction = 'Federal' | 'VA' | 'N/A' | 'Unknown';
 
 /**
  * Company/entity information extracted from document.
@@ -141,6 +162,7 @@ export interface Expenses {
  * Balance sheet line items for a single year.
  */
 export interface BalanceSheet {
+  // Current / End of Year values
   total_assets: number;
   cash: number;
   accounts_receivable: number;
@@ -154,6 +176,19 @@ export interface BalanceSheet {
   other_liabilities: number;
   retained_earnings: number;
   total_equity: number;
+  // Schedule L - Beginning of Year (BOY)
+  boy_cash: number;
+  boy_accounts_receivable: number;
+  boy_inventory: number;
+  boy_total_assets: number;
+  boy_total_liabilities: number;
+  // Schedule L - End of Year (EOY)
+  eoy_cash: number;
+  eoy_accounts_receivable: number;
+  eoy_inventory: number;
+  eoy_total_assets: number;
+  eoy_total_liabilities: number;
+  eoy_retained_earnings: number;
 }
 
 /**
@@ -167,6 +202,16 @@ export interface ScheduleK {
   other_net_gain_loss: number;
   total_foreign_taxes: number;
   total_distributions: number;
+  /** Combined short + long term capital gains */
+  capital_gains: number;
+  /** Short-term capital gains (Line 7) */
+  capital_gains_short: number;
+  /** Long-term capital gains (Line 8a) */
+  capital_gains_long: number;
+  /** Cash distributions (Line 16a) */
+  distributions_cash: number;
+  /** Property distributions (Line 16b) */
+  distributions_property: number;
 }
 
 /**
@@ -186,6 +231,10 @@ export interface OwnerInfo {
 export interface CovidAdjustments {
   ppp_loan: number;
   ppp_forgiveness: number;
+  /** PPP loan balance from balance sheet liabilities */
+  ppp_loan_balance: number;
+  /** EIDL loan balance from balance sheet liabilities */
+  eidl_loan_balance: number;
   eidl_grant: number;
   erc_credit: number;
 }
@@ -194,13 +243,21 @@ export interface CovidAdjustments {
  * Red flags detected during extraction.
  */
 export interface RedFlags {
+  /** Whether loans to shareholders exist */
   loans_to_shareholders: boolean;
+  /** Amount of loans to shareholders (0 if none) */
+  loans_to_shareholders_amount: number;
   declining_revenue: boolean;
   negative_equity: boolean;
+  /** Whether retained earnings are negative */
+  negative_retained_earnings: boolean;
+  /** Retained earnings value (negative if applicable) */
+  retained_earnings_value: number;
   high_owner_compensation: boolean;
   related_party_transactions: boolean;
   unusual_expenses: boolean;
   missing_schedules: boolean;
+  /** Array of red flag descriptions */
   notes: string[];
 }
 

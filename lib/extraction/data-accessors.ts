@@ -164,6 +164,8 @@ export function getCovidAdjustments(
     return {
       ppp_loan: 0,
       ppp_forgiveness: 0,
+      ppp_loan_balance: 0,
+      eidl_loan_balance: 0,
       eidl_grant: 0,
       erc_credit: 0,
     };

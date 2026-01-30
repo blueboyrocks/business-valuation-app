@@ -106,9 +106,76 @@ These items MAY be added back but require 2-3 sentence justification each:
 | Legal Fees (Specific Cases) | Add back if non-recurring | Invoice detail |
 | Moving/Relocation Costs | Add back | Documentation |
 | Natural Disaster Costs | Add back | Insurance records |
-| PPP Loan Forgiveness | Adjust out (income) | May inflate reported income |
-| ERTC Credits | Adjust out (income) | May inflate reported income |
 | Asset Sale Gains/Losses | Add back/deduct | Form 4797 |
+
+#### E.1 COVID-19 PANDEMIC RELIEF ADJUSTMENTS (2020-2021 CRITICAL)
+
+**IMPORTANT**: For tax years 2020 and 2021, you MUST identify and SUBTRACT COVID relief items from SDE. These are one-time government relief items that artificially inflate earnings and will NOT recur.
+
+**PPP Loan Forgiveness** - SUBTRACT from SDE
+- Treatment: DEDUCT from normalized earnings (reduces SDE)
+- Location: May appear as "Other Income" or reflected in reduced wages expense
+- Amount: Full forgiven amount (typically $25,000 - $2,000,000)
+- Rationale: "PPP forgiveness of $X was a one-time pandemic relief item that will not recur. Subtracting from SDE to reflect sustainable earnings."
+- Documentation: Form 1120-S Schedule M-1, PPP forgiveness documentation
+
+**EIDL Advance Grants** - SUBTRACT from SDE
+- Treatment: DEDUCT from normalized earnings (reduces SDE)
+- Location: May appear as "Other Income" or "EIDL Grant"
+- Amount: Up to $10,000 per employee (max $10,000 total in most cases)
+- Rationale: "EIDL advance of $X was a non-repayable pandemic relief grant. Subtracting from SDE as it will not recur."
+- Documentation: SBA EIDL records
+
+**Employee Retention Credit (ERC)** - SUBTRACT from SDE
+- Treatment: DEDUCT from normalized earnings (reduces SDE)
+- Location: May appear as reduction to wages/salaries expense OR as tax credit refund
+- Amount: Up to $5,000/employee (2020) or $7,000/employee/quarter (2021)
+- Rationale: "ERC of $X was a one-time pandemic tax credit. Subtracting from SDE to normalize earnings."
+- Documentation: Form 941-X, payroll records
+
+**Balance Sheet COVID Indicators**:
+If balance sheet data shows:
+- EIDL Loan Balance: Note this in long-term debt but do NOT add back interest (loan is real debt)
+- PPP Loan Balance (if not yet forgiven): Note status and anticipated forgiveness
+
+**COVID Adjustment Calculation Example**:
+\`\`\`
+Pre-COVID SDE:                    $600,000
+Less: PPP Forgiveness             $(150,000)
+Less: EIDL Grant                  $(10,000)
+Less: Employee Retention Credit   $(45,000)
+= Normalized SDE:                 $395,000
+\`\`\`
+
+**CRITICAL COVID NOTES**:
+1. COVID adjustments apply primarily to 2020-2021 tax years
+2. Always document the specific relief program and amount
+3. These are SUBTRACTIONS, not add-backs
+4. Failure to normalize for COVID relief significantly overstates business value
+
+#### E.2 BALANCE SHEET RED FLAGS (Check Pass 3 Data)
+
+When reviewing balance sheet data from Pass 3 or standalone balance sheets, identify these red flags:
+
+**Loans to Shareholders (Schedule L, Line 7)**
+- Flag if > $0: Owner has borrowed from company
+- Impact: May indicate cash flow issues or tax avoidance strategy
+- Treatment: Note in earnings quality assessment; may affect buyer's perception
+
+**Negative Retained Earnings**
+- Flag if retained_earnings < $0: Historical losses exceed historical profits
+- Impact: Indicates accumulated losses; may signal ongoing profitability issues
+- Treatment: Document in risk factors; affects asset approach value
+
+**Excessive Shareholder Distributions**
+- Flag if distributions > net_income for the year
+- Impact: Taking out more than earned; depleting equity
+- Treatment: Note in cash flow sustainability assessment
+
+**Related Party Balances ("Due From" items)**
+- Flag if significant receivables from related entities
+- Impact: May not be collectible; could be disguised distributions
+- Treatment: Consider adding back interest foregone; assess collectibility
 
 #### F. Related Party Adjustments
 | Item | Treatment | Documentation |
