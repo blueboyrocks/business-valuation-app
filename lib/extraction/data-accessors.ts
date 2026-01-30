@@ -399,3 +399,223 @@ export function countRedFlags(extraction: FinalExtractionOutput): number {
   if (flags.missing_schedules) count++;
   return count;
 }
+
+// ============================================================================
+// SDE (Seller's Discretionary Earnings) Calculation Accessors
+// ============================================================================
+
+/**
+ * Categories of SDE add-backs.
+ */
+export type SdeAddBackCategory =
+  | 'owner_compensation'
+  | 'depreciation'
+  | 'section_179'
+  | 'amortization'
+  | 'interest'
+  | 'capital_gains'
+  | 'covid_adjustments';
+
+/**
+ * Individual SDE add-back item with metadata.
+ */
+export interface SdeAddBackItem {
+  category: SdeAddBackCategory;
+  description: string;
+  amount: number;
+  source?: string;
+}
+
+/**
+ * Result of SDE add-back calculation.
+ */
+export interface SdeAddBacksResult {
+  total: number;
+  items: SdeAddBackItem[];
+}
+
+/**
+ * Get all SDE add-backs for a year, categorized.
+ *
+ * SDE add-backs include:
+ * - Owner compensation (entity-type aware)
+ * - Depreciation
+ * - Section 179 deduction
+ * - Amortization (via depletion field)
+ * - Interest expense
+ * - Non-recurring capital gains/losses
+ * - COVID adjustments (normalized out)
+ */
+export function getAllSdeAddBacks(
+  extraction: FinalExtractionOutput,
+  year: number
+): SdeAddBacksResult {
+  const yearData = getYearData(extraction, year);
+  if (!yearData) {
+    return { total: 0, items: [] };
+  }
+
+  const items: SdeAddBackItem[] = [];
+
+  // 1. Owner Compensation (entity-type aware)
+  const ownerComp = getOwnerCompensation(extraction, year);
+  if (ownerComp > 0) {
+    let description = 'Owner Compensation';
+    let source = 'Tax Return';
+
+    if (isSCorp(extraction)) {
+      description = 'Officer Compensation (S-Corp)';
+      source = 'Form 1120-S, Line 7';
+    } else if (isPartnership(extraction)) {
+      description = 'Guaranteed Payments to Partners';
+      source = 'Form 1065, Schedule K';
+    } else if (isSoleProp(extraction)) {
+      description = 'Net Profit (Owner Draw)';
+      source = 'Schedule C, Line 31';
+    }
+
+    items.push({
+      category: 'owner_compensation',
+      description,
+      amount: ownerComp,
+      source,
+    });
+  }
+
+  // 2. Regular Depreciation
+  const depreciation = yearData.expenses.depreciation ?? 0;
+  if (depreciation > 0) {
+    items.push({
+      category: 'depreciation',
+      description: 'Depreciation',
+      amount: depreciation,
+      source: 'Tax Return, Depreciation Schedule',
+    });
+  }
+
+  // 3. Section 179 Deduction (often missed!)
+  const section179 = yearData.schedule_k.section_179_deduction ?? 0;
+  if (section179 > 0) {
+    items.push({
+      category: 'section_179',
+      description: 'Section 179 Deduction',
+      amount: section179,
+      source: 'Schedule K, Section 179',
+    });
+  }
+
+  // 4. Amortization (using depletion field as proxy)
+  const amortization = yearData.expenses.depletion ?? 0;
+  if (amortization > 0) {
+    items.push({
+      category: 'amortization',
+      description: 'Amortization/Depletion',
+      amount: amortization,
+      source: 'Tax Return',
+    });
+  }
+
+  // 5. Interest Expense
+  const interest = yearData.expenses.interest ?? 0;
+  if (interest > 0) {
+    items.push({
+      category: 'interest',
+      description: 'Interest Expense',
+      amount: interest,
+      source: 'Tax Return, Interest Expense',
+    });
+  }
+
+  // 6. Capital Gains/Losses (non-recurring - add back losses, subtract gains)
+  const capitalGainLoss = yearData.schedule_k.net_section_1231_gain ?? 0;
+  if (capitalGainLoss !== 0) {
+    // Negative capital gain (loss) is added back
+    // Positive capital gain is subtracted (add negative)
+    items.push({
+      category: 'capital_gains',
+      description: capitalGainLoss < 0 ? 'Add back: Capital Loss' : 'Subtract: Capital Gain',
+      amount: -capitalGainLoss, // Negate because gains reduce SDE, losses increase
+      source: 'Schedule K, Section 1231 Gain/Loss',
+    });
+  }
+
+  // 7. COVID Adjustments (normalize out one-time income)
+  const covidTotal = getTotalCovidAdjustments(extraction, year);
+  if (covidTotal > 0) {
+    items.push({
+      category: 'covid_adjustments',
+      description: 'COVID Relief (PPP/EIDL/ERC) - Normalized Out',
+      amount: -covidTotal, // Subtract because these were one-time income boosts
+      source: 'COVID Relief Programs',
+    });
+  }
+
+  // Calculate total
+  const total = items.reduce((sum, item) => sum + item.amount, 0);
+
+  return { total, items };
+}
+
+/**
+ * Get normalized net income for a year.
+ *
+ * Subtracts COVID adjustments from reported net income to show
+ * what the business would have earned without one-time relief.
+ */
+export function getNormalizedNetIncome(
+  extraction: FinalExtractionOutput,
+  year: number
+): number {
+  const netIncome = getNetIncome(extraction, year);
+  const covidTotal = getTotalCovidAdjustments(extraction, year);
+
+  return netIncome - covidTotal;
+}
+
+/**
+ * Calculate SDE for a year.
+ *
+ * SDE = Normalized Net Income + Add-backs
+ */
+export function calculateSDE(
+  extraction: FinalExtractionOutput,
+  year: number
+): number {
+  const normalizedNetIncome = getNormalizedNetIncome(extraction, year);
+  const addBacks = getAllSdeAddBacks(extraction, year);
+
+  return normalizedNetIncome + addBacks.total;
+}
+
+/**
+ * Get SDE for the most recent year.
+ */
+export function getLatestSDE(extraction: FinalExtractionOutput): number {
+  const years = getYearsSorted(extraction);
+  if (years.length === 0) return 0;
+  return calculateSDE(extraction, years[0]);
+}
+
+/**
+ * Calculate weighted average SDE across available years.
+ *
+ * Uses declining weights: most recent = 3, second = 2, third = 1
+ */
+export function getWeightedAverageSDE(
+  extraction: FinalExtractionOutput
+): number {
+  const years = getYearsSorted(extraction);
+  if (years.length === 0) return 0;
+
+  const weights = [3, 2, 1]; // Most recent gets highest weight
+  let weightedSum = 0;
+  let totalWeight = 0;
+
+  for (let i = 0; i < Math.min(years.length, weights.length); i++) {
+    const sde = calculateSDE(extraction, years[i]);
+    weightedSum += sde * weights[i];
+    totalWeight += weights[i];
+  }
+
+  return totalWeight > 0 ? weightedSum / totalWeight : 0;
+}
