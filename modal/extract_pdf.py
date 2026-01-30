@@ -1041,6 +1041,193 @@ class ExtractorFactory:
         return cls.EXTRACTOR_MAP.get(document_type) is not None
 
 
+# ============================================================================
+# Multi-Year Aggregator
+# ============================================================================
+
+class MultiYearAggregator:
+    """
+    Combines data from multiple documents into a unified extraction output.
+
+    Handles:
+    - Multiple years of tax returns
+    - Balance sheets + tax returns for same year
+    - State and federal returns for same year
+    """
+
+    # Priority for resolving conflicts (higher = preferred)
+    SOURCE_PRIORITY = {
+        "form_1120s": 100,
+        "form_1120": 100,
+        "form_1065": 100,
+        "schedule_c": 100,
+        "va_form_500": 80,
+        "balance_sheet": 60,
+        "income_statement": 40,
+        "other": 20,
+    }
+
+    def __init__(self):
+        self.extraction_notes: List[str] = []
+        self.red_flags: List[str] = []
+
+    def aggregate(self, results: List[ExtractionResult]) -> Dict[str, Any]:
+        """
+        Aggregate multiple extraction results into unified output.
+
+        Args:
+            results: List of ExtractionResult from multiple documents
+
+        Returns:
+            Unified extraction output matching FinalExtractionOutput schema
+        """
+        if not results:
+            return self._empty_output()
+
+        # Group results by year
+        by_year: Dict[int, List[ExtractionResult]] = {}
+        for result in results:
+            year = result.tax_year or datetime.now().year - 1
+            if year not in by_year:
+                by_year[year] = []
+            by_year[year].append(result)
+
+        # Merge company info (prefer federal over state over balance sheet)
+        company_info = self._merge_company_info(results)
+
+        # Merge financial data by year
+        financial_data: Dict[int, Dict[str, Any]] = {}
+        for year, year_results in by_year.items():
+            financial_data[year] = self._merge_year_data(year_results)
+
+        # Collect all red flags and notes
+        all_red_flags = []
+        all_notes = []
+        for result in results:
+            all_red_flags.extend(result.red_flags)
+            all_notes.extend(result.extraction_notes)
+
+        # Add aggregation notes
+        all_notes.extend(self.extraction_notes)
+
+        return {
+            "company_info": company_info,
+            "financial_data": financial_data,
+            "available_years": sorted(by_year.keys(), reverse=True),
+            "red_flags": list(set(all_red_flags)),  # Deduplicate
+            "extraction_notes": all_notes,
+            "document_count": len(results),
+            "aggregation_applied": True,
+        }
+
+    def _merge_company_info(self, results: List[ExtractionResult]) -> Dict[str, Any]:
+        """Merge company info, preferring federal tax returns."""
+        # Sort by priority
+        sorted_results = sorted(
+            results,
+            key=lambda r: self.SOURCE_PRIORITY.get(r.document_type, 0),
+            reverse=True
+        )
+
+        merged = {
+            "business_name": "Unknown Business",
+            "ein": None,
+            "entity_type": "Other",
+            "naics_code": None,
+            "state": None,
+        }
+
+        for result in sorted_results:
+            info = result.company_info or {}
+            for key in merged:
+                if merged.get(key) in [None, "Unknown Business", "Other"]:
+                    value = info.get(key)
+                    if value and value not in [None, "Unknown Business", "Other"]:
+                        merged[key] = value
+
+            # If we found good data from a high-priority source, we're done
+            if merged["business_name"] != "Unknown Business" and merged["entity_type"] != "Other":
+                break
+
+        return merged
+
+    def _merge_year_data(self, year_results: List[ExtractionResult]) -> Dict[str, Any]:
+        """Merge data for a single year from multiple sources."""
+        # Sort by priority
+        sorted_results = sorted(
+            year_results,
+            key=lambda r: self.SOURCE_PRIORITY.get(r.document_type, 0),
+            reverse=True
+        )
+
+        merged = {
+            "income_data": {},
+            "expense_data": {},
+            "balance_sheet_data": {},
+            "schedule_k_data": {},
+            "owner_info": {},
+            "covid_adjustments": {},
+            "sources": [],
+        }
+
+        for result in sorted_results:
+            source_type = result.document_type
+            merged["sources"].append(source_type)
+
+            # Merge each category
+            for category in ["income_data", "expense_data", "schedule_k_data", "owner_info", "covid_adjustments"]:
+                data = getattr(result, category.replace("_data", "_data"), {}) or {}
+                if category == "income_data":
+                    data = result.income_data
+                elif category == "expense_data":
+                    data = result.expense_data
+                elif category == "schedule_k_data":
+                    data = result.schedule_k_data
+                elif category == "owner_info":
+                    data = result.owner_info
+                elif category == "covid_adjustments":
+                    data = result.covid_adjustments
+
+                for key, value in data.items():
+                    # Only update if we don't have a value or current source is higher priority
+                    if key not in merged[category] or merged[category][key] == 0:
+                        if value and value != 0:
+                            merged[category][key] = value
+
+            # Balance sheet: standalone takes precedence over Schedule L (per user requirement)
+            bs_data = result.balance_sheet_data or {}
+            bs_priority = 100 if source_type == "balance_sheet" else self.SOURCE_PRIORITY.get(source_type, 0)
+
+            for key, value in bs_data.items():
+                current_val = merged["balance_sheet_data"].get(key, 0)
+                if current_val == 0 and value and value != 0:
+                    merged["balance_sheet_data"][key] = value
+                    merged["balance_sheet_data"][f"{key}_source"] = source_type
+                elif value and value != 0 and source_type == "balance_sheet":
+                    # Standalone balance sheet takes precedence
+                    if current_val != value:
+                        self.extraction_notes.append(
+                            f"Balance sheet {key}: using ${value:,.0f} from standalone balance sheet "
+                            f"(Schedule L had ${current_val:,.0f})"
+                        )
+                    merged["balance_sheet_data"][key] = value
+                    merged["balance_sheet_data"][f"{key}_source"] = source_type
+
+        return merged
+
+    def _empty_output(self) -> Dict[str, Any]:
+        """Return empty output structure."""
+        return {
+            "company_info": {"business_name": "Unknown Business", "entity_type": "Other"},
+            "financial_data": {},
+            "available_years": [],
+            "red_flags": [],
+            "extraction_notes": ["No documents to aggregate"],
+            "document_count": 0,
+            "aggregation_applied": False,
+        }
+
+
 # Define the Modal app
 app = modal.App("pdf-extraction-service")
 
