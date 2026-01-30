@@ -2,7 +2,8 @@
 
 ## Branch: ralph/modal-extraction-integration
 
-## Status: MOSTLY COMPLETE (21/24 stories completed)
+## Status: COMPLETE (22/24 stories completed + critical wiring fix)
+## Note: 3 stories deferred (US-021, US-022, US-024 - testing and admin UI)
 
 ## Codebase Patterns
 - Entity type determines owner compensation location: S-Corp uses officer comp, Partnership uses guaranteed payments, Sole Prop uses net income
@@ -10,6 +11,9 @@
 - COVID adjustments (PPP/EIDL/ERC) should be normalized out of earnings
 - All extraction accessor functions use ?? 0 defaults for null safety
 - Feature flags read from environment variables: FEATURE_MODAL_EXTRACTION, FEATURE_CLAUDE_VISION_FALLBACK, etc.
+- **Extraction flows through lib/extraction.ts** - this is where Modal vs Claude Vision decision happens
+- **Two-phase pipeline:** extraction.ts stores to document_extractions, then orchestrator loads for valuation
+- Modal extraction returns FinalExtractionOutput; Claude Vision returns simpler format (different types, same table)
 
 ---
 
@@ -134,5 +138,45 @@
 - US-021: Create integration test for Modal extraction path (deferred - needs test fixtures)
 - US-022: Create comparison test Modal vs Claude Vision (deferred - needs both paths working)
 - US-024: Add admin UI extraction debug panel (deferred - UI work)
+
+---
+
+## 2026-01-29 - Critical Wiring: Modal Extraction Integration
+
+### THE KEY CHANGE: Wire Modal into lib/extraction.ts
+
+**Problem Identified:** Modal extraction code existed but was never actually called. The `lib/extraction.ts` file was still using Claude Vision directly for all extractions.
+
+**Solution Implemented:**
+- Modified `lib/extraction.ts` to check `isModalExtractionEnabled()` feature flag
+- When Modal enabled:
+  1. Calls `extractWithModal(pdfBuffer, { documentId, filename })`
+  2. Returns `FinalExtractionOutput` as `extractedData`
+  3. If Modal fails and `isClaudeVisionFallbackAllowed()`, falls back to Claude Vision
+  4. If Modal fails and fallback disabled, returns error with clear message
+- When Modal disabled: Uses Claude Vision (legacy behavior unchanged)
+
+**Flow is now complete:**
+1. User uploads document → extraction.ts runs → calls extractWithModal() when feature flag on
+2. Modal result stored to document_extractions.extracted_data as FinalExtractionOutput
+3. Valuation phase → orchestrator checks isModalExtractionEnabled()
+4. If enabled, loadExtractionData() → convertExtractionToPassOutputs() → downstream passes
+
+### Files Modified:
+- lib/extraction.ts (MODIFIED - Added Modal extraction path with feature flag check)
+- .env.example (MODIFIED - Added MODAL_EXTRACTION_URL)
+
+### Critical Learnings:
+- **The extraction phase and valuation phase are separate.** Extraction runs first and stores to DB, valuation loads from DB later.
+- **Modal client returns FinalExtractionOutput**, which is different from Claude Vision's simpler format
+- **The loader.ts casts extracted_data to FinalExtractionOutput**, so the Modal path works seamlessly
+- **When Modal is disabled, orchestrator runs Claude Vision directly** - it doesn't use the loader at all
+
+### Environment Variables for Modal Extraction:
+```
+MODAL_EXTRACTION_URL=https://your-modal-app--extract-pdf.modal.run
+FEATURE_MODAL_EXTRACTION=true
+FEATURE_CLAUDE_VISION_FALLBACK=false  # or true for scanned PDF support
+```
 
 ---

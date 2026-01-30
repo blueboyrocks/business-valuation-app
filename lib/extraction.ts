@@ -3,10 +3,16 @@
  *
  * This module contains the core extraction logic that can be called
  * from both the API route and directly from the orchestrator.
+ *
+ * When FEATURE_MODAL_EXTRACTION=true, uses the Modal/pdfplumber pipeline
+ * for extraction (nearly free). Falls back to Claude Vision if allowed.
  */
 
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
+import { isModalExtractionEnabled, isClaudeVisionFallbackAllowed } from './feature-flags';
+import { extractWithModal, ModalExtractionResult } from './extraction/modal-client';
+import { ExtractionErrorCode } from './extraction/errors';
 
 // Lazy-initialize clients to avoid build-time errors
 let supabase: SupabaseClient | null = null;
@@ -370,23 +376,106 @@ export async function extractDocuments(reportId: string): Promise<ExtractDocumen
 }
 
 /**
- * Extract data from a single document with retry logic
+ * Extract data from a single document with retry logic.
+ *
+ * When FEATURE_MODAL_EXTRACTION=true:
+ * 1. Tries Modal extraction first (nearly free)
+ * 2. If Modal fails and FEATURE_CLAUDE_VISION_FALLBACK=true, falls back to Claude Vision
+ * 3. If Modal fails and fallback disabled, returns error
+ *
+ * When FEATURE_MODAL_EXTRACTION=false:
+ * Uses Claude Vision directly (legacy behavior)
  */
 async function extractDocumentWithRetry(
   doc: DocumentRecord,
   reportId: string
 ): Promise<ExtractionResult> {
+  const filename = doc.file_name || doc.file_path;
+
+  // Download PDF from Supabase Storage (needed for both paths)
+  let pdfBuffer: Buffer;
+  try {
+    pdfBuffer = await downloadDocument(doc.file_path);
+    console.log(`[EXTRACT] Loaded PDF: ${pdfBuffer.length} bytes`);
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    console.error(`[EXTRACT] Failed to download document ${doc.id}:`, errorMessage);
+    return {
+      documentId: doc.id,
+      file_name: filename,
+      success: false,
+      error: `Failed to download document: ${errorMessage}`,
+    };
+  }
+
+  // ========================================================================
+  // Modal Extraction Path (when enabled)
+  // ========================================================================
+  if (isModalExtractionEnabled()) {
+    console.log(`[EXTRACT] Using Modal extraction for document ${doc.id}`);
+
+    const modalResult = await extractWithModal(pdfBuffer, {
+      documentId: doc.id,
+      filename: filename,
+      timeout: 120000, // 2 minutes
+    });
+
+    if (modalResult.success && modalResult.extraction) {
+      console.log(`[EXTRACT] Modal extraction successful for ${filename}`);
+
+      // Return the FinalExtractionOutput - the orchestrator will convert it
+      return {
+        documentId: doc.id,
+        file_name: filename,
+        success: true,
+        extractedData: modalResult.extraction as unknown as Record<string, unknown>,
+      };
+    }
+
+    // Modal failed - check if we should fall back to Claude Vision
+    const modalError = modalResult.error;
+    console.warn(`[EXTRACT] Modal extraction failed for ${doc.id}: ${modalError?.message}`);
+
+    // Check for scanned PDF that requires premium extraction
+    if (modalError?.code === ExtractionErrorCode.PDF_SCANNED) {
+      if (isClaudeVisionFallbackAllowed()) {
+        console.log(`[EXTRACT] Document is scanned, falling back to Claude Vision for ${doc.id}`);
+        // Fall through to Claude Vision extraction below
+      } else {
+        // Scanned PDF and no fallback allowed - require user decision
+        console.log(`[EXTRACT] Document is scanned and Claude Vision fallback disabled for ${doc.id}`);
+        return {
+          documentId: doc.id,
+          file_name: filename,
+          success: false,
+          error: `Document appears to be scanned. ${modalResult.scannedPdfResult?.explanation || 'Premium extraction required.'}`,
+        };
+      }
+    } else if (!isClaudeVisionFallbackAllowed()) {
+      // Modal failed for other reason and no fallback allowed
+      return {
+        documentId: doc.id,
+        file_name: filename,
+        success: false,
+        error: `Modal extraction failed: ${modalError?.message || 'Unknown error'}`,
+      };
+    } else {
+      console.log(`[EXTRACT] Modal failed, falling back to Claude Vision for ${doc.id}`);
+      // Fall through to Claude Vision extraction below
+    }
+  }
+
+  // ========================================================================
+  // Claude Vision Extraction (legacy path or fallback)
+  // ========================================================================
+  console.log(`[EXTRACT] Using Claude Vision extraction for document ${doc.id}`);
+
   let lastError: string = '';
+  const pdfBase64 = pdfBuffer.toString('base64');
 
   for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
     try {
-      console.log(`[EXTRACT] Attempt ${attempt}/${MAX_RETRIES} for document ${doc.id}`);
-
-      // Download PDF from Supabase Storage
-      const pdfBuffer = await downloadDocument(doc.file_path);
-      const pdfBase64 = pdfBuffer.toString('base64');
-
-      console.log(`[EXTRACT] Loaded PDF: ${pdfBuffer.length} bytes`);
+      console.log(`[EXTRACT] Claude Vision attempt ${attempt}/${MAX_RETRIES} for document ${doc.id}`);
 
       // Call Claude API
       const response = await getAnthropicClient().messages.create({
@@ -434,12 +523,12 @@ async function extractDocumentWithRetry(
         throw new Error('Missing document_type in extracted data');
       }
 
-      console.log(`[EXTRACT] Successfully extracted data from ${doc.file_name || doc.file_path}`);
+      console.log(`[EXTRACT] Successfully extracted data from ${filename}`);
       console.log(`[EXTRACT] Document type: ${extractedData.document_type}, Tax year: ${extractedData.tax_year}`);
 
       return {
         documentId: doc.id,
-        file_name: doc.file_name || doc.file_path,
+        file_name: filename,
         success: true,
         extractedData,
       };
@@ -460,7 +549,7 @@ async function extractDocumentWithRetry(
   // All retries failed
   return {
     documentId: doc.id,
-    file_name: doc.file_name || doc.file_path,
+    file_name: filename,
     success: false,
     error: `Failed after ${MAX_RETRIES} attempts: ${lastError}`,
   };
