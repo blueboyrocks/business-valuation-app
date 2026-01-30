@@ -337,8 +337,8 @@
         "Typecheck passes"
       ],
       "priority": 21,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added source_documents to ReportData interface. Added Source Documents section with table showing Document Type, Filename, Tax Year, Jurisdiction. Section appears before Bibliography in the PDF."
     },
     {
       "id": "US-022",

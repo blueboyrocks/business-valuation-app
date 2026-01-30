@@ -121,6 +121,14 @@ interface ReportData {
   naics_code?: string;
   industry_name?: string;
   valuation_date?: string;
+
+  // Source documents (US-021: Document type display)
+  source_documents?: Array<{
+    document_type: string;
+    filename: string;
+    tax_year?: number;
+    jurisdiction?: string; // 'Federal' | 'VA' | etc.
+  }>;
 }
 
 export class ProfessionalPDFGenerator {
@@ -260,6 +268,36 @@ export class ProfessionalPDFGenerator {
         } catch (chartErr) {
           console.warn('[PDF] Inline SVG chart generation failed (non-blocking):', chartErr);
         }
+      }
+
+      // US-021: Generate source documents table
+      let sourceDocumentsHTML = '';
+      if (reportData.source_documents && reportData.source_documents.length > 0) {
+        const docs = reportData.source_documents;
+        sourceDocumentsHTML = `
+          <div class="section">
+            <h1 class="section-title">Source Documents</h1>
+            <p style="margin-bottom: 20px;">The following financial documents were analyzed to prepare this valuation report:</p>
+            <table class="data-table">
+              <thead><tr>
+                <th>Document Type</th>
+                <th>Filename</th>
+                <th>Tax Year</th>
+                <th>Jurisdiction</th>
+              </tr></thead>
+              <tbody>
+                ${docs.map((doc) => `
+                  <tr>
+                    <td style="font-weight: bold;">${safeString(doc.document_type, 'Unknown')}</td>
+                    <td>${safeString(doc.filename, '')}</td>
+                    <td>${doc.tax_year ? doc.tax_year.toString() : 'N/A'}</td>
+                    <td>${safeString(doc.jurisdiction, 'Federal')}</td>
+                  </tr>
+                `).join('')}
+              </tbody>
+            </table>
+          </div>`;
+        console.log(`[PDF] Generated source documents section with ${docs.length} documents`);
       }
 
       // PRD-E: Generate citation bibliography
@@ -421,7 +459,8 @@ export class ProfessionalPDFGenerator {
         companyName, reportData, generatedDate, kpis,
         enterprise_value, liquidation_value, charts, kpiDetailPages,
         accessor, inlineSvgCharts, citationManager, bibliographyHTML,
-        sdeTableHTML, marketTableHTML, synthesisTableHTML, capRateTableHTML, assetTableHTML
+        sdeTableHTML, marketTableHTML, synthesisTableHTML, capRateTableHTML, assetTableHTML,
+        sourceDocumentsHTML
       );
 
       // Safety net: replace any [object Object] in rendered HTML
@@ -1274,7 +1313,8 @@ export class ProfessionalPDFGenerator {
     marketTableHTML: string = '',
     synthesisTableHTML: string = '',
     capRateTableHTML: string = '',
-    assetTableHTML: string = ''
+    assetTableHTML: string = '',
+    sourceDocumentsHTML: string = ''
   ): Promise<string> {
     // Format currency - distinguish between 0 (actual zero) and null/undefined (not extracted)
     // PRD-A: Use accessor formatting when available
@@ -2529,6 +2569,9 @@ export class ProfessionalPDFGenerator {
     </div>
     ` : ''}
   </div>
+
+  <!-- Source Documents (US-021) -->
+  ${sourceDocumentsHTML}
 
   <!-- Bibliography -->
   ${bibliographyHTML}
