@@ -95,6 +95,11 @@ class DocumentClassifier:
                 r"virginia\s*corporation\s*income\s*tax",
                 r"department\s*of\s*taxation.*virginia",
                 r"va\s*form\s*500",
+                # Sub-forms that are part of VA Form 500 filing
+                r"schedule\s*500adj",
+                r"schedule\s*500fed",
+                r"schedule\s*500a\b",
+                r"schedule\s*500ab",
             ],
             "required_fields": ["federal taxable income", "virginia taxable income"],
             "entity_type": "Corporation",
