@@ -1228,6 +1228,165 @@ class MultiYearAggregator:
         }
 
 
+# ============================================================================
+# Extraction Validator
+# ============================================================================
+
+class ExtractionValidator:
+    """
+    Validates extraction completeness and accuracy.
+
+    Checks:
+    - Required fields present
+    - Balance sheet balances (assets = liabilities + equity)
+    - Income statement ties (gross_profit = revenue - COGS)
+    - Calculates overall confidence score
+    """
+
+    # Required fields by document type
+    REQUIRED_FIELDS = {
+        "form_1120s": ["gross_receipts", "net_income", "officer_compensation"],
+        "form_1120": ["gross_receipts", "net_income", "taxable_income"],
+        "form_1065": ["gross_receipts", "net_income", "guaranteed_payments"],
+        "schedule_c": ["gross_receipts", "net_income"],
+        "va_form_500": ["federal_taxable_income", "virginia_taxable_income"],
+        "balance_sheet": ["total_assets", "total_liabilities"],
+        "income_statement": ["revenue", "net_income"],
+    }
+
+    def __init__(self, result: ExtractionResult):
+        self.result = result
+        self.issues: List[str] = []
+        self.confidence_score = 0.0
+
+    def validate(self) -> Dict[str, Any]:
+        """
+        Validate the extraction result.
+
+        Returns:
+            {
+                "status": "complete" | "partial" | "failed",
+                "confidence_score": float,
+                "issues": list of issue strings
+            }
+        """
+        scores = []
+
+        # Check required fields
+        field_score = self._check_required_fields()
+        scores.append(field_score)
+
+        # Check balance sheet balance
+        if self.result.document_type == "balance_sheet":
+            balance_score = self._check_balance_sheet_balance()
+            scores.append(balance_score)
+
+        # Check income statement ties (if applicable)
+        if self.result.income_data:
+            income_score = self._check_income_statement_ties()
+            scores.append(income_score)
+
+        # Calculate overall confidence
+        self.confidence_score = sum(scores) / len(scores) if scores else 0.0
+
+        # Determine status
+        if self.confidence_score >= 0.85:
+            status = "complete"
+        elif self.confidence_score >= 0.50:
+            status = "partial"
+        else:
+            status = "failed"
+
+        return {
+            "status": status,
+            "confidence_score": round(self.confidence_score, 2),
+            "issues": self.issues,
+        }
+
+    def _check_required_fields(self) -> float:
+        """Check if required fields are present and non-zero."""
+        required = self.REQUIRED_FIELDS.get(self.result.document_type, [])
+        if not required:
+            return 0.8  # Default score for unknown document types
+
+        found = 0
+        for field in required:
+            # Check in various data dictionaries
+            value = None
+            if field in self.result.income_data:
+                value = self.result.income_data.get(field)
+            elif field in self.result.balance_sheet_data:
+                value = self.result.balance_sheet_data.get(field)
+            elif field in self.result.owner_info:
+                value = self.result.owner_info.get(field)
+
+            if value and value != 0:
+                found += 1
+            else:
+                self.issues.append(f"Missing or zero required field: {field}")
+
+        return found / len(required) if required else 1.0
+
+    def _check_balance_sheet_balance(self) -> float:
+        """Check if balance sheet balances (assets = liabilities + equity)."""
+        bs = self.result.balance_sheet_data
+        total_assets = bs.get("total_assets", 0)
+        total_liabilities = bs.get("total_liabilities", 0)
+        total_equity = bs.get("total_equity", 0)
+
+        if total_assets == 0:
+            self.issues.append("Total assets is zero or missing")
+            return 0.5
+
+        expected_total = total_liabilities + total_equity
+        if expected_total == 0:
+            # Can't verify balance
+            return 0.7
+
+        # Check within 1% tolerance
+        diff = abs(total_assets - expected_total)
+        tolerance = max(total_assets, expected_total) * 0.01
+
+        if diff <= tolerance:
+            return 1.0
+        else:
+            self.issues.append(
+                f"Balance sheet does not balance: Assets ${total_assets:,.0f} vs "
+                f"Liabilities + Equity ${expected_total:,.0f} (diff: ${diff:,.0f})"
+            )
+            return 0.5
+
+    def _check_income_statement_ties(self) -> float:
+        """Check if income statement ties (gross_profit = revenue - COGS)."""
+        income = self.result.income_data
+        revenue = income.get("gross_receipts", income.get("revenue", 0))
+        cogs = income.get("cost_of_goods_sold", income.get("cogs", 0))
+        gross_profit = income.get("gross_profit", 0)
+
+        if revenue == 0:
+            return 0.8  # Can't verify without revenue
+
+        if gross_profit == 0:
+            return 0.7  # Missing gross profit
+
+        # Check if gross_profit = revenue - cogs
+        expected_gp = revenue - cogs
+        if expected_gp == 0:
+            return 0.8
+
+        diff = abs(gross_profit - expected_gp)
+        tolerance = max(gross_profit, expected_gp) * 0.01
+
+        if diff <= tolerance:
+            return 1.0
+        else:
+            self.issues.append(
+                f"Gross profit doesn't tie: Expected ${expected_gp:,.0f} (revenue - COGS), "
+                f"got ${gross_profit:,.0f}"
+            )
+            return 0.6
+
+
 # Define the Modal app
 app = modal.App("pdf-extraction-service")
 
