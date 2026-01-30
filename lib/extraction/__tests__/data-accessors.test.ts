@@ -99,6 +99,8 @@ function createMockExtraction(overrides?: Partial<FinalExtractionOutput>): Final
         covid_adjustments: {
           ppp_loan: 0,
           ppp_forgiveness: 0,
+          ppp_loan_balance: 0,
+          eidl_loan_balance: 0,
           eidl_grant: 0,
           erc_credit: 0,
         },
@@ -165,6 +167,8 @@ function createMockExtraction(overrides?: Partial<FinalExtractionOutput>): Final
         covid_adjustments: {
           ppp_loan: 50000,
           ppp_forgiveness: 50000,
+          ppp_loan_balance: 0,
+          eidl_loan_balance: 0,
           eidl_grant: 10000,
           erc_credit: 20000,
         },
@@ -173,8 +177,11 @@ function createMockExtraction(overrides?: Partial<FinalExtractionOutput>): Final
     available_years: [2023, 2022],
     red_flags: {
       loans_to_shareholders: false,
+      loans_to_shareholders_amount: 0,
       declining_revenue: false,
       negative_equity: false,
+      negative_retained_earnings: false,
+      retained_earnings_value: 0,
       high_owner_compensation: false,
       related_party_transactions: false,
       unusual_expenses: false,

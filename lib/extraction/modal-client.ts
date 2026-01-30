@@ -442,6 +442,8 @@ function parseFinancialData(
         covidAdjustments: {
           ppp_loan: 0,
           ppp_forgiveness: 0,
+          ppp_loan_balance: 0,
+          eidl_loan_balance: 0,
           eidl_grant: 0,
           erc_credit: 0,
         },
@@ -571,10 +573,19 @@ function detectRedFlags(
     }
   }
 
+  // Get retained earnings for the latest year
+  const latestYear = Math.max(...Object.keys(financialData).map(Number));
+  const latestData = financialData[latestYear];
+  const retainedEarnings = latestData?.balance_sheet?.retained_earnings ?? 0;
+  const loansToShareholdersAmount = latestData?.owner_info?.loans_to_shareholders ?? 0;
+
   return {
     loans_to_shareholders: loansToShareholders,
+    loans_to_shareholders_amount: loansToShareholdersAmount,
     declining_revenue: decliningRevenue,
     negative_equity: negativeEquity,
+    negative_retained_earnings: retainedEarnings < 0,
+    retained_earnings_value: retainedEarnings,
     high_owner_compensation: highOwnerCompensation,
     related_party_transactions: false,
     unusual_expenses: false,

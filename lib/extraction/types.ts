@@ -207,6 +207,10 @@ export interface OwnerInfo {
 export interface CovidAdjustments {
   ppp_loan: number;
   ppp_forgiveness: number;
+  /** PPP loan balance from balance sheet liabilities */
+  ppp_loan_balance: number;
+  /** EIDL loan balance from balance sheet liabilities */
+  eidl_loan_balance: number;
   eidl_grant: number;
   erc_credit: number;
 }
@@ -215,13 +219,21 @@ export interface CovidAdjustments {
  * Red flags detected during extraction.
  */
 export interface RedFlags {
+  /** Whether loans to shareholders exist */
   loans_to_shareholders: boolean;
+  /** Amount of loans to shareholders (0 if none) */
+  loans_to_shareholders_amount: number;
   declining_revenue: boolean;
   negative_equity: boolean;
+  /** Whether retained earnings are negative */
+  negative_retained_earnings: boolean;
+  /** Retained earnings value (negative if applicable) */
+  retained_earnings_value: number;
   high_owner_compensation: boolean;
   related_party_transactions: boolean;
   unusual_expenses: boolean;
   missing_schedules: boolean;
+  /** Array of red flag descriptions */
   notes: string[];
 }
 
