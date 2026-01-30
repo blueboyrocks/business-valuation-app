@@ -1,6 +1,11 @@
 /**
  * Pass 2: Income Statement Extraction
  *
+ * @deprecated This pass is being replaced by Modal/pdfplumber extraction.
+ * When FEATURE_MODAL_EXTRACTION=true, this pass is skipped and data comes
+ * from the pre-extracted document_extractions table instead.
+ * This file is kept for backward compatibility and fallback scenarios.
+ *
  * This pass performs detailed extraction of income statement data:
  * - All revenue line items with source citations
  * - Cost of goods sold breakdown

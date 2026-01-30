@@ -333,8 +333,11 @@ export async function runTwelvePassValuation(
     } else {
       // =====================================================================
       // CLAUDE VISION PATH (legacy - $3-15/document)
+      // @deprecated - Set FEATURE_MODAL_EXTRACTION=true to use Modal extraction
       // =====================================================================
       console.log(`[12-PASS] Using Claude Vision extraction path (legacy)`);
+      console.warn(`[12-PASS] DEPRECATED: Claude Vision extraction for passes 1-3 is deprecated.`);
+      console.warn(`[12-PASS] Set FEATURE_MODAL_EXTRACTION=true to use the nearly-free Modal extraction.`);
       console.warn(`[12-PASS] WARNING: Claude Vision extraction is expensive (~$3-15/document)`);
 
       const extractionResults = await runExtractionPassesWithPerDocumentProcessing(

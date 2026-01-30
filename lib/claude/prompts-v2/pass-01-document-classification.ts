@@ -1,6 +1,11 @@
 /**
  * Pass 1: Document Classification & Company Profile
  *
+ * @deprecated This pass is being replaced by Modal/pdfplumber extraction.
+ * When FEATURE_MODAL_EXTRACTION=true, this pass is skipped and data comes
+ * from the pre-extracted document_extractions table instead.
+ * This file is kept for backward compatibility and fallback scenarios.
+ *
  * This pass analyzes the uploaded document(s) to:
  * - Identify document type(s) and tax year(s)
  * - Extract company profile information
