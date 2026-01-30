@@ -1,129 +1,384 @@
 {
   "project": "ValuationPro",
-  "branchName": "ralph/chart-visualization-fixes",
-  "description": "Fix multiple chart rendering issues in PDF reports: empty charts with N/A labels, missing Y-axis labels, reversed year order, benchmark lines covered by data, and valuation range chart cutoff.",
+  "branchName": "ralph/modal-extraction-integration",
+  "description": "Modal Extraction Integration - Replace expensive Claude Vision PDF extraction with Modal/pdfplumber pipeline",
   "userStories": [
     {
       "id": "US-001",
-      "title": "Create Chart Data Validator",
-      "description": "As a system, I need to validate chart data before rendering so that broken charts are never displayed.",
+      "title": "Create centralized feature flags module",
+      "description": "As a developer, I need a feature flags system to safely toggle between Modal and Claude Vision extraction paths.",
       "acceptanceCriteria": [
-        "Create lib/charts/chart-validator.ts",
-        "validateChartData(config: ChartConfig): ChartValidationResult function",
-        "Check: data array not empty",
-        "Check: all values are numbers (not NaN, undefined, null)",
-        "Check: labels array same length as data array",
-        "Check: labels are strings (not objects)",
-        "Check: not all labels are 'N/A'",
-        "Return { valid, errors[], warnings[], sanitizedConfig? }",
-        "Unit tests in lib/charts/__tests__/chart-validator.test.ts",
+        "Create lib/feature-flags.ts with typed feature flags interface",
+        "Implement getFeatureFlags() function that reads from environment variables",
+        "Include flags: useModalExtraction, allowClaudeVisionFallback, showExtractionDebugPanel",
+        "Add environment variables documentation to README or .env.example",
         "Typecheck passes"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Implemented in lib/charts/chart-validator.ts with 35 tests"
+      "notes": "Implemented lib/feature-flags.ts with getFeatureFlags(), isModalExtractionEnabled(), isClaudeVisionFallbackAllowed(), logFeatureFlags()"
     },
     {
       "id": "US-002",
-      "title": "Implement Chronological Year Sorting",
-      "description": "As a system, I need to sort chart data chronologically so that trends read correctly left-to-right (oldest to newest).",
+      "title": "Create extraction error types and handlers",
+      "description": "As a developer, I need standardized error types for extraction failures so errors are actionable.",
       "acceptanceCriteria": [
-        "Add sortChronologically(labels, values) function to chart-validator.ts or new utility",
-        "Extract year from label strings (handles '2024', 'FY2024', '2024-Q1' formats)",
-        "Sort both labels and values arrays in parallel by year ascending",
-        "Oldest year on left, newest on right",
-        "Unit tests verify sorting with various label formats",
+        "Create lib/extraction/errors.ts with ExtractionErrorCode enum",
+        "Include codes: MODAL_CONNECTION_FAILED, MODAL_TIMEOUT, PDF_ENCRYPTED, PDF_CORRUPTED, PDF_SCANNED, MISSING_REQUIRED_DATA",
+        "Create ExtractionError interface with code, message, suggestedRemediation, isRetryable",
+        "Create handleExtractionError() function with appropriate responses per error type",
         "Typecheck passes"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "Implemented extractYear() and sortChronologically() in chart-validator.ts"
+      "notes": "Implemented lib/extraction/errors.ts with ExtractionErrorCode enum, handleExtractionError(), ExtractionException class"
     },
     {
       "id": "US-003",
-      "title": "Create Placeholder Chart Component",
-      "description": "As a system, I need a placeholder for charts with insufficient data so that the report looks intentional rather than broken.",
+      "title": "Create scanned PDF detector",
+      "description": "As a developer, I need to detect scanned PDFs before Modal processing to route them appropriately.",
       "acceptanceCriteria": [
-        "Add generatePlaceholderChart(title, reason) function",
-        "Returns HTML/SVG that displays 'Insufficient Data for Visualization'",
-        "Shows what data was missing (e.g., 'Requires 2+ years of financial data')",
-        "Matches styling of other charts (same dimensions, colors from design tokens)",
-        "Integrate with chart generator to use placeholder when validation fails",
+        "Create lib/extraction/scanned-pdf-detector.ts",
+        "Implement detectScannedPdf(pdfBuffer) that returns ScannedPdfDetectionResult",
+        "Detection based on text density: <50 chars/page = scanned, <500 = warn, >500 = proceed",
+        "Return recommendation: 'proceed' | 'warn_user' | 'require_premium'",
+        "Add unit tests for detection logic",
         "Typecheck passes"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "Implemented generatePlaceholderChart() using design tokens, integrated into all chart generators"
+      "notes": "Implemented with analyzeTextDensity(), detectFromModalResponse(), detectScannedPdf(). 17 unit tests."
     },
     {
       "id": "US-004",
-      "title": "Add Y-Axis Label Generation",
-      "description": "As a system, I need to generate Y-axis labels for all charts so that values can be understood.",
+      "title": "Create typed data accessor functions",
+      "description": "As a developer, I need helper functions to access FinalExtractionOutput data safely with entity-type awareness.",
       "acceptanceCriteria": [
-        "Add generateYAxisLabels(min, max, unit, tickCount) function",
-        "Calculate appropriate tick marks (5-7 ticks by default)",
-        "Format labels with units (%, $, x as appropriate)",
-        "Handle large numbers with abbreviations ($1.5M, $500K)",
-        "No overlapping labels (adequate spacing)",
-        "Update chart generation to include Y-axis labels",
-        "Unit tests verify scale calculation and formatting",
+        "Create lib/extraction/data-accessors.ts",
+        "Implement getLatestYearData(extraction) - returns most recent year's data",
+        "Implement getYearsSorted(extraction) - returns years array sorted descending",
+        "Implement getOwnerCompensation(extraction, year) - entity-type-aware (S-Corp: officer comp, Partnership: guaranteed payments, Sole Prop: net income)",
+        "Implement getDepreciationAddBack(extraction, year) - includes both depreciation AND Section 179",
+        "Implement getCovidAdjustments(extraction, year) - returns PPP/EIDL/ERC amounts",
+        "All functions handle null/undefined gracefully with ?? 0 defaults",
         "Typecheck passes"
       ],
       "priority": 4,
       "passes": true,
-      "notes": "Implemented generateYAxisTicks(), formatYAxisLabel(), generateYAxisLabels() in chart-validator.ts"
+      "notes": "Implemented types.ts and data-accessors.ts with entity-type-aware functions"
     },
     {
       "id": "US-005",
-      "title": "Fix Benchmark Line Rendering Order",
-      "description": "As a system, I need benchmark lines visible behind data bars so that comparisons can be made.",
+      "title": "Create SDE calculation accessors",
+      "description": "As a developer, I need functions to calculate SDE add-backs from extraction data.",
       "acceptanceCriteria": [
-        "Update SVG chart generation to render in correct order: grid -> benchmark -> data -> labels",
-        "Benchmark line rendered AFTER grid lines",
-        "Benchmark line rendered BEFORE data bars/lines",
-        "Benchmark label positioned to not overlap data",
-        "Use dashed line style for visual distinction",
+        "Add getAllSdeAddBacks(extraction, year) to data-accessors.ts",
+        "Returns { total: number, items: SdeAddBackItem[] } with categorized add-backs",
+        "Categories: owner_compensation, depreciation, section_179, amortization, interest, capital_gains, covid_adjustments",
+        "Implement getNormalizedNetIncome(extraction, year) that subtracts COVID adjustments",
+        "Add unit tests with mock extraction data",
         "Typecheck passes"
       ],
       "priority": 5,
       "passes": true,
-      "notes": "Fixed in kpi-page-generator.ts - benchmark line now renders before data bars"
+      "notes": "Implemented getAllSdeAddBacks(), getNormalizedNetIncome(), calculateSDE() with 20 unit tests"
     },
     {
       "id": "US-006",
-      "title": "Fix Valuation Range Chart",
-      "description": "As a system, I need to fix the Valuation Range Overview chart so that all elements are visible and properly positioned.",
+      "title": "Validate FinalExtractionOutput type completeness",
+      "description": "As a developer, I need to ensure the FinalExtractionOutput type in lib/extraction/types.ts has all fields needed by the valuation pipeline.",
       "acceptanceCriteria": [
-        "Fix 'Your Value' marker so it doesn't cover other text",
-        "Ensure Industry Low/High labels visible and connected to chart",
-        "Fix container height so bottom is not cut off",
-        "Position value marker correctly on the range scale",
-        "Use design token colors consistently",
+        "Review lib/extraction/types.ts against implementation guide requirements",
+        "Ensure schedule_k has section_179_deduction, capital gains fields",
+        "Ensure guaranteed_payments structure exists for partnerships",
+        "Ensure covid_adjustments structure exists (ppp, eidl, erc)",
+        "Ensure red_flags structure is complete",
+        "Add any missing fields to the type definition",
         "Typecheck passes"
       ],
       "priority": 6,
       "passes": true,
-      "notes": "Fixed in puppeteer-chart-renderer.ts: increased height, smart label positioning, clamped marker to visible range"
+      "notes": "Completed in US-004. types.ts has: schedule_k.section_179_deduction, owner_info.guaranteed_payments, covid_adjustments, red_flags"
     },
     {
       "id": "US-007",
-      "title": "Create KPI Trend Chart Template",
-      "description": "As a system, I need a consistent template for all KPI trend charts so that they all render correctly with the same quality.",
+      "title": "Add extraction phase to document processing entry point",
+      "description": "As a developer, I need the main processing flow to check for/run extraction before valuation.",
       "acceptanceCriteria": [
-        "Create generateKPITrendChart(config) function or component",
-        "Props: title, data[], labels[], benchmark?, unit",
-        "Handles 1-4 years of data gracefully",
-        "Always includes Y-axis with scale labels",
-        "Always sorts years chronologically (left=oldest)",
-        "Benchmark line visible when provided",
-        "Consistent sizing across all KPI charts",
-        "Uses validation before rendering (shows placeholder if invalid)",
-        "Integrates with PDF generator for all KPI sections",
+        "Identify main entry point in app/api/ routes",
+        "Add extraction check: getExistingExtraction(reportId) from document_extractions table",
+        "If no extraction exists AND feature flag enabled, call Modal extraction",
+        "Handle extraction result states: success, scanned_pdf_detected, error",
+        "Only proceed to valuation if extraction succeeds",
         "Typecheck passes"
       ],
       "priority": 7,
       "passes": true,
-      "notes": "Enhanced generateInlineSVGChart() in kpi-page-generator.ts with all required features"
+      "notes": "Implemented lib/extraction/loader.ts with checkExistingExtraction(), loadExtractionData(), storeExtractionData()"
+    },
+    {
+      "id": "US-008",
+      "title": "Wire Modal extraction into extraction phase",
+      "description": "As a developer, I need the extraction phase to actually call Modal when triggered.",
+      "acceptanceCriteria": [
+        "In extraction phase, call extractDocumentPipeline() from lib/extraction/pipeline.ts",
+        "Pass PDF buffer, document ID, filename to pipeline",
+        "Store successful extraction result in document_extractions table",
+        "Return appropriate status based on pipeline result",
+        "Add logging: [EXTRACTION] Using Modal pipeline for document ${id}",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "lib/extraction/pipeline.ts and lib/extraction.ts already exist - verify they work"
+    },
+    {
+      "id": "US-009",
+      "title": "Implement scanned PDF user opt-in flow",
+      "description": "As a user, I want to be prompted when my PDF is scanned so I can choose premium extraction.",
+      "acceptanceCriteria": [
+        "Before Modal extraction, run scanned PDF detection",
+        "If recommendation === 'require_premium', return status scanned_pdf_detected",
+        "Response includes: message, options (use_premium, reupload), affected documents",
+        "Update report status to awaiting_user_decision",
+        "Create API endpoint to handle user's opt-in decision",
+        "If user opts in, route to Claude Vision extraction",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "This is the premium extraction upsell path"
+    },
+    {
+      "id": "US-010",
+      "title": "Add feature flag check to orchestrator",
+      "description": "As a developer, I need the orchestrator to check feature flags and route to appropriate path.",
+      "acceptanceCriteria": [
+        "In lib/claude/orchestrator-v2.ts, import and use getFeatureFlags()",
+        "At start of executeSinglePass, check useModalExtraction flag",
+        "If true AND passNumber <= 3, skip to pass 4 (extraction already done)",
+        "Log clearly: [ORCHESTRATOR] Modal extraction enabled, skipping passes 1-3",
+        "If false, use existing Claude Vision path (legacy mode)",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "orchestrator-v2.ts is 137KB - be surgical, don't restructure"
+    },
+    {
+      "id": "US-011",
+      "title": "Load extraction data for Modal path",
+      "description": "As a developer, I need the orchestrator to load extraction data when using Modal path.",
+      "acceptanceCriteria": [
+        "Create function loadExtractionData(reportId) that fetches from document_extractions",
+        "Return typed FinalExtractionOutput or throw if not found",
+        "Validate extraction has required data before proceeding",
+        "Store extraction data in context for use by passes 4+",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "Database table is document_extractions with JSONB extraction_data column"
+    },
+    {
+      "id": "US-012",
+      "title": "Update Pass 4 (Industry Analysis) to use FinalExtractionOutput",
+      "description": "As a developer, I need Pass 4 to work with Modal extraction output instead of Pass1-3 outputs.",
+      "acceptanceCriteria": [
+        "Modify buildPass4Request() to accept FinalExtractionOutput instead of Pass1/2/3 outputs",
+        "Use data accessors to get: company name, entity type, revenue, expense breakdown",
+        "Extract NAICS code from extraction if available, or prompt Claude to classify",
+        "Update prompt to reference extraction data fields",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "Pass 4 prompt in lib/claude/prompts-v2/. Use data-accessors.ts."
+    },
+    {
+      "id": "US-013",
+      "title": "Update Pass 5 (Risk Assessment) to use FinalExtractionOutput",
+      "description": "As a developer, I need Pass 5 to work with Modal extraction output.",
+      "acceptanceCriteria": [
+        "Modify buildPass5Request() to accept FinalExtractionOutput",
+        "Use data accessors for: red_flags, financial ratios, balance sheet data",
+        "Include loans_to_shareholders flag in risk factors",
+        "Update prompt to reference extraction data fields",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "Pass 5 handles risk. red_flags from extraction are critical."
+    },
+    {
+      "id": "US-014",
+      "title": "Update Pass 6 (Earnings Normalization) to use FinalExtractionOutput",
+      "description": "As a developer, I need Pass 6 to work with Modal extraction output.",
+      "acceptanceCriteria": [
+        "Modify buildPass6Request() to accept FinalExtractionOutput",
+        "Use getAllSdeAddBacks() accessor for add-back data",
+        "Use getNormalizedNetIncome() for COVID-adjusted earnings",
+        "Use getOwnerCompensation() for entity-type-aware owner comp",
+        "Update prompt to reference extraction data fields",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "Pass 6 is earnings normalization. This is where SDE is calculated."
+    },
+    {
+      "id": "US-015",
+      "title": "Update Passes 7-9 (Valuation Approaches) to use FinalExtractionOutput",
+      "description": "As a developer, I need the valuation approach passes to work with Modal extraction output.",
+      "acceptanceCriteria": [
+        "Modify buildPass7Request() (Asset Approach) - use balance sheet from extraction",
+        "Modify buildPass8Request() (Income Approach) - use normalized earnings",
+        "Modify buildPass9Request() (Market Approach) - use revenue/SDE for multiples",
+        "All passes use data accessors, not direct field access",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": "Three passes in one story because they share similar patterns"
+    },
+    {
+      "id": "US-016",
+      "title": "Update Passes 10-12 (Synthesis) to use FinalExtractionOutput",
+      "description": "As a developer, I need the synthesis passes to work with Modal extraction output.",
+      "acceptanceCriteria": [
+        "Modify buildPass10Request() (Value Reconciliation) - use extraction data",
+        "Modify buildPass11Request() (Report Narrative) - use company_info, financial_data",
+        "Modify buildPass12Request() (Quality Review) - verify against extraction",
+        "All passes use data accessors consistently",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": "Final passes use extracted data for synthesis and narrative"
+    },
+    {
+      "id": "US-017",
+      "title": "Update calculation engine to use FinalExtractionOutput",
+      "description": "As a developer, I need the calculation engine to accept extraction data directly.",
+      "acceptanceCriteria": [
+        "Update lib/calculations/calculation-engine.ts input types",
+        "Create mapExtractionToCalculationInput(extraction) function",
+        "Use data accessors for all financial values",
+        "Ensure multi-year support (iterate over extraction.financial_data years)",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": "Calculation engine is deterministic - must receive correct inputs"
+    },
+    {
+      "id": "US-018",
+      "title": "Update PDF report builder to use FinalExtractionOutput",
+      "description": "As a developer, I need the PDF builder to access data from extraction output.",
+      "acceptanceCriteria": [
+        "Update lib/pdf/professional-pdf-generator.ts or equivalent",
+        "Replace Pass1/2/3 data references with extraction data accessors",
+        "Ensure all financial tables pull from extraction.financial_data",
+        "Ensure company info section uses extraction.company_info",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": "PDF generator is large (63KB). Focus on data access patterns only."
+    },
+    {
+      "id": "US-019",
+      "title": "Implement hard fail with detailed errors (testing mode)",
+      "description": "As a developer during testing, I need Modal failures to surface immediately with actionable error messages.",
+      "acceptanceCriteria": [
+        "When FEATURE_MODAL_EXTRACTION=true and Modal fails, throw with detailed error",
+        "Error includes: error code, message, suggested remediation, timestamp",
+        "Error is logged to console AND stored in database for debugging",
+        "User sees specific error message, not generic 'something went wrong'",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": "Testing mode = hard fail immediately. No silent fallbacks."
+    },
+    {
+      "id": "US-020",
+      "title": "Implement queue for manual review (production mode)",
+      "description": "As a developer in production, I need non-scanned-PDF failures to queue for review instead of hard failing.",
+      "acceptanceCriteria": [
+        "Add environment variable MODAL_FAIL_MODE=hard|queue",
+        "When queue mode and Modal fails (non-scanned), create review queue entry",
+        "Notify user: 'Your report is queued for processing. We'll notify you when ready.'",
+        "Admin can view queue and manually process or retry",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": "Production graceful degradation - don't block users"
+    },
+    {
+      "id": "US-021",
+      "title": "Create integration test for Modal extraction path",
+      "description": "As a developer, I need integration tests to verify the Modal path produces correct results.",
+      "acceptanceCriteria": [
+        "Create test file lib/extraction/__tests__/modal-integration.test.ts",
+        "Test with sample document data (mock if needed)",
+        "Verify extraction extracts: revenue, officer comp, depreciation, Section 179",
+        "Verify extraction handles multi-year documents",
+        "Verify scanned PDF detection triggers appropriate flow",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": "Use vitest. Mock Modal responses for CI."
+    },
+    {
+      "id": "US-022",
+      "title": "Create comparison test between Modal and Claude Vision paths",
+      "description": "As a developer, I need to verify Modal path produces equivalent results to Claude Vision.",
+      "acceptanceCriteria": [
+        "Create test that runs same document through both paths",
+        "Compare key values: SDE, normalized earnings, valuation result",
+        "Values should match within 5% tolerance",
+        "Document any discrepancies and their causes",
+        "Tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": "This proves Modal is production-ready"
+    },
+    {
+      "id": "US-023",
+      "title": "Deprecate Pass 1-3 configurations",
+      "description": "As a developer, I need to mark Pass 1-3 configs as deprecated once Modal is stable.",
+      "acceptanceCriteria": [
+        "Add deprecation comments to lib/claude/prompts-v2/ pass 1-3 files",
+        "Add console.warn if legacy path is used: 'Claude Vision extraction is deprecated'",
+        "Update CLAUDE.md with new architecture documentation",
+        "Do NOT delete files yet - keep for rollback capability",
+        "Typecheck passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": "Deprecate but don't delete. Keep rollback option."
+    },
+    {
+      "id": "US-024",
+      "title": "Add admin UI extraction debug panel",
+      "description": "As an admin, I want to see extraction details for debugging purposes.",
+      "acceptanceCriteria": [
+        "When showExtractionDebugPanel flag is true, show debug panel",
+        "Panel shows: extraction status, confidence score, validation issues",
+        "Panel shows: raw extraction data (collapsible JSON)",
+        "Panel shows: which path was used (Modal vs Claude Vision)",
+        "Typecheck passes",
+        "Verify in browser using dev-browser skill"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": "UI component for debugging. Only visible when flag enabled."
     }
   ]
 }

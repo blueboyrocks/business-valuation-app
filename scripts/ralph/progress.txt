@@ -1,87 +1,72 @@
-# Ralph Progress Log
-Started: Wed, Jan 29, 2026
-Branch: ralph/chart-visualization-fixes
-PRD: Chart Visualization Fixes (7 stories)
----
+# Ralph Progress: Modal Extraction Integration
+
+## Branch: ralph/modal-extraction-integration
+
+## Status: IN PROGRESS (7/24 stories completed)
 
 ## Codebase Patterns
-- Charts are generated in lib/pdf/professional-pdf-generator.ts
-- Design tokens in lib/pdf/design-tokens.ts (COLORS, CHART_COLOR_PALETTE)
-- SVG charts rendered inline in HTML for PDF generation
-- KPI charts appear in pages 39-63 of the PDF report
-- Chart data comes from reportData.yearly_financials or calculation results
-- Chart validation should be done before rendering to show placeholder for bad data
-- All time-series charts should sort data chronologically (oldest year on left)
-- Benchmark lines should render BEFORE data bars so bars appear on top
+- Entity type determines owner compensation location: S-Corp uses officer comp, Partnership uses guaranteed payments, Sole Prop uses net income
+- Section 179 deduction is in Schedule K, often missed when calculating SDE
+- COVID adjustments (PPP/EIDL/ERC) should be normalized out of earnings
+- All extraction accessor functions use ?? 0 defaults for null safety
+- Feature flags read from environment variables: FEATURE_MODAL_EXTRACTION, FEATURE_CLAUDE_VISION_FALLBACK, etc.
+
 ---
 
-## Wed, Jan 29, 2026 - US-001, US-002, US-003, US-004 (Chart Validator)
-- Created lib/charts/chart-validator.ts with comprehensive validation:
-  - validateChartData() checks empty arrays, NaN/undefined, non-string labels, all-placeholder labels
-  - sortChronologically() sorts labels and values by year (oldest first)
-  - extractYear() handles various formats: '2024', 'FY2024', 'Q1 2024', etc.
-  - generatePlaceholderChart() creates styled SVG placeholder for invalid data
-  - generateYAxisTicks() calculates nice tick values for Y-axis scale
-  - formatYAxisLabel() formats numbers with units ($1.5M, 25%, 2.5x)
-- Created 35 tests in lib/charts/__tests__/chart-validator.test.ts
-- All tests pass, typecheck passes
-- **Learnings for future iterations:**
-  - Year extraction regex needs to handle FY2024 (no word boundary between FY and digits)
-  - Placeholder charts should use design tokens for consistency
----
+## 2026-01-29 - US-001 through US-007
 
-## Wed, Jan 29, 2026 - US-005 (Benchmark Line Rendering)
-- Fixed benchmark line rendering order in kpi-page-generator.ts:
-  - Render order: grid -> benchmark -> data bars
-  - Benchmark line appears behind data for visibility
-- Enhanced generateInlineSVGChart() with:
-  - Data validation before rendering
-  - Chronological sorting of years
-  - Proper Y-axis labels with scale
-  - Consistent dimensions and spacing
-- **Learnings for future iterations:**
-  - SVG render order: elements drawn later appear on top
-  - Use <g> groups to organize rendering layers
----
+### Completed Stories:
 
-## Wed, Jan 29, 2026 - US-006 (Valuation Range Chart)
-- Fixed Valuation Range chart in puppeteer-chart-renderer.ts:
-  - Increased container height from 400px to 480px to prevent cutoff
-  - Added smart label positioning (center/left/right based on value position)
-  - Clamped marker position to 5-95% to stay within visible range
-  - Added speech bubble arrow pointing to marker line
-  - Used design token colors (#1E3A5F navy, #DC2626 red)
-  - Styled Industry Low/High labels in cards with better spacing
-- Typecheck passes
-- **Learnings for future iterations:**
-  - Edge values need clamping to stay within visible chart area
-  - Dynamic label positioning prevents overlap with chart edges
----
+**US-001: Create centralized feature flags module**
+- Created lib/feature-flags.ts
+- Functions: getFeatureFlags(), isModalExtractionEnabled(), isClaudeVisionFallbackAllowed(), logFeatureFlags()
+- Environment variables: FEATURE_MODAL_EXTRACTION, FEATURE_CLAUDE_VISION_FALLBACK, FEATURE_EXTRACTION_DEBUG, MODAL_FAIL_MODE
 
-## Wed, Jan 29, 2026 - US-007 (KPI Trend Chart Template)
-- Enhanced generateInlineSVGChart() in kpi-page-generator.ts serves as KPI chart template:
-  - Validates data before rendering (shows placeholder if invalid)
-  - Sorts years chronologically (oldest first, left to right)
-  - Includes Y-axis with proper scale labels
-  - Benchmark line visible with dashed style
-  - Consistent sizing (450x230px) across all KPI charts
-  - Uses design token colors from chart-validator.ts
-- Integrated with PDF generator for all KPI sections
-- Typecheck passes
-- **Learnings for future iterations:**
-  - KPI charts already had inline SVG implementation - just needed enhancement
-  - Import validation functions rather than duplicating code
----
+**US-002: Create extraction error types and handlers**
+- Created lib/extraction/errors.ts
+- ExtractionErrorCode enum with 7 codes
+- handleExtractionError() for consistent error responses
+- ExtractionException class for throwing typed errors
 
-## Wed, Jan 29, 2026 - ALL 7 STORIES COMPLETE
-- US-001: Chart Data Validator ✅
-- US-002: Chronological Year Sorting ✅
-- US-003: Placeholder Chart Component ✅
-- US-004: Y-Axis Label Generation ✅
-- US-005: Benchmark Line Rendering Order ✅
-- US-006: Valuation Range Chart Fix ✅
-- US-007: KPI Trend Chart Template ✅
-- All typecheck passes
-- Ready for push to GitHub and Vercel deployment
----
+**US-003: Create scanned PDF detector**
+- Created lib/extraction/scanned-pdf-detector.ts
+- analyzeTextDensity() with thresholds: <50=scanned, <500=warn, >=500=proceed
+- detectFromModalResponse() to use Modal's is_scanned flag
+- 17 unit tests passing
 
+**US-004: Create typed data accessor functions**
+- Created lib/extraction/types.ts with FinalExtractionOutput and all related types
+- Created lib/extraction/data-accessors.ts with entity-type-aware accessors
+- Key functions: getOwnerCompensation(), getDepreciationAddBack(), getCovidAdjustments()
+
+**US-005: Create SDE calculation accessors**
+- Added to data-accessors.ts: getAllSdeAddBacks(), getNormalizedNetIncome(), calculateSDE()
+- Categories: owner_compensation, depreciation, section_179, amortization, interest, capital_gains, covid_adjustments
+- getWeightedAverageSDE() with weights 3,2,1 for most recent years
+- 20 unit tests passing
+
+**US-006: Validate FinalExtractionOutput type completeness**
+- Verified types.ts has all required fields
+- schedule_k.section_179_deduction, owner_info.guaranteed_payments, covid_adjustments, red_flags all present
+
+**US-007: Add extraction data loader**
+- Created lib/extraction/loader.ts
+- checkExistingExtraction(), loadExtractionData(), storeExtractionData(), updateExtractionStatus()
+- Works with document_extractions table
+
+### Files Created/Modified:
+- lib/feature-flags.ts (NEW)
+- lib/extraction/errors.ts (NEW)
+- lib/extraction/scanned-pdf-detector.ts (NEW)
+- lib/extraction/types.ts (NEW)
+- lib/extraction/data-accessors.ts (NEW)
+- lib/extraction/loader.ts (NEW)
+- lib/extraction/__tests__/scanned-pdf-detector.test.ts (NEW)
+- lib/extraction/__tests__/data-accessors.test.ts (NEW)
+- .env.example (MODIFIED - added feature flag env vars)
+
+### Remaining Stories (17):
+- US-008 to US-024 pending (see prd.json for details)
+- Next priority: US-008 (Wire Modal extraction), US-010 (Feature flag check in orchestrator)
+
+---
