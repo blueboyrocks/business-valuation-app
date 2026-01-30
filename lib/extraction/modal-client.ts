@@ -205,8 +205,8 @@ export async function extractWithModal(
 /**
  * Convert Modal response to FinalExtractionOutput format.
  *
- * This function parses the raw text and tables from Modal to create
- * a structured extraction output.
+ * This function uses pre-parsed data from Python if available (higher quality),
+ * otherwise falls back to TypeScript parsing.
  */
 function convertModalToFinalOutput(
   response: ModalExtractionResponse,
@@ -215,33 +215,145 @@ function convertModalToFinalOutput(
 ): FinalExtractionOutput {
   const data = response.data!;
 
-  // Parse financial data from tables and text
-  const parsedData = parseFinancialData(data.tables, data.raw_text);
+  // Check if Python provided pre-parsed data (higher quality parsing)
+  const pythonParsedData = (data as any).parsed_data;
 
-  // Determine entity type from document
-  const entityType = detectEntityType(data.raw_text, filename);
-  const documentType = detectDocumentType(data.raw_text, filename);
+  let entityType: EntityType;
+  let documentType: DocumentType;
+  let companyInfo: CompanyInfo;
+  let years: number[];
+  let financialData: Record<number, YearFinancialData>;
 
-  // Extract company info from text
-  const companyInfo = extractCompanyInfo(data.raw_text, entityType);
+  if (pythonParsedData) {
+    // Use Python's pre-parsed data (better regex parsing)
+    console.log('[MODAL-CLIENT] Using Python pre-parsed data');
 
-  // Get the tax year(s) from parsed data
-  const years = Object.keys(parsedData.yearlyData).map(Number).sort((a, b) => b - a);
+    entityType = pythonParsedData.entity_type as EntityType || 'Other';
+    documentType = pythonParsedData.document_type as DocumentType || 'Other';
+    const taxYear = pythonParsedData.tax_year || new Date().getFullYear() - 1;
+    years = [taxYear];
 
-  // Build financial data records
-  const financialData: Record<number, YearFinancialData> = {};
-  for (const year of years) {
-    const yearData = parsedData.yearlyData[year];
-    financialData[year] = {
-      tax_year: year,
-      document_type: documentType,
-      income_statement: yearData.incomeStatement,
-      expenses: yearData.expenses,
-      balance_sheet: yearData.balanceSheet,
-      schedule_k: yearData.scheduleK,
-      owner_info: yearData.ownerInfo,
-      covid_adjustments: yearData.covidAdjustments,
+    // Build company info from Python's parsed data
+    const pyCompanyInfo = pythonParsedData.company_info || {};
+    companyInfo = {
+      business_name: pyCompanyInfo.business_name || 'Unknown Business',
+      ein: pyCompanyInfo.ein || null,
+      address: pyCompanyInfo.address || null,
+      entity_type: entityType,
+      fiscal_year_end: pyCompanyInfo.fiscal_year_end || '12/31',
+      naics_code: pyCompanyInfo.naics_code || null,
+      business_activity: pyCompanyInfo.business_activity || null,
+      number_of_employees: pyCompanyInfo.number_of_employees || null,
+      accounting_method: pyCompanyInfo.accounting_method || 'Accrual',
     };
+
+    // Build financial data from Python's parsed data
+    const pyIncome = pythonParsedData.income_statement || {};
+    const pyExpenses = pythonParsedData.expenses || {};
+    const pyBalance = pythonParsedData.balance_sheet || {};
+    const pyScheduleK = pythonParsedData.schedule_k || {};
+    const pyOwnerInfo = pythonParsedData.owner_info || {};
+
+    financialData = {
+      [taxYear]: {
+        tax_year: taxYear,
+        document_type: documentType,
+        income_statement: {
+          gross_receipts_sales: pyIncome.gross_receipts_sales ?? 0,
+          returns_allowances: pyIncome.returns_allowances ?? 0,
+          cost_of_goods_sold: pyIncome.cost_of_goods_sold ?? 0,
+          gross_profit: pyIncome.gross_profit ?? 0,
+          total_income: pyIncome.total_income ?? 0,
+          total_deductions: pyIncome.total_deductions ?? 0,
+          taxable_income: pyIncome.taxable_income ?? 0,
+          net_income: pyIncome.net_income ?? 0,
+        },
+        expenses: {
+          compensation_of_officers: pyExpenses.compensation_of_officers ?? 0,
+          salaries_wages: pyExpenses.salaries_wages ?? 0,
+          repairs_maintenance: pyExpenses.repairs_maintenance ?? 0,
+          bad_debts: pyExpenses.bad_debts ?? 0,
+          rents: pyExpenses.rents ?? 0,
+          taxes_licenses: pyExpenses.taxes_licenses ?? 0,
+          interest: pyExpenses.interest ?? 0,
+          depreciation: pyExpenses.depreciation ?? 0,
+          depletion: pyExpenses.depletion ?? 0,
+          advertising: pyExpenses.advertising ?? 0,
+          pension_profit_sharing: pyExpenses.pension_profit_sharing ?? 0,
+          employee_benefits: pyExpenses.employee_benefits ?? 0,
+          other_deductions: pyExpenses.other_deductions ?? 0,
+        },
+        balance_sheet: {
+          total_assets: pyBalance.total_assets ?? 0,
+          cash: pyBalance.cash ?? 0,
+          accounts_receivable: pyBalance.accounts_receivable ?? 0,
+          inventory: pyBalance.inventory ?? 0,
+          fixed_assets: pyBalance.fixed_assets ?? 0,
+          accumulated_depreciation: pyBalance.accumulated_depreciation ?? 0,
+          other_assets: pyBalance.other_assets ?? 0,
+          total_liabilities: pyBalance.total_liabilities ?? 0,
+          accounts_payable: pyBalance.accounts_payable ?? 0,
+          loans_payable: pyBalance.loans_payable ?? 0,
+          other_liabilities: pyBalance.other_liabilities ?? 0,
+          retained_earnings: pyBalance.retained_earnings ?? 0,
+          total_equity: pyBalance.total_equity ?? 0,
+        },
+        schedule_k: {
+          section_179_deduction: pyScheduleK.section_179_deduction ?? 0,
+          charitable_contributions: pyScheduleK.charitable_contributions ?? 0,
+          investment_interest: 0,
+          net_section_1231_gain: 0,
+          other_net_gain_loss: 0,
+          total_foreign_taxes: 0,
+          total_distributions: pyScheduleK.total_distributions ?? 0,
+        },
+        owner_info: {
+          owner_compensation: pyOwnerInfo.owner_compensation ?? 0,
+          guaranteed_payments: pyOwnerInfo.guaranteed_payments ?? 0,
+          distributions: pyOwnerInfo.distributions ?? 0,
+          loans_to_shareholders: pyOwnerInfo.loans_to_shareholders ?? 0,
+          loans_from_shareholders: pyOwnerInfo.loans_from_shareholders ?? 0,
+        },
+        covid_adjustments: {
+          ppp_loan: 0,
+          ppp_forgiveness: 0,
+          eidl_grant: 0,
+          erc_credit: 0,
+        },
+      },
+    };
+  } else {
+    // Fall back to TypeScript parsing (original behavior)
+    console.log('[MODAL-CLIENT] Falling back to TypeScript parsing');
+
+    // Parse financial data from tables and text
+    const parsedData = parseFinancialData(data.tables, data.raw_text);
+
+    // Determine entity type from document
+    entityType = detectEntityType(data.raw_text, filename);
+    documentType = detectDocumentType(data.raw_text, filename);
+
+    // Extract company info from text
+    companyInfo = extractCompanyInfo(data.raw_text, entityType);
+
+    // Get the tax year(s) from parsed data
+    years = Object.keys(parsedData.yearlyData).map(Number).sort((a, b) => b - a);
+
+    // Build financial data records
+    financialData = {};
+    for (const year of years) {
+      const yearData = parsedData.yearlyData[year];
+      financialData[year] = {
+        tax_year: year,
+        document_type: documentType,
+        income_statement: yearData.incomeStatement,
+        expenses: yearData.expenses,
+        balance_sheet: yearData.balanceSheet,
+        schedule_k: yearData.scheduleK,
+        owner_info: yearData.ownerInfo,
+        covid_adjustments: yearData.covidAdjustments,
+      };
+    }
   }
 
   // Detect red flags
