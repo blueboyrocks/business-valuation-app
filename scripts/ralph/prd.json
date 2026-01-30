@@ -322,8 +322,8 @@
         "Typecheck passes"
       ],
       "priority": 20,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Updated Pass 5 with comprehensive COVID adjustment section (E.1) including PPP, EIDL, ERC handling with SUBTRACT treatment. Added balance sheet red flags section (E.2) for loans to shareholders, negative retained earnings, excessive distributions. Pass 2/3 are deprecated in favor of Modal extraction."
     },
     {
       "id": "US-021",
