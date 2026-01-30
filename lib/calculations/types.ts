@@ -109,6 +109,23 @@ export interface BalanceSheetData {
   working_capital?: number;
 }
 
+/**
+ * COVID-related adjustments for earnings normalization.
+ * These one-time items should be subtracted from earnings for proper SDE calculation.
+ */
+export interface CovidAdjustmentsData {
+  /** PPP loan forgiveness amount (taxable in 2020-2021) */
+  ppp_loan_forgiveness: number;
+  /** EIDL advance grants received */
+  eidl_advances: number;
+  /** Employee Retention Credit amount */
+  employee_retention_credit: number;
+  /** Tax year(s) these adjustments apply to */
+  applicable_years?: number[];
+  /** Notes explaining the adjustments */
+  notes?: string[];
+}
+
 export interface MultipleRange {
   low: number;
   median: number;
@@ -318,6 +335,8 @@ export interface CalculationEngineInputs {
   pass7_asset_approach?: {
     adjusted_net_asset_value?: number;
   };
+  /** COVID adjustments to subtract from earnings for normalization (2020-2021) */
+  covid_adjustments?: CovidAdjustmentsData;
   config?: CalculationConfig;
 }
 

@@ -1,5 +1,8 @@
 /**
  * Earnings Calculator - SDE and EBITDA calculations
+ *
+ * US-019: Added COVID normalization to subtract one-time pandemic relief items
+ * from earnings for proper SDE calculation (2020-2021 valuations).
  */
 
 import {
@@ -10,6 +13,7 @@ import {
   NormalizedEarningsResult,
   AddBackItem,
   CalculationStep,
+  CovidAdjustmentsData,
 } from './types';
 import {
   safeNumber,
@@ -22,11 +26,64 @@ import {
 } from './utils';
 
 /**
+ * Calculate COVID adjustment amount for a given year.
+ * COVID adjustments should be SUBTRACTED from SDE as they are one-time items.
+ */
+function calculateCovidAdjustmentForYear(
+  year: number,
+  covidAdjustments?: CovidAdjustmentsData
+): { totalAdjustment: number; items: Array<{ category: string; amount: number }> } {
+  if (!covidAdjustments) {
+    return { totalAdjustment: 0, items: [] };
+  }
+
+  // Check if this year is applicable for COVID adjustments (typically 2020-2021)
+  const applicableYears = covidAdjustments.applicable_years || [2020, 2021];
+  if (!applicableYears.includes(year)) {
+    return { totalAdjustment: 0, items: [] };
+  }
+
+  const items: Array<{ category: string; amount: number }> = [];
+  let total = 0;
+
+  if (covidAdjustments.ppp_loan_forgiveness > 0) {
+    items.push({
+      category: 'PPP Loan Forgiveness',
+      amount: covidAdjustments.ppp_loan_forgiveness,
+    });
+    total += covidAdjustments.ppp_loan_forgiveness;
+  }
+
+  if (covidAdjustments.eidl_advances > 0) {
+    items.push({
+      category: 'EIDL Advances',
+      amount: covidAdjustments.eidl_advances,
+    });
+    total += covidAdjustments.eidl_advances;
+  }
+
+  if (covidAdjustments.employee_retention_credit > 0) {
+    items.push({
+      category: 'Employee Retention Credit',
+      amount: covidAdjustments.employee_retention_credit,
+    });
+    total += covidAdjustments.employee_retention_credit;
+  }
+
+  return { totalAdjustment: total, items };
+}
+
+/**
  * Calculate Seller's Discretionary Earnings (SDE) for a single year
+ *
+ * @param financials - Single year financial data
+ * @param steps - Array to push calculation steps to
+ * @param covidAdjustments - Optional COVID adjustments to subtract from SDE
  */
 export function calculateSDEForYear(
   financials: SingleYearFinancials,
-  steps: CalculationStep[]
+  steps: CalculationStep[],
+  covidAdjustments?: CovidAdjustmentsData
 ): SDEYearCalculation {
   const period = financials.period;
   const startingNetIncome = safeNumber(financials.net_income);
@@ -149,11 +206,12 @@ export function calculateSDEForYear(
     }
   }
 
-  const sde = roundToDollar(startingNetIncome + totalAdjustments);
+  // Calculate SDE before COVID adjustments
+  let sde = roundToDollar(startingNetIncome + totalAdjustments);
   steps.push(
     createStep(
       'SDE',
-      `${period} - Calculate total SDE`,
+      `${period} - Calculate SDE before COVID adjustments`,
       'SDE = Net Income + Total Adjustments',
       {
         net_income: startingNetIncome,
@@ -163,11 +221,51 @@ export function calculateSDEForYear(
     )
   );
 
+  // Apply COVID adjustments (subtract one-time pandemic relief items)
+  // Per US-019: PPP forgiveness, EIDL grants, ERC should be SUBTRACTED from SDE
+  const yearNum = parseInt(period, 10);
+  const covidResult = calculateCovidAdjustmentForYear(yearNum, covidAdjustments);
+
+  if (covidResult.totalAdjustment > 0) {
+    for (const covidItem of covidResult.items) {
+      adjustments.push({
+        category: 'COVID Normalization',
+        description: `Subtract ${covidItem.category} (one-time pandemic relief)`,
+        amount: -covidItem.amount, // Negative because we're subtracting
+        source_line: 'COVID-19 Relief Adjustment',
+      });
+      steps.push(
+        createStep(
+          'SDE',
+          `${period} - Subtract ${covidItem.category}`,
+          `SDE -= ${covidItem.category} (COVID normalization)`,
+          { amount: covidItem.amount },
+          -covidItem.amount
+        )
+      );
+    }
+
+    sde = roundToDollar(sde - covidResult.totalAdjustment);
+    steps.push(
+      createStep(
+        'SDE',
+        `${period} - Calculate normalized SDE after COVID adjustments`,
+        'Normalized SDE = SDE - COVID Adjustments',
+        {
+          sde_before: sde + covidResult.totalAdjustment,
+          covid_adjustments: covidResult.totalAdjustment,
+        },
+        sde,
+        `COVID relief of $${covidResult.totalAdjustment.toLocaleString()} subtracted for normalization`
+      )
+    );
+  }
+
   return {
     period,
     starting_net_income: startingNetIncome,
     adjustments,
-    total_adjustments: roundToDollar(totalAdjustments),
+    total_adjustments: roundToDollar(totalAdjustments - covidResult.totalAdjustment),
     sde,
   };
 }
@@ -257,10 +355,15 @@ export function calculateEBITDAForYear(
 
 /**
  * Calculate normalized earnings (SDE and EBITDA) for all periods
+ *
+ * @param financials - Multi-year financial data
+ * @param fairMarketSalary - Fair market replacement salary for owner
+ * @param covidAdjustments - Optional COVID adjustments to normalize pandemic relief items
  */
 export function calculateNormalizedEarnings(
   financials: MultiYearFinancials,
-  fairMarketSalary: number
+  fairMarketSalary: number,
+  covidAdjustments?: CovidAdjustmentsData
 ): NormalizedEarningsResult {
   resetStepCounter();
   const steps: CalculationStep[] = [];
@@ -293,10 +396,23 @@ export function calculateNormalizedEarnings(
     (a, b) => parseInt(b.period) - parseInt(a.period)
   );
 
-  // Calculate SDE for each year
+  // Log COVID adjustments if present
+  if (covidAdjustments) {
+    const totalCovid =
+      (covidAdjustments.ppp_loan_forgiveness || 0) +
+      (covidAdjustments.eidl_advances || 0) +
+      (covidAdjustments.employee_retention_credit || 0);
+    if (totalCovid > 0) {
+      warnings.push(
+        `COVID adjustments of $${totalCovid.toLocaleString()} will be subtracted from applicable years for normalization`
+      );
+    }
+  }
+
+  // Calculate SDE for each year (with COVID adjustments for 2020-2021)
   const sdeByYear: SDEYearCalculation[] = [];
   for (const period of sortedPeriods) {
-    const sdeCalc = calculateSDEForYear(period, steps);
+    const sdeCalc = calculateSDEForYear(period, steps, covidAdjustments);
     sdeByYear.push(sdeCalc);
 
     // Add warnings for unusual SDE values

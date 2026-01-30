@@ -306,8 +306,8 @@
         "Typecheck passes"
       ],
       "priority": 19,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added CovidAdjustmentsData interface. Updated calculateSDEForYear() and calculateNormalizedEarnings() to accept and apply COVID adjustments. COVID items subtracted from SDE for 2020-2021 normalization."
     },
     {
       "id": "US-020",
