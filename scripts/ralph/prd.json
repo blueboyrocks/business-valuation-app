@@ -291,8 +291,8 @@
         "Typecheck passes"
       ],
       "priority": 18,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Updated BalanceSheetData with source, eidl_loan_balance, ppp_loan_balance, working_capital. Updated mapBalanceSheet() to take standalone data with priority. Updated mapPassOutputsToEngineInputs() with options.standaloneBalanceSheet."
     },
     {
       "id": "US-019",

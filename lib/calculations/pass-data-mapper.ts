@@ -96,13 +96,26 @@ function mapFinancials(pass2: Record<string, unknown>): MultiYearFinancials {
  * PRD-H US-005: Fixed to handle both nested (assets.total_assets) and flat (total_assets) structures.
  * Pass 3 output uses BalanceSheetYear type which has total_assets at root level,
  * not under assets.total_assets. Also handles current_assets.cash_and_equivalents naming.
+ *
+ * US-018: Added support for standalone balance sheet data with priority over Schedule L.
+ * Added EIDL/PPP loan detection and working capital calculation.
  */
-function mapBalanceSheet(pass3: Record<string, unknown>): BalanceSheetData {
+function mapBalanceSheet(
+  pass3: Record<string, unknown>,
+  standaloneBalanceSheet?: Record<string, unknown>
+): BalanceSheetData {
+  // Standalone balance sheet takes priority over Pass 3 (Schedule L)
+  // per US-015 conflict resolution: "Standalone balance sheet takes precedence over Schedule L for asset values"
+  const useStandalone = standaloneBalanceSheet && Object.keys(standaloneBalanceSheet).length > 0;
+  const dataSource = useStandalone ? standaloneBalanceSheet : pass3;
+  const source: 'standalone' | 'schedule_l' | 'estimated' = useStandalone ? 'standalone' : 'schedule_l';
+
   // Try multiple possible locations for balance sheet data
   const bs =
-    safeGet<Record<string, unknown>>(pass3, 'balance_sheets.0', {}) ||
-    safeGet<Record<string, unknown>>(pass3, 'balance_sheet', {}) ||
-    safeGet<Record<string, unknown>>(pass3, 'most_recent_balance_sheet', {});
+    safeGet<Record<string, unknown>>(dataSource, 'balance_sheets.0', {}) ||
+    safeGet<Record<string, unknown>>(dataSource, 'balance_sheet', {}) ||
+    safeGet<Record<string, unknown>>(dataSource, 'most_recent_balance_sheet', {}) ||
+    dataSource;
 
   // Helper to get value from multiple possible paths
   const getVal = (paths: string[], defaultVal: number = 0): number => {
@@ -118,10 +131,32 @@ function mapBalanceSheet(pass3: Record<string, unknown>): BalanceSheetData {
   const totalLiabilities = getVal(['total_liabilities', 'liabilities.total_liabilities']);
   const totalEquity = getVal(['equity.total_equity', 'total_equity']);
 
-  console.log(`[ASSET_APPROACH] mapBalanceSheet: totalAssets=${totalAssets} totalLiabilities=${totalLiabilities} from Pass3`);
+  // Get current assets and liabilities for working capital
+  const totalCurrentAssets = getVal(['current_assets.total_current_assets', 'assets.current_assets.total_current_assets']);
+  const totalCurrentLiabilities = getVal(['current_liabilities.total_current_liabilities', 'liabilities.current_liabilities.total_current_liabilities']);
+
+  // Detect COVID loans (EIDL and PPP) in long-term liabilities
+  const eidlLoanBalance = getVal([
+    'long_term_liabilities.eidl_loan_balance',
+    'long_term_liabilities.eidl_loan',
+    'covid_adjustments.eidl_loan_balance',
+    'liabilities.long_term_liabilities.eidl_loan_balance',
+  ]);
+  const pppLoanBalance = getVal([
+    'long_term_liabilities.ppp_loan_balance',
+    'long_term_liabilities.ppp_loan',
+    'covid_adjustments.ppp_loan_balance',
+    'liabilities.long_term_liabilities.ppp_loan_balance',
+  ]);
+
+  console.log(`[ASSET_APPROACH] mapBalanceSheet: source=${source}, totalAssets=${totalAssets}, totalLiabilities=${totalLiabilities}`);
+  if (eidlLoanBalance > 0 || pppLoanBalance > 0) {
+    console.log(`[ASSET_APPROACH] COVID loans detected: EIDL=$${eidlLoanBalance}, PPP=$${pppLoanBalance}`);
+  }
 
   return {
     period: safeString((bs as Record<string, unknown>)?.period ?? safeGet<unknown>(bs, 'fiscal_year', 'Unknown')),
+    source,
     assets: {
       current_assets: {
         // Handle both naming conventions: cash_and_equivalents (Pass 3) vs cash (legacy)
@@ -131,7 +166,7 @@ function mapBalanceSheet(pass3: Record<string, unknown>): BalanceSheetData {
         inventory: getVal(['current_assets.inventory', 'assets.current_assets.inventory']),
         prepaid_expenses: getVal(['current_assets.prepaid_expenses', 'assets.current_assets.prepaid_expenses']),
         other_current_assets: getVal(['current_assets.other_current_assets', 'assets.current_assets.other_current_assets']),
-        total_current_assets: getVal(['current_assets.total_current_assets', 'assets.current_assets.total_current_assets']),
+        total_current_assets: totalCurrentAssets,
       },
       fixed_assets: {
         land: getVal(['fixed_assets.land', 'assets.fixed_assets.land']),
@@ -157,12 +192,14 @@ function mapBalanceSheet(pass3: Record<string, unknown>): BalanceSheetData {
         accrued_expenses: getVal(['current_liabilities.accrued_expenses', 'liabilities.current_liabilities.accrued_expenses']),
         current_portion_long_term_debt: getVal(['current_liabilities.current_portion_long_term_debt', 'liabilities.current_liabilities.current_portion_long_term_debt']),
         other_current_liabilities: getVal(['current_liabilities.other_current_liabilities', 'liabilities.current_liabilities.other_current_liabilities']),
-        total_current_liabilities: getVal(['current_liabilities.total_current_liabilities', 'liabilities.current_liabilities.total_current_liabilities']),
+        total_current_liabilities: totalCurrentLiabilities,
       },
       long_term_liabilities: {
         notes_payable: getVal(['long_term_liabilities.notes_payable_long_term', 'long_term_liabilities.notes_payable', 'liabilities.long_term_liabilities.notes_payable']),
         mortgages: getVal(['long_term_liabilities.mortgage_payable', 'long_term_liabilities.mortgages', 'liabilities.long_term_liabilities.mortgages']),
         shareholder_loans: getVal(['long_term_liabilities.due_to_shareholders', 'long_term_liabilities.shareholder_loans', 'liabilities.long_term_liabilities.shareholder_loans']),
+        eidl_loan_balance: eidlLoanBalance,
+        ppp_loan_balance: pppLoanBalance,
         other_long_term_liabilities: getVal(['long_term_liabilities.other_long_term_liabilities', 'liabilities.long_term_liabilities.other_long_term_liabilities']),
         total_long_term_liabilities: getVal(['long_term_liabilities.total_long_term_liabilities', 'liabilities.long_term_liabilities.total_long_term_liabilities']),
       },
@@ -175,6 +212,8 @@ function mapBalanceSheet(pass3: Record<string, unknown>): BalanceSheetData {
       treasury_stock: getVal(['equity.treasury_stock']),
       total_equity: totalEquity,
     },
+    // Calculate working capital
+    working_capital: totalCurrentAssets - totalCurrentLiabilities,
   };
 }
 
@@ -283,10 +322,15 @@ function mapPass7AssetApproach(pass7: Record<string, unknown>): { adjusted_net_a
  * Main mapper function - converts pass outputs to calculation engine inputs
  *
  * @param passOutputs - Object containing outputs from passes 1-7
+ * @param options - Optional configuration including standalone balance sheet data
  * @returns Formatted inputs for the calculation engine
  */
 export function mapPassOutputsToEngineInputs(
-  passOutputs: Record<string, Record<string, unknown>>
+  passOutputs: Record<string, Record<string, unknown>>,
+  options?: {
+    /** Standalone balance sheet data from uploaded document (takes priority over Schedule L) */
+    standaloneBalanceSheet?: Record<string, unknown>;
+  }
 ): CalculationEngineInputs {
   const pass1 = passOutputs['1'] || {};
   const pass2 = passOutputs['2'] || {};
@@ -312,11 +356,14 @@ export function mapPassOutputsToEngineInputs(
     safeGet<number>(pass5, 'summary.fair_market_salary', 0) ||
     75000;
 
+  // Map balance sheet with priority: standalone > Schedule L (pass3)
+  const balanceSheet = mapBalanceSheet(pass3, options?.standaloneBalanceSheet);
+
   return {
     company_name: companyName,
     entity_type: entityType,
     financials: mapFinancials(pass2),
-    balance_sheet: mapBalanceSheet(pass3),
+    balance_sheet: balanceSheet,
     industry: mapIndustryData(pass4),
     fair_market_salary: fairMarketSalary,
     risk_assessment: mapRiskAssessment(pass6),
