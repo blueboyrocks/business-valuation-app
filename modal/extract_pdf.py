@@ -709,6 +709,233 @@ class BalanceSheetExtractor(BaseExtractor):
         return equity
 
 
+# ============================================================================
+# Virginia Form 500 Extractor
+# ============================================================================
+
+class VirginiaForm500Extractor(BaseExtractor):
+    """
+    Extracts data from Virginia Corporation Income Tax Return (Form 500).
+
+    Key fields:
+    - Federal taxable income (from enclosed federal return)
+    - Virginia additions/subtractions
+    - Virginia taxable income
+    - Apportionment percentage (for multi-state)
+
+    NOTE: Virginia state returns SUPPLEMENT federal returns.
+    They show state-specific adjustments but the core income data
+    comes from the federal return.
+    """
+
+    def extract(self) -> ExtractionResult:
+        """Extract Virginia Form 500 data."""
+        # Extract tax year
+        tax_year = self._extract_tax_year()
+
+        # Extract company info
+        company_info = self._extract_company_info()
+
+        # Extract income data from Page 2
+        income_data = self._extract_income_data()
+
+        # Extract Schedule 500FED data
+        schedule_500fed = self._extract_schedule_500fed()
+
+        # Extract Schedule 500A apportionment
+        apportionment = self._extract_apportionment()
+
+        # Combine expense data
+        expense_data = {
+            "depreciation": schedule_500fed.get("depreciation", 0),
+        }
+
+        # Add notes for transparency
+        if apportionment.get("multi_factor_percentage", 0) < 100:
+            self.add_note(f"Multi-state apportionment: {apportionment.get('multi_factor_percentage', 0):.2f}% to Virginia")
+
+        return ExtractionResult(
+            document_type="va_form_500",
+            tax_year=tax_year,
+            entity_type="Corporation",
+            company_info=company_info,
+            income_data={
+                "federal_taxable_income": income_data.get("federal_taxable_income", 0),
+                "virginia_additions": income_data.get("virginia_additions", 0),
+                "virginia_subtractions": income_data.get("virginia_subtractions", 0),
+                "virginia_taxable_income": income_data.get("virginia_taxable_income", 0),
+                "net_operating_loss_deduction": income_data.get("net_operating_loss", 0),
+                # Schedule 500FED data
+                "federal_taxable_income_before_nol": schedule_500fed.get("federal_taxable_income_before_nol", 0),
+                # Apportionment data
+                "apportionment_percentage": apportionment.get("multi_factor_percentage", 100),
+            },
+            expense_data=expense_data,
+            balance_sheet_data={},  # State returns don't have balance sheets
+            schedule_k_data={},
+            owner_info={},
+            covid_adjustments={},
+            red_flags=self.red_flags,
+            extraction_notes=self.extraction_notes,
+            confidence_scores={"overall": 0.80}
+        )
+
+    def _extract_tax_year(self) -> Optional[int]:
+        """Extract tax year from VA Form 500 header."""
+        patterns = [
+            r'(\d{4})\s*virginia',
+            r'tax\s*year\s*(\d{4})',
+            r'for\s*(?:taxable\s*)?year\s*(\d{4})',
+            r'virginia.*?(\d{4})\s*form\s*500',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, self.lower_text)
+            if match:
+                year = int(match.group(1))
+                if 2015 <= year <= 2030:
+                    return year
+
+        return None
+
+    def _extract_company_info(self) -> Dict[str, Any]:
+        """Extract company info from VA Form 500 header."""
+        # FEIN
+        fein_match = re.search(r'fein[:\s]*(\d{2}[-\s]?\d{7})', self.lower_text)
+
+        # Company name - look for patterns common in VA Form 500
+        name_patterns = [
+            r'name\s*of\s*corporation[:\s]*([^\n]+)',
+            r'corporation\s*name[:\s]*([^\n]+)',
+            r'^([A-Z][A-Za-z\s&,\.]+(?:Inc|LLC|Corp|Co|LP|LLP))',
+        ]
+
+        business_name = None
+        for pattern in name_patterns:
+            match = re.search(pattern, self.text, re.IGNORECASE | re.MULTILINE)
+            if match:
+                name = match.group(1).strip()
+                if len(name) > 2 and len(name) < 100:
+                    business_name = name
+                    break
+
+        # NAICS code
+        naics_match = re.search(r'naics\s*(?:code)?[:\s]*(\d{6})', self.lower_text)
+
+        return {
+            "business_name": business_name or "Unknown Business",
+            "ein": fein_match.group(1) if fein_match else None,
+            "naics_code": naics_match.group(1) if naics_match else None,
+            "state": "VA",
+            "entity_type": "Corporation",
+        }
+
+    def _extract_income_data(self) -> Dict[str, float]:
+        """Extract income data from Page 2 of VA Form 500."""
+        income_data: Dict[str, float] = {}
+
+        # Federal taxable income (Line 1)
+        federal_patterns = [
+            r'federal\s*taxable\s*income.*?[\$]?\s*([\d,]+)',
+            r'line\s*1[.\s]*[\$]?\s*([\d,]+)',
+            r'taxable\s*income\s*from\s*federal\s*return.*?[\$]?\s*([\d,]+)',
+        ]
+        income_data["federal_taxable_income"] = self.extract_amount(federal_patterns)
+
+        # Virginia additions (Line 2)
+        additions_patterns = [
+            r'total\s*additions.*?[\$]?\s*([\d,]+)',
+            r'line\s*2[.\s]*.*?additions.*?[\$]?\s*([\d,]+)',
+            r'schedule\s*500adj.*?additions.*?[\$]?\s*([\d,]+)',
+        ]
+        income_data["virginia_additions"] = self.extract_amount(additions_patterns)
+
+        # Virginia subtractions (Line 4)
+        subtractions_patterns = [
+            r'total\s*subtractions.*?[\$]?\s*([\d,]+)',
+            r'line\s*4[.\s]*.*?subtractions.*?[\$]?\s*([\d,]+)',
+        ]
+        income_data["virginia_subtractions"] = self.extract_amount(subtractions_patterns)
+
+        # Virginia taxable income (Line 7)
+        va_taxable_patterns = [
+            r'virginia\s*taxable\s*income.*?[\$]?\s*([\d,]+)',
+            r'line\s*7[.\s]*[\$]?\s*([\d,]+)',
+            r'taxable\s*income\s*apportioned.*?[\$]?\s*([\d,]+)',
+        ]
+        income_data["virginia_taxable_income"] = self.extract_amount(va_taxable_patterns)
+
+        # Net operating loss deduction
+        nol_patterns = [
+            r'net\s*operating\s*loss.*?deduction.*?[\$]?\s*([\d,]+)',
+            r'nol\s*deduction.*?[\$]?\s*([\d,]+)',
+        ]
+        income_data["net_operating_loss"] = self.extract_amount(nol_patterns)
+
+        return income_data
+
+    def _extract_schedule_500fed(self) -> Dict[str, float]:
+        """Extract data from Schedule 500FED (Federal Line Items)."""
+        data: Dict[str, float] = {}
+
+        # Federal taxable income before NOL
+        before_nol_patterns = [
+            r'federal\s*taxable\s*income\s*before\s*nol.*?[\$]?\s*([\d,]+)',
+            r'taxable\s*income\s*before\s*nol.*?[\$]?\s*([\d,]+)',
+        ]
+        data["federal_taxable_income_before_nol"] = self.extract_amount(before_nol_patterns)
+
+        # Depreciation (Line 11 - Other depreciation)
+        depreciation_patterns = [
+            r'other\s*depreciation.*?[\$]?\s*([\d,]+)',
+            r'line\s*11[.\s]*[\$]?\s*([\d,]+)',
+            r'depreciation.*?[\$]?\s*([\d,]+)',
+        ]
+        data["depreciation"] = self.extract_amount(depreciation_patterns)
+
+        # Add note if Schedule 500FED data found
+        if data.get("federal_taxable_income_before_nol") or data.get("depreciation"):
+            self.add_note("Schedule 500FED data extracted")
+
+        return data
+
+    def _extract_apportionment(self) -> Dict[str, float]:
+        """Extract apportionment data from Schedule 500A."""
+        data: Dict[str, float] = {}
+
+        # Property factor
+        property_patterns = [
+            r'property\s*factor.*?([\d.]+)\s*%',
+        ]
+        data["property_factor"] = self.extract_amount(property_patterns)
+
+        # Payroll factor
+        payroll_patterns = [
+            r'payroll\s*factor.*?([\d.]+)\s*%',
+        ]
+        data["payroll_factor"] = self.extract_amount(payroll_patterns)
+
+        # Sales factor
+        sales_patterns = [
+            r'sales\s*factor.*?([\d.]+)\s*%',
+        ]
+        data["sales_factor"] = self.extract_amount(sales_patterns)
+
+        # Multi-factor percentage (double-weighted sales)
+        multi_factor_patterns = [
+            r'multi[-\s]*factor.*?percentage.*?([\d.]+)\s*%',
+            r'apportionment.*?percentage.*?([\d.]+)\s*%',
+            r'virginia.*?percentage.*?([\d.]+)\s*%',
+        ]
+        data["multi_factor_percentage"] = self.extract_amount(multi_factor_patterns, default=100.0)
+
+        # If multi-factor is 0, default to 100 (single-state)
+        if data["multi_factor_percentage"] == 0:
+            data["multi_factor_percentage"] = 100.0
+
+        return data
+
+
 # Define the Modal app
 app = modal.App("pdf-extraction-service")
 
