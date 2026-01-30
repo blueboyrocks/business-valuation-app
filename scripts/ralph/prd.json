@@ -353,8 +353,8 @@
         "Typecheck passes"
       ],
       "priority": 22,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added covid_adjustments to ReportData. Added COVID disclosure section with PPP, EIDL, ERC amounts and explanatory text. Section appears in Financial Analysis after SDE table. Styled with warning colors."
     },
     {
       "id": "US-023",

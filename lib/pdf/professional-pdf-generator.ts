@@ -129,6 +129,15 @@ interface ReportData {
     tax_year?: number;
     jurisdiction?: string; // 'Federal' | 'VA' | etc.
   }>;
+
+  // COVID adjustments (US-022: COVID disclosure in PDF)
+  covid_adjustments?: {
+    ppp_loan_forgiveness?: number;
+    eidl_advances?: number;
+    employee_retention_credit?: number;
+    total_adjustment?: number;
+    applicable_years?: number[];
+  };
 }
 
 export class ProfessionalPDFGenerator {
@@ -300,6 +309,83 @@ export class ProfessionalPDFGenerator {
         console.log(`[PDF] Generated source documents section with ${docs.length} documents`);
       }
 
+      // US-022: Generate COVID adjustment disclosure section
+      let covidDisclosureHTML = '';
+      if (reportData.covid_adjustments) {
+        const covid = reportData.covid_adjustments;
+        const totalAdjustment = covid.total_adjustment ||
+          ((covid.ppp_loan_forgiveness || 0) +
+           (covid.eidl_advances || 0) +
+           (covid.employee_retention_credit || 0));
+
+        if (totalAdjustment > 0) {
+          const adjustmentRows: string[] = [];
+
+          if (covid.ppp_loan_forgiveness && covid.ppp_loan_forgiveness > 0) {
+            adjustmentRows.push(`
+              <tr>
+                <td>PPP Loan Forgiveness</td>
+                <td class="currency">$${covid.ppp_loan_forgiveness.toLocaleString()}</td>
+                <td>Subtracted from SDE - one-time pandemic relief</td>
+              </tr>
+            `);
+          }
+
+          if (covid.eidl_advances && covid.eidl_advances > 0) {
+            adjustmentRows.push(`
+              <tr>
+                <td>EIDL Advance Grants</td>
+                <td class="currency">$${covid.eidl_advances.toLocaleString()}</td>
+                <td>Subtracted from SDE - non-repayable grant</td>
+              </tr>
+            `);
+          }
+
+          if (covid.employee_retention_credit && covid.employee_retention_credit > 0) {
+            adjustmentRows.push(`
+              <tr>
+                <td>Employee Retention Credit (ERC)</td>
+                <td class="currency">$${covid.employee_retention_credit.toLocaleString()}</td>
+                <td>Subtracted from SDE - one-time tax credit</td>
+              </tr>
+            `);
+          }
+
+          const applicableYears = covid.applicable_years?.join(', ') || '2020-2021';
+
+          covidDisclosureHTML = `
+            <div class="section" style="background-color: #FEF3C7; border: 1px solid #F59E0B; border-radius: 8px; padding: 20px; margin: 24px 0;">
+              <h2 style="color: #92400E; margin-top: 0;">COVID-19 Pandemic Relief Adjustments</h2>
+              <p style="margin-bottom: 16px;">
+                The following pandemic-related items were identified in the financial statements for tax year(s) ${applicableYears}.
+                These one-time relief items have been <strong>subtracted from SDE</strong> to present normalized, sustainable earnings.
+              </p>
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th>Relief Program</th>
+                    <th>Amount</th>
+                    <th>Treatment</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${adjustmentRows.join('')}
+                  <tr class="total-row" style="background-color: #FDE68A;">
+                    <td><strong>Total COVID Adjustment</strong></td>
+                    <td class="currency"><strong>$${totalAdjustment.toLocaleString()}</strong></td>
+                    <td><strong>Subtracted from SDE</strong></td>
+                  </tr>
+                </tbody>
+              </table>
+              <p style="font-size: 11px; color: #78350F; margin-top: 12px; margin-bottom: 0;">
+                <em>Note: Pandemic relief programs were one-time government assistance and should not be included in normalized earnings projections.
+                Failure to adjust for these items would overstate the business value.</em>
+              </p>
+            </div>`;
+          console.log(`[PDF] Generated COVID disclosure section with $${totalAdjustment.toLocaleString()} total adjustment`);
+        }
+      }
+
       // PRD-E: Generate citation bibliography
       let bibliographyHTML = '';
       const citationManager = new CitationManager();
@@ -460,7 +546,7 @@ export class ProfessionalPDFGenerator {
         enterprise_value, liquidation_value, charts, kpiDetailPages,
         accessor, inlineSvgCharts, citationManager, bibliographyHTML,
         sdeTableHTML, marketTableHTML, synthesisTableHTML, capRateTableHTML, assetTableHTML,
-        sourceDocumentsHTML
+        sourceDocumentsHTML, covidDisclosureHTML
       );
 
       // Safety net: replace any [object Object] in rendered HTML
@@ -1314,7 +1400,8 @@ export class ProfessionalPDFGenerator {
     synthesisTableHTML: string = '',
     capRateTableHTML: string = '',
     assetTableHTML: string = '',
-    sourceDocumentsHTML: string = ''
+    sourceDocumentsHTML: string = '',
+    covidDisclosureHTML: string = ''
   ): Promise<string> {
     // Format currency - distinguish between 0 (actual zero) and null/undefined (not extracted)
     // PRD-A: Use accessor formatting when available
@@ -2134,6 +2221,9 @@ export class ProfessionalPDFGenerator {
       </div>
 
       ${sdeTableHTML ? `<div class="financial-section"><h3>SDE Calculation Detail</h3>${sdeTableHTML}</div>` : ''}
+
+      <!-- US-022: COVID Adjustment Disclosure -->
+      ${covidDisclosureHTML}
 
       ${inlineSvgCharts?.sdeEbitdaTrend ? `
       <div style="margin: 20px 0; text-align: center;">
