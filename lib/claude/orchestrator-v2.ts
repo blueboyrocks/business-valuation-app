@@ -82,9 +82,10 @@ import { QualityGate, createQualityGate, type QualityScore, QualityTier } from '
 import { createCitationManager, type CitationManager } from '../citations/citation-manager';
 
 // Import feature flags for Modal extraction toggle
-import { isModalExtractionEnabled, logFeatureFlags } from '../feature-flags';
-import { loadExtractionData } from '../extraction/loader';
+import { isModalExtractionEnabled, logFeatureFlags, getFeatureFlags } from '../feature-flags';
+import { loadExtractionData, updateExtractionStatus } from '../extraction/loader';
 import { convertExtractionToPassOutputs } from '../extraction/pass-converters';
+import { ExtractionException, ExtractionErrorCode, handleExtractionError } from '../extraction/errors';
 
 // =============================================================================
 // CONSTANTS
@@ -236,12 +237,43 @@ export async function runTwelvePassValuation(
       onProgress?.(1, 'Loading extraction data from Modal...', 5);
 
       // Load pre-extracted data from document_extractions table
-      const extractionData = await loadExtractionData(reportId);
+      let extractionData;
+      try {
+        extractionData = await loadExtractionData(reportId);
 
-      if (!extractionData) {
-        throw new Error(
-          'Modal extraction data not found. Please ensure documents were processed through Modal extraction first.'
-        );
+        if (!extractionData) {
+          const { modalFailMode } = getFeatureFlags();
+          const errorDetails = {
+            code: ExtractionErrorCode.MISSING_REQUIRED_DATA,
+            message: 'Modal extraction data not found',
+            suggestedRemediation: 'Ensure documents were processed through Modal extraction first, or disable FEATURE_MODAL_EXTRACTION to use Claude Vision.',
+            timestamp: new Date().toISOString(),
+            reportId,
+          };
+
+          console.error(`[12-PASS] Modal extraction error:`, errorDetails);
+
+          if (modalFailMode === 'hard') {
+            throw new ExtractionException(
+              ExtractionErrorCode.MISSING_REQUIRED_DATA,
+              { reportId, suggestion: 'Ensure documents were processed through Modal extraction first, or disable FEATURE_MODAL_EXTRACTION to use Claude Vision.' }
+            );
+          } else {
+            // Queue mode - would normally queue for manual review
+            // For now, still throw but with a different message
+            throw new ExtractionException(
+              ExtractionErrorCode.MISSING_REQUIRED_DATA,
+              { reportId, queueMode: true, note: 'Report queued for manual processing' }
+            );
+          }
+        }
+      } catch (loadError) {
+        if (loadError instanceof ExtractionException) {
+          throw loadError;
+        }
+        const errorResponse = handleExtractionError(loadError, { reportId });
+        console.error(`[12-PASS] Modal extraction load error:`, errorResponse);
+        throw new Error(errorResponse.error.message);
       }
 
       console.log(`[12-PASS] Loaded Modal extraction data for ${extractionData.available_years.length} year(s)`);
