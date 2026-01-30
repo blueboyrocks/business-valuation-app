@@ -286,6 +286,429 @@ class DocumentClassifier:
 
         return None
 
+
+# ============================================================================
+# Extraction Result Types
+# ============================================================================
+
+@dataclass
+class ExtractionResult:
+    """Standardized extraction result from any document type."""
+    document_type: str
+    tax_year: Optional[int]
+    entity_type: Optional[str]
+    company_info: Dict[str, Any]
+    income_data: Dict[str, float]
+    expense_data: Dict[str, float]
+    balance_sheet_data: Dict[str, float]
+    schedule_k_data: Dict[str, float]
+    owner_info: Dict[str, float]
+    covid_adjustments: Dict[str, float]
+    red_flags: List[str]
+    extraction_notes: List[str]
+    confidence_scores: Dict[str, float]
+
+
+# ============================================================================
+# Base Extractor Class
+# ============================================================================
+
+class BaseExtractor:
+    """Base class for all document extractors."""
+
+    def __init__(self, text: str, tables: List[Dict[str, Any]], filename: str):
+        self.text = text
+        self.lower_text = text.lower()
+        self.tables = tables
+        self.filename = filename
+        self.extraction_notes: List[str] = []
+        self.red_flags: List[str] = []
+
+    def extract(self) -> ExtractionResult:
+        """Extract financial data from the document. Override in subclasses."""
+        raise NotImplementedError("Subclasses must implement extract()")
+
+    def extract_amount(self, patterns: List[str], default: float = 0.0) -> float:
+        """Extract a numeric amount using multiple regex patterns."""
+        for pattern in patterns:
+            match = re.search(pattern, self.lower_text)
+            if match:
+                try:
+                    value_str = match.group(1).replace(',', '').replace('$', '').strip()
+                    # Handle parentheses for negative numbers
+                    if '(' in value_str:
+                        value_str = '-' + value_str.replace('(', '').replace(')', '')
+                    return float(value_str)
+                except (ValueError, IndexError):
+                    continue
+        return default
+
+    def extract_from_table(self, label_pattern: str, column_index: int = -1) -> Optional[float]:
+        """
+        Extract a value from tables by matching row labels.
+
+        Args:
+            label_pattern: Regex pattern to match row labels
+            column_index: Which column to get value from (-1 = last numeric)
+        """
+        for table in self.tables:
+            rows = table.get("rows", [])
+            for row in rows:
+                if not row or len(row) < 2:
+                    continue
+                label = str(row[0]).lower() if row[0] else ""
+                if re.search(label_pattern, label):
+                    # Get numeric value from specified or last column
+                    cells_to_check = [row[column_index]] if column_index >= 0 else reversed(row[1:])
+                    for cell in cells_to_check:
+                        if cell:
+                            value = self._parse_amount(str(cell))
+                            if value is not None:
+                                return value
+        return None
+
+    def _parse_amount(self, value_str: str) -> Optional[float]:
+        """Parse a string into a float, handling currency formatting."""
+        try:
+            # Remove currency symbols and whitespace
+            cleaned = value_str.replace('$', '').replace(',', '').strip()
+            # Handle parentheses for negative numbers
+            if '(' in cleaned and ')' in cleaned:
+                cleaned = '-' + cleaned.replace('(', '').replace(')', '')
+            if cleaned and cleaned != '-':
+                return float(cleaned)
+        except ValueError:
+            pass
+        return None
+
+    def add_note(self, note: str):
+        """Add an extraction note for transparency."""
+        self.extraction_notes.append(note)
+
+    def add_red_flag(self, flag: str):
+        """Add a red flag for valuation review."""
+        self.red_flags.append(flag)
+
+
+# ============================================================================
+# Balance Sheet Extractor
+# ============================================================================
+
+class BalanceSheetExtractor(BaseExtractor):
+    """
+    Extracts financial data from standalone balance sheets.
+
+    Handles QuickBooks, Xero, and generic accounting formats.
+    Key challenge: Hierarchical structure (Current Assets > Bank Accounts > specific accounts)
+    """
+
+    def extract(self) -> ExtractionResult:
+        """Extract balance sheet data."""
+        # Detect balance sheet date (As of December 31, 2023)
+        balance_date = self._extract_balance_date()
+        tax_year = balance_date.year if balance_date else self._infer_year()
+
+        # Extract hierarchical structure
+        assets = self._extract_assets_section()
+        liabilities = self._extract_liabilities_section()
+        equity = self._extract_equity_section()
+
+        # Extract company name
+        company_info = self._extract_company_name()
+
+        return ExtractionResult(
+            document_type="balance_sheet",
+            tax_year=tax_year,
+            entity_type=None,  # Balance sheets don't specify entity type
+            company_info=company_info,
+            income_data={},  # Balance sheets don't have income data
+            expense_data={},
+            balance_sheet_data={
+                "total_assets": assets.get("total", 0),
+                "cash": assets.get("cash", 0),
+                "accounts_receivable": assets.get("accounts_receivable", 0),
+                "inventory": assets.get("inventory", 0),
+                "fixed_assets": assets.get("fixed_assets", 0),
+                "fixed_assets_gross": assets.get("fixed_assets_gross", 0),
+                "accumulated_depreciation": assets.get("accumulated_depreciation", 0),
+                "net_fixed_assets": assets.get("net_fixed_assets", 0),
+                "other_assets": assets.get("other_assets", 0),
+                "total_liabilities": liabilities.get("total", 0),
+                "accounts_payable": liabilities.get("accounts_payable", 0),
+                "current_liabilities": liabilities.get("current", 0),
+                "long_term_debt": liabilities.get("long_term", 0),
+                "total_equity": equity.get("total", 0),
+                "retained_earnings": equity.get("retained_earnings", 0),
+                # COVID-specific loans
+                "eidl_loan": liabilities.get("eidl_loan", 0),
+                "ppp_loan": liabilities.get("ppp_loan", 0),
+            },
+            schedule_k_data={},
+            owner_info={
+                "loans_to_shareholders": assets.get("loans_to_shareholders", 0),
+                "loans_from_shareholders": liabilities.get("loans_from_shareholders", 0),
+                "shareholder_distributions": equity.get("distributions", 0),
+            },
+            covid_adjustments={
+                "eidl_loan_balance": liabilities.get("eidl_loan", 0),
+                "ppp_loan_balance": liabilities.get("ppp_loan", 0),
+            },
+            red_flags=self.red_flags,
+            extraction_notes=self.extraction_notes,
+            confidence_scores={"overall": 0.85}
+        )
+
+    def _extract_balance_date(self) -> Optional[datetime]:
+        """Extract the 'As of' date from balance sheet."""
+        patterns = [
+            r'as\s*of\s*(\w+\s+\d{1,2},?\s*\d{4})',
+            r'as\s*of\s*(\d{1,2}/\d{1,2}/\d{4})',
+            r'as\s*of\s*(\d{4}-\d{2}-\d{2})',
+            r'date:\s*(\w+\s+\d{1,2},?\s*\d{4})',
+            r'through\s*(\w+\s+\d{1,2},?\s*\d{4})',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, self.lower_text, re.IGNORECASE)
+            if match:
+                date_str = match.group(1)
+                try:
+                    # Try various date formats
+                    for fmt in ['%B %d, %Y', '%B %d %Y', '%m/%d/%Y', '%Y-%m-%d']:
+                        try:
+                            return datetime.strptime(date_str, fmt)
+                        except ValueError:
+                            continue
+                except Exception:
+                    pass
+        return None
+
+    def _infer_year(self) -> Optional[int]:
+        """Infer year from document if date extraction fails."""
+        year_match = re.search(r'20\d{2}', self.text)
+        if year_match:
+            year = int(year_match.group())
+            if 2015 <= year <= 2030:
+                return year
+        return datetime.now().year
+
+    def _extract_company_name(self) -> Dict[str, Any]:
+        """Extract company name from balance sheet header."""
+        # Common patterns for company name in balance sheet headers
+        patterns = [
+            r'^([A-Z][A-Za-z\s&,\.]+(?:Inc|LLC|Corp|Co|LP|LLP|Company))[^\n]*\n.*balance\s*sheet',
+            r'([A-Z][A-Za-z\s&,\.]+(?:Inc|LLC|Corp|Co|LP|LLP|Company))\s*\n',
+            r'^([^\n]+)\s*\n\s*balance\s*sheet',
+        ]
+
+        for pattern in patterns:
+            match = re.search(pattern, self.text, re.IGNORECASE | re.MULTILINE)
+            if match:
+                name = match.group(1).strip()
+                if len(name) > 2 and len(name) < 100:
+                    return {"business_name": name}
+
+        return {"business_name": "Unknown Business"}
+
+    def _extract_assets_section(self) -> Dict[str, float]:
+        """
+        Parse the ASSETS section with hierarchy awareness.
+
+        Example structure:
+        ASSETS
+          Current Assets
+            Bank Accounts
+              101 Cash - MVB          183,369.81
+              102 Cash - M&T          233,306.12
+            Total Bank Accounts       $420,316.25
+          Fixed Assets
+            Furniture                   2,208.29
+            Equipment                   1,717.78
+          Total Fixed Assets          $17,487.11
+        TOTAL ASSETS                 $501,867.12
+        """
+        assets: Dict[str, float] = {}
+
+        # Strategy 1: Look for "TOTAL ASSETS" line
+        total_patterns = [
+            r'total\s*assets[:\s]*\$?([\d,]+\.?\d*)',
+            r'total\s*assets\s*[\$]?\s*([\d,]+\.?\d*)',
+        ]
+        for pattern in total_patterns:
+            match = re.search(pattern, self.lower_text)
+            if match:
+                assets["total"] = self._parse_amount(match.group(1)) or 0
+                break
+
+        # Strategy 2: Parse tables for asset line items
+        asset_patterns = {
+            "cash": [r'cash', r'checking', r'savings', r'bank\s*accounts'],
+            "accounts_receivable": [r'accounts?\s*receivable', r'trade\s*receivable', r'a/r'],
+            "inventory": [r'inventor(?:y|ies)'],
+            "prepaid": [r'prepaid'],
+            "fixed_assets_gross": [r'fixed\s*assets', r'property.*equipment', r'furniture', r'vehicles', r'equipment', r'automobiles'],
+            "accumulated_depreciation": [r'accumulated\s*depreciation', r'accum.*depr', r'less.*depreciation'],
+            "other_assets": [r'other\s*assets', r'other\s*current\s*assets'],
+            "loans_to_shareholders": [r'(?:loan|due)\s*(?:to|from)\s*(?:shareholder|owner|member)', r'shareholder\s*loan'],
+        }
+
+        for field, patterns in asset_patterns.items():
+            for pattern in patterns:
+                value = self.extract_from_table(pattern)
+                if value is not None:
+                    # Accumulated depreciation should be negative
+                    if field == "accumulated_depreciation" and value > 0:
+                        value = -value
+                    assets[field] = value
+                    break
+
+        # Calculate net fixed assets if we have gross and depreciation
+        if assets.get("fixed_assets_gross") and assets.get("accumulated_depreciation"):
+            assets["net_fixed_assets"] = assets["fixed_assets_gross"] + assets["accumulated_depreciation"]
+            assets["fixed_assets"] = assets["net_fixed_assets"]
+        elif assets.get("fixed_assets_gross"):
+            assets["fixed_assets"] = assets["fixed_assets_gross"]
+
+        # Check for red flags
+        if assets.get("loans_to_shareholders", 0) > 0:
+            self.add_red_flag(f"Loans to shareholders: ${assets['loans_to_shareholders']:,.0f}")
+
+        return assets
+
+    def _extract_liabilities_section(self) -> Dict[str, float]:
+        """Parse the LIABILITIES section."""
+        liabilities: Dict[str, float] = {}
+
+        # Total liabilities
+        total_patterns = [
+            r'total\s*liabilities[:\s]*\$?([\d,]+\.?\d*)',
+            r'total\s*liabilities\s*[\$]?\s*([\d,]+\.?\d*)',
+        ]
+        for pattern in total_patterns:
+            match = re.search(pattern, self.lower_text)
+            if match:
+                liabilities["total"] = self._parse_amount(match.group(1)) or 0
+                break
+
+        # Liability line items
+        liability_patterns = {
+            "accounts_payable": [r'accounts?\s*payable', r'a/p', r'trade\s*payable'],
+            "current": [r'total\s*current\s*liabilities', r'current\s*liabilities'],
+            "long_term": [r'long[-\s]*term.*(?:debt|liabilities)', r'notes?\s*payable'],
+            "loans_from_shareholders": [r'loan.*(?:payable|from).*(?:shareholder|owner|member)', r'due\s*to\s*shareholder'],
+        }
+
+        for field, patterns in liability_patterns.items():
+            for pattern in patterns:
+                value = self.extract_from_table(pattern)
+                if value is not None:
+                    liabilities[field] = value
+                    break
+
+        # COVID loans - critical for valuation
+        eidl_patterns = [
+            r'eidl.*?loan[:\s]*\$?([\d,]+\.?\d*)',
+            r'eidl[-\s]+([\d,]+\.?\d*)',
+            r'economic\s*injury.*?loan[:\s]*\$?([\d,]+\.?\d*)',
+        ]
+        for pattern in eidl_patterns:
+            match = re.search(pattern, self.lower_text, re.IGNORECASE)
+            if match:
+                liabilities["eidl_loan"] = self._parse_amount(match.group(1)) or 0
+                self.add_note(f"EIDL Loan detected: ${liabilities['eidl_loan']:,.0f}")
+                break
+
+        # Also check tables for EIDL
+        if not liabilities.get("eidl_loan"):
+            eidl_value = self.extract_from_table(r'eidl')
+            if eidl_value:
+                liabilities["eidl_loan"] = eidl_value
+                self.add_note(f"EIDL Loan detected: ${eidl_value:,.0f}")
+
+        ppp_patterns = [
+            r'ppp.*?loan[:\s]*\$?([\d,]+\.?\d*)',
+            r'ppp[-\s]+([\d,]+\.?\d*)',
+            r'paycheck\s*protection.*?loan[:\s]*\$?([\d,]+\.?\d*)',
+        ]
+        for pattern in ppp_patterns:
+            match = re.search(pattern, self.lower_text, re.IGNORECASE)
+            if match:
+                liabilities["ppp_loan"] = self._parse_amount(match.group(1)) or 0
+                self.add_note(f"PPP Loan detected: ${liabilities['ppp_loan']:,.0f}")
+                break
+
+        # Also check tables for PPP
+        if not liabilities.get("ppp_loan"):
+            ppp_value = self.extract_from_table(r'ppp')
+            if ppp_value:
+                liabilities["ppp_loan"] = ppp_value
+                self.add_note(f"PPP Loan detected: ${ppp_value:,.0f}")
+
+        return liabilities
+
+    def _extract_equity_section(self) -> Dict[str, float]:
+        """Parse the EQUITY section."""
+        equity: Dict[str, float] = {}
+
+        # Total equity patterns
+        total_patterns = [
+            r'total\s*(?:shareholders?\s*)?equity[:\s]*\$?([\d,]+\.?\d*)',
+            r'total\s*(?:owner\'?s?\s*)?equity[:\s]*\$?([\d,]+\.?\d*)',
+            r'total\s*liabilities\s*(?:and|&)\s*equity[:\s]*\$?([\d,]+\.?\d*)',
+        ]
+        for pattern in total_patterns:
+            match = re.search(pattern, self.lower_text)
+            if match:
+                equity["total"] = self._parse_amount(match.group(1)) or 0
+                break
+
+        # Retained earnings (can be negative)
+        re_patterns = [
+            r'retained\s*earnings[:\s]*-?\$?([\d,]+\.?\d*)',
+            r'retained\s*earnings[:\s]*\(([\d,]+\.?\d*)\)',
+        ]
+        for pattern in re_patterns:
+            match = re.search(pattern, self.lower_text)
+            if match:
+                value = self._parse_amount(match.group(1)) or 0
+                # Check if it was in parentheses (negative)
+                if '(' in pattern:
+                    value = -value
+                equity["retained_earnings"] = value
+                break
+
+        # Also try table extraction for retained earnings
+        if not equity.get("retained_earnings"):
+            re_value = self.extract_from_table(r'retained\s*earnings')
+            if re_value is not None:
+                equity["retained_earnings"] = re_value
+
+        # Distributions (negative equity item, often shown as negative)
+        dist_patterns = [
+            r'(?:shareholder\s*)?distributions?[:\s]*-?\$?([\d,]+\.?\d*)',
+            r'distributions?[:\s]*\(([\d,]+\.?\d*)\)',
+        ]
+        for pattern in dist_patterns:
+            match = re.search(pattern, self.lower_text)
+            if match:
+                value = self._parse_amount(match.group(1)) or 0
+                # Distributions are typically shown negative
+                if value > 0:
+                    value = -value
+                equity["distributions"] = abs(value)  # Store as positive for flagging
+                break
+
+        # Check for negative retained earnings (red flag)
+        if equity.get("retained_earnings", 0) < 0:
+            self.add_red_flag(f"Negative retained earnings: ${equity['retained_earnings']:,.0f}")
+
+        # Check for large distributions relative to common sense
+        if equity.get("distributions", 0) > 100000:
+            self.add_note(f"Large shareholder distributions: ${equity['distributions']:,.0f}")
+
+        return equity
+
+
 # Define the Modal app
 app = modal.App("pdf-extraction-service")
 
