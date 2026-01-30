@@ -81,6 +81,11 @@ import { QAOrchestrator, type QAReport, QAStatus } from '../qa/qa-orchestrator';
 import { QualityGate, createQualityGate, type QualityScore, QualityTier } from '../qa/quality-gate';
 import { createCitationManager, type CitationManager } from '../citations/citation-manager';
 
+// Import feature flags for Modal extraction toggle
+import { isModalExtractionEnabled, logFeatureFlags } from '../feature-flags';
+import { loadExtractionData } from '../extraction/loader';
+import { convertExtractionToPassOutputs } from '../extraction/pass-converters';
+
 // =============================================================================
 // CONSTANTS
 // =============================================================================
@@ -137,6 +142,8 @@ interface PassContext {
   passOutputs: Map<number, PassOutput>;
   onProgress?: (pass: number, message: string, percent: number) => void;
 }
+
+// NOTE: The convertExtractionToPassOutputs function is now in lib/extraction/pass-converters.ts
 
 // =============================================================================
 // MAIN ORCHESTRATION FUNCTION
@@ -200,39 +207,128 @@ export async function runTwelvePassValuation(
     onProgress,
   };
 
+  // Log feature flags state
+  const useModalExtraction = isModalExtractionEnabled();
   console.log(`[12-PASS] ========================================`);
   console.log(`[12-PASS] Starting 12-Pass Valuation Pipeline`);
   console.log(`[12-PASS] Report ID: ${reportId}`);
   console.log(`[12-PASS] Documents: ${pdfBase64.length} PDF(s)`);
+  console.log(`[12-PASS] Modal Extraction: ${useModalExtraction ? 'ENABLED' : 'DISABLED'}`);
   console.log(`[12-PASS] ========================================`);
+  logFeatureFlags();
+
+  // Declare variables for pass results that will be set by either path
+  let pass1Result: PassResult<Pass1Output>;
+  let pass2Result: PassResult<Pass2Output>;
+  let pass3Result: PassResult<Pass3Output>;
 
   try {
     // =========================================================================
-    // PASS 1-3: Data Extraction (per-document processing to avoid 100-page limit)
+    // PASS 1-3: Data Extraction
+    // Branch: Modal extraction (free) vs Claude Vision extraction (expensive)
     // =========================================================================
-    const extractionResults = await runExtractionPassesWithPerDocumentProcessing(
-      client, supabase, context
-    );
 
-    // Validate Pass 1
-    const pass1Result = extractionResults.pass1;
-    if (!pass1Result.success) throw createPassError(1, pass1Result.error);
-    updateMetrics(pass1Result, passMetrics, 0, 0, 0);
+    if (useModalExtraction) {
+      // =====================================================================
+      // MODAL EXTRACTION PATH (nearly free - ~$0.001/document)
+      // =====================================================================
+      console.log(`[12-PASS] Using Modal extraction path - skipping Claude Vision passes 1-3`);
+      onProgress?.(1, 'Loading extraction data from Modal...', 5);
 
-    // Validate Pass 2
-    const pass2Result = extractionResults.pass2;
-    if (!pass2Result.success) throw createPassError(2, pass2Result.error);
-    updateMetrics(pass2Result, passMetrics, pass1Result.inputTokens, pass1Result.outputTokens, pass1Result.retryCount);
+      // Load pre-extracted data from document_extractions table
+      const extractionData = await loadExtractionData(reportId);
 
-    // Validate Pass 3
-    const pass3Result = extractionResults.pass3;
-    if (!pass3Result.success) throw createPassError(3, pass3Result.error);
-    updateMetrics(pass3Result, passMetrics, pass1Result.inputTokens + pass2Result.inputTokens, pass1Result.outputTokens + pass2Result.outputTokens, pass1Result.retryCount + pass2Result.retryCount);
+      if (!extractionData) {
+        throw new Error(
+          'Modal extraction data not found. Please ensure documents were processed through Modal extraction first.'
+        );
+      }
 
-    // Update total tokens
-    totalInputTokens = extractionResults.totalInputTokens;
-    totalOutputTokens = extractionResults.totalOutputTokens;
-    totalRetries = extractionResults.totalRetries;
+      console.log(`[12-PASS] Loaded Modal extraction data for ${extractionData.available_years.length} year(s)`);
+
+      // Convert Modal extraction to Pass1/2/3 compatible outputs
+      const convertedOutputs = convertExtractionToPassOutputs(extractionData);
+
+      // Create pass results with zero cost (Modal extraction is pre-computed)
+      pass1Result = {
+        success: true,
+        output: convertedOutputs.pass1,
+        rawResponse: 'Converted from Modal extraction',
+        inputTokens: 0,
+        outputTokens: 0,
+        processingTime: 0,
+        retryCount: 0,
+      };
+      pass2Result = {
+        success: true,
+        output: convertedOutputs.pass2,
+        rawResponse: 'Converted from Modal extraction',
+        inputTokens: 0,
+        outputTokens: 0,
+        processingTime: 0,
+        retryCount: 0,
+      };
+      pass3Result = {
+        success: true,
+        output: convertedOutputs.pass3,
+        rawResponse: 'Converted from Modal extraction',
+        inputTokens: 0,
+        outputTokens: 0,
+        processingTime: 0,
+        retryCount: 0,
+      };
+
+      // Store in passOutputs map
+      passOutputs.set(1, convertedOutputs.pass1);
+      passOutputs.set(2, convertedOutputs.pass2);
+      passOutputs.set(3, convertedOutputs.pass3);
+
+      // Save to database
+      const passOutputsObj = Object.fromEntries(passOutputs);
+      await supabase
+        .from('reports')
+        .update({ pass_outputs: passOutputsObj } as any)
+        .eq('id', reportId);
+
+      // Update metrics (zero tokens since Modal is free)
+      updateMetrics(pass1Result, passMetrics, 0, 0, 0);
+      updateMetrics(pass2Result, passMetrics, 0, 0, 0);
+      updateMetrics(pass3Result, passMetrics, 0, 0, 0);
+
+      onProgress?.(3, 'Extraction data loaded from Modal', 18);
+      console.log(`[12-PASS] Modal extraction path complete - $0 cost for passes 1-3`);
+
+    } else {
+      // =====================================================================
+      // CLAUDE VISION PATH (legacy - $3-15/document)
+      // =====================================================================
+      console.log(`[12-PASS] Using Claude Vision extraction path (legacy)`);
+      console.warn(`[12-PASS] WARNING: Claude Vision extraction is expensive (~$3-15/document)`);
+
+      const extractionResults = await runExtractionPassesWithPerDocumentProcessing(
+        client, supabase, context
+      );
+
+      // Validate Pass 1
+      pass1Result = extractionResults.pass1;
+      if (!pass1Result.success) throw createPassError(1, pass1Result.error);
+      updateMetrics(pass1Result, passMetrics, 0, 0, 0);
+
+      // Validate Pass 2
+      pass2Result = extractionResults.pass2;
+      if (!pass2Result.success) throw createPassError(2, pass2Result.error);
+      updateMetrics(pass2Result, passMetrics, pass1Result.inputTokens, pass1Result.outputTokens, pass1Result.retryCount);
+
+      // Validate Pass 3
+      pass3Result = extractionResults.pass3;
+      if (!pass3Result.success) throw createPassError(3, pass3Result.error);
+      updateMetrics(pass3Result, passMetrics, pass1Result.inputTokens + pass2Result.inputTokens, pass1Result.outputTokens + pass2Result.outputTokens, pass1Result.retryCount + pass2Result.retryCount);
+
+      // Update total tokens
+      totalInputTokens = extractionResults.totalInputTokens;
+      totalOutputTokens = extractionResults.totalOutputTokens;
+      totalRetries = extractionResults.totalRetries;
+    }
 
     // =========================================================================
     // PASS 4: Industry Analysis
