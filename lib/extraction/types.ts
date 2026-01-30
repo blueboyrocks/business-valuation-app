@@ -162,6 +162,7 @@ export interface Expenses {
  * Balance sheet line items for a single year.
  */
 export interface BalanceSheet {
+  // Current / End of Year values
   total_assets: number;
   cash: number;
   accounts_receivable: number;
@@ -175,6 +176,19 @@ export interface BalanceSheet {
   other_liabilities: number;
   retained_earnings: number;
   total_equity: number;
+  // Schedule L - Beginning of Year (BOY)
+  boy_cash: number;
+  boy_accounts_receivable: number;
+  boy_inventory: number;
+  boy_total_assets: number;
+  boy_total_liabilities: number;
+  // Schedule L - End of Year (EOY)
+  eoy_cash: number;
+  eoy_accounts_receivable: number;
+  eoy_inventory: number;
+  eoy_total_assets: number;
+  eoy_total_liabilities: number;
+  eoy_retained_earnings: number;
 }
 
 /**
@@ -188,6 +202,16 @@ export interface ScheduleK {
   other_net_gain_loss: number;
   total_foreign_taxes: number;
   total_distributions: number;
+  /** Combined short + long term capital gains */
+  capital_gains: number;
+  /** Short-term capital gains (Line 7) */
+  capital_gains_short: number;
+  /** Long-term capital gains (Line 8a) */
+  capital_gains_long: number;
+  /** Cash distributions (Line 16a) */
+  distributions_cash: number;
+  /** Property distributions (Line 16b) */
+  distributions_property: number;
 }
 
 /**

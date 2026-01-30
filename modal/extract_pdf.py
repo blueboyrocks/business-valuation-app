@@ -1259,6 +1259,7 @@ def parse_financial_data(text: str, tables: list, filename: str) -> dict:
             "other_deductions": amounts.get("other_deductions", 0),
         },
         "balance_sheet": {
+            # Current / End of Year values
             "total_assets": amounts.get("total_assets", 0),
             "cash": amounts.get("cash", 0),
             "accounts_receivable": amounts.get("accounts_receivable", 0),
@@ -1272,11 +1273,29 @@ def parse_financial_data(text: str, tables: list, filename: str) -> dict:
             "other_liabilities": amounts.get("other_liabilities", 0),
             "retained_earnings": amounts.get("retained_earnings", 0),
             "total_equity": amounts.get("total_equity", 0),
+            # Schedule L - Beginning of Year (BOY)
+            "boy_total_assets": amounts.get("boy_total_assets", 0),
+            "boy_total_liabilities": amounts.get("boy_total_liabilities", 0),
+            "boy_cash": amounts.get("boy_cash", 0),
+            "boy_accounts_receivable": amounts.get("boy_accounts_receivable", 0),
+            "boy_inventory": amounts.get("boy_inventory", 0),
+            # Schedule L - End of Year (EOY)
+            "eoy_total_assets": amounts.get("eoy_total_assets", amounts.get("total_assets", 0)),
+            "eoy_total_liabilities": amounts.get("eoy_total_liabilities", amounts.get("total_liabilities", 0)),
+            "eoy_cash": amounts.get("eoy_cash", amounts.get("cash", 0)),
+            "eoy_accounts_receivable": amounts.get("eoy_accounts_receivable", amounts.get("accounts_receivable", 0)),
+            "eoy_inventory": amounts.get("eoy_inventory", amounts.get("inventory", 0)),
+            "eoy_retained_earnings": amounts.get("eoy_retained_earnings", amounts.get("retained_earnings", 0)),
         },
         "schedule_k": {
             "section_179_deduction": amounts.get("section_179", 0),
             "charitable_contributions": amounts.get("charitable", 0),
+            "capital_gains": (amounts.get("capital_gains_short", 0) + amounts.get("capital_gains_long", 0)),
+            "capital_gains_short": amounts.get("capital_gains_short", 0),
+            "capital_gains_long": amounts.get("capital_gains_long", 0),
             "total_distributions": amounts.get("distributions", 0),
+            "distributions_cash": amounts.get("distributions", 0),
+            "distributions_property": amounts.get("distributions_property", 0),
         },
         "owner_info": {
             "owner_compensation": amounts.get("officer_compensation", 0),
@@ -1284,6 +1303,11 @@ def parse_financial_data(text: str, tables: list, filename: str) -> dict:
             "distributions": amounts.get("distributions", 0),
             "loans_to_shareholders": amounts.get("loans_to_shareholders", 0),
             "loans_from_shareholders": amounts.get("loans_from_shareholders", 0),
+        },
+        "covid_adjustments": {
+            "ppp_loan_forgiveness": amounts.get("ppp_forgiveness", 0),
+            "eidl_advances": amounts.get("eidl_advance", 0),
+            "employee_retention_credit": amounts.get("erc_credit", 0),
         },
         # Classification metadata for downstream systems
         "classification": {
@@ -1457,15 +1481,61 @@ def extract_amounts_from_text(text: str) -> dict:
         "section_179": [
             r'section\s*179.*?[\$]?\s*([\d,]+)',
             r'179\s*(?:deduction|expense).*?[\$]?\s*([\d,]+)',
+            # Schedule K Line 11/12a
+            r'line\s*(?:11|12a?).*?179.*?[\$]?\s*([\d,]+)',
+        ],
+        "capital_gains_short": [
+            # Schedule K Line 7 - Short-term capital gain
+            r'short[-\s]*term\s*capital\s*gain.*?[\$]?\s*([\d,]+)',
+            r'line\s*7[^0-9].*?capital.*?[\$]?\s*([\d,]+)',
+        ],
+        "capital_gains_long": [
+            # Schedule K Line 8a - Long-term capital gain
+            r'long[-\s]*term\s*capital\s*gain.*?[\$]?\s*([\d,]+)',
+            r'line\s*8a?[^0-9].*?capital.*?[\$]?\s*([\d,]+)',
         ],
         "distributions": [
             r'distributions?.*?[\$]?\s*([\d,]+)',
+            # Schedule K Line 16a - Cash distributions
+            r'line\s*16a?[^0-9].*?cash.*?[\$]?\s*([\d,]+)',
+        ],
+        "distributions_property": [
+            # Schedule K Line 16b - Property distributions
+            r'line\s*16b[^0-9].*?property.*?[\$]?\s*([\d,]+)',
+            r'property\s*distributions?.*?[\$]?\s*([\d,]+)',
         ],
         "guaranteed_payments": [
             r'guaranteed\s*payments.*?[\$]?\s*([\d,]+)',
         ],
         "loans_to_shareholders": [
             r'loans?\s*to\s*(?:shareholders?|members?).*?[\$]?\s*([\d,]+)',
+        ],
+        # Schedule L (Balance Sheet) - Beginning of Year
+        "boy_total_assets": [
+            r'(?:beginning|boy)\s*.*?total\s*assets.*?[\$]?\s*([\d,]+)',
+        ],
+        "boy_total_liabilities": [
+            r'(?:beginning|boy)\s*.*?total\s*liabilities.*?[\$]?\s*([\d,]+)',
+        ],
+        # Schedule L (Balance Sheet) - End of Year
+        "eoy_total_assets": [
+            r'(?:end|eoy)\s*.*?total\s*assets.*?[\$]?\s*([\d,]+)',
+        ],
+        "eoy_total_liabilities": [
+            r'(?:end|eoy)\s*.*?total\s*liabilities.*?[\$]?\s*([\d,]+)',
+        ],
+        # COVID-specific patterns
+        "ppp_forgiveness": [
+            r'ppp.*?forgiveness.*?[\$]?\s*([\d,]+)',
+            r'paycheck\s*protection.*?forgiveness.*?[\$]?\s*([\d,]+)',
+        ],
+        "eidl_advance": [
+            r'eidl.*?(?:advance|grant).*?[\$]?\s*([\d,]+)',
+            r'economic\s*injury.*?(?:advance|grant).*?[\$]?\s*([\d,]+)',
+        ],
+        "erc_credit": [
+            r'employee\s*retention\s*credit.*?[\$]?\s*([\d,]+)',
+            r'erc.*?[\$]?\s*([\d,]+)',
         ],
     }
 
