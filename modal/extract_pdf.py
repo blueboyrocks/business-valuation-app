@@ -38,6 +38,7 @@ image = (
         "poppler-utils",
     )
     .pip_install(
+        "fastapi[standard]",
         "pymupdf>=1.24.0",
         "pdfplumber>=0.10.0",
         "pytesseract>=0.3.10",
